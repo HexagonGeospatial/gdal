@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -34,7 +34,7 @@
 #include "gdaljp2metadata.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$")
+CPL_CVSID("$Id: ecwcreatecopy.cpp 8e5eeb35bf76390e3134a4ea7076dab7d478ea0e 2018-11-14 22:55:13 +0100 Even Rouault $")
 
 #if defined(FRMT_ecw) && defined(HAVE_COMPRESS)
 
@@ -75,7 +75,7 @@ CPLString GetCompressionSoftwareName(){
 }
 #endif
 
-class GDALECWCompressor final: public CNCSFile {
+class GDALECWCompressor : public CNCSFile {
 
 public:
     GDALECWCompressor();
@@ -115,10 +115,10 @@ public:
 
     GDALDataset *m_poSrcDS;
 
-    std::shared_ptr<VSIIOStream> m_OStream;
+    VSIIOStream m_OStream;
     int m_nPercentComplete;
 
-    int m_bCanceled;
+    int m_bCancelled;
 
     GDALProgressFunc  pfnProgress;
     void             *pProgressData;
@@ -143,11 +143,11 @@ private:
 /************************************************************************/
 
 GDALECWCompressor::GDALECWCompressor() :
-    m_OStream(std::make_shared<VSIIOStream>()), eWorkDT(GDT_Unknown)
+    eWorkDT(GDT_Unknown)
 {
     m_poSrcDS = nullptr;
     m_nPercentComplete = -1;
-    m_bCanceled = FALSE;
+    m_bCancelled = FALSE;
     pfnProgress = GDALDummyProgress;
     pProgressData = nullptr;
     papoJP2UserBox = nullptr;
@@ -186,7 +186,7 @@ CPLErr GDALECWCompressor::CloseDown()
 
 {
     Close( true );
-    m_OStream->Close();
+    m_OStream.Close();
 
     return CE_None;
 }
@@ -246,7 +246,7 @@ void GDALECWCompressor::WriteStatus(IEEE4 fPercentComplete, const NCS::CString &
     std::string sStatusUTF8;
     sStatusText.utf8_str(sStatusUTF8);
 
-    m_bCanceled = !pfnProgress(
+    m_bCancelled = !pfnProgress(
                     fPercentComplete/100.0,
                     sStatusUTF8.c_str(),
                     pProgressData );
@@ -256,7 +256,7 @@ void GDALECWCompressor::WriteStatus(IEEE4 fPercentComplete, const NCS::CString &
 void GDALECWCompressor::WriteStatus( UINT32 nCurrentLine )
 
 {
-    m_bCanceled =
+    m_bCancelled =
         !pfnProgress( nCurrentLine / (float) sFileInfo.nSizeY,
                       nullptr, pProgressData );
 }
@@ -268,7 +268,7 @@ void GDALECWCompressor::WriteStatus( UINT32 nCurrentLine )
 bool GDALECWCompressor::WriteCancel()
 
 {
-    return (bool) m_bCanceled;
+    return (bool) m_bCancelled;
 }
 
 /************************************************************************/
@@ -1008,7 +1008,7 @@ CPLErr GDALECWCompressor::Initialize(
             return CE_Failure;
         }
 
-        m_OStream->Access( fpVSIL, TRUE, (BOOLEAN) bSeekable, pszFilename,
+        m_OStream.Access( fpVSIL, TRUE, (BOOLEAN) bSeekable, pszFilename,
                           0, -1 );
     }
     else
@@ -1114,13 +1114,8 @@ CPLErr GDALECWCompressor::Initialize(
                 oError = GetCNCSError(Open( (char *) pszFilename, false, true ));
             }
         }
-        else {
-#if ECWSDK_VERSION>=55
-            oError = CNCSJP2FileView::Open(m_OStream);
-#else
-            oError = CNCSJP2FileView::Open(m_OStream.get());
-#endif
-        }
+        else
+            oError = CNCSJP2FileView::Open( &(m_OStream) );
     }
 
     if( oError.GetErrorNumber() == NCS_SUCCESS )
@@ -1589,7 +1584,7 @@ class IRasterIORequest
 };
 #endif
 
-class ECWWriteDataset final: public GDALDataset
+class ECWWriteDataset : public GDALDataset
 {
     friend class ECWWriteRasterBand;
 
@@ -1653,7 +1648,7 @@ class ECWWriteDataset final: public GDALDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ECWWriteRasterBand final: public GDALRasterBand
+class ECWWriteRasterBand : public GDALRasterBand
 {
     friend class ECWWriteDataset;
 

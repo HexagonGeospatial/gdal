@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id$
+ * $Id: gdal_ecw.h d4681234b337b14e215ae6b4d3ca7dc5e48d0a17 2019-03-24 15:50:26 +0100 Even Rouault $
  *
  * Project:  GDAL
  * Purpose:  ECW (ERDAS Wavelet Compression Format) Driver Definitions
@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001-2011, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2013, Even Rouault <even dot rouault at spatialys.com>
+ * Copyright (c) 2013, Even Rouault <even dot rouault at mines-paris dot org>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -76,9 +76,9 @@ void ECWReportError(CNCSError& oErr, const char* pszMsg = "");
 /************************************************************************/
 #ifdef HAVE_COMPRESS
 #if ECWSDK_VERSION>=50
-class JP2UserBox final: public CNCSSDKBox {
+class JP2UserBox : public CNCSSDKBox {
 #else
-class JP2UserBox final: public CNCSJP2Box {
+class JP2UserBox : public CNCSJP2Box {
 #endif
 private:
     int           nDataLength;
@@ -89,10 +89,7 @@ public:
 
     virtual ~JP2UserBox();
 
-#if ECWSDK_VERSION >= 55
-    CNCSError Parse(NCS::SDK::CFileBase &JP2File, const NCS::CIOStreamPtr &Stream) override;
-    CNCSError UnParse(NCS::SDK::CFileBase &JP2File, const NCS::CIOStreamPtr &Stream) override;
-#elif ECWSDK_VERSION >= 40
+#if ECWSDK_VERSION >= 40
     virtual CNCSError Parse(NCS::SDK::CFileBase &JP2File,
                              NCS::CIOStream &Stream) override;
     virtual CNCSError UnParse(NCS::SDK::CFileBase &JP2File,
@@ -118,11 +115,10 @@ public:
 /* ==================================================================== */
 /************************************************************************/
 
-class VSIIOStream final: public CNCSJPCIOStream
+class VSIIOStream : public CNCSJPCIOStream
+
 {
-#if ECWSDK_VERSION >= 54
-    NCS_DELETE_ALL_COPY_AND_MOVE(VSIIOStream)
-#endif
+  private:
     char     *m_Filename;
   public:
 
@@ -135,13 +131,12 @@ class VSIIOStream final: public CNCSJPCIOStream
 
     int      nCOMState;
     int      nCOMLength;
-    GByte    abyCOMType[2]{};
+    GByte    abyCOMType[2];
 
     /* To fix ‘virtual bool NCS::CIOStream::Read(INT64, void*, UINT32)’ was hidden' with SDK 5 */
     using CNCSJPCIOStream::Read;
 
-    VSIIOStream() : m_Filename(nullptr)
-    {
+    VSIIOStream() : m_Filename(nullptr){
         nFileViewCount = 0;
         startOfJPData = 0;
         lengthOfJPData = -1;
@@ -157,13 +152,13 @@ class VSIIOStream final: public CNCSJPCIOStream
         abyCOMType[1] = 0;
     }
     virtual ~VSIIOStream() {
-        VSIIOStream::Close();
+        Close();
         if (m_Filename!=nullptr){
             CPLFree(m_Filename);
         }
     }
 
-    CNCSError Close() override {
+    virtual CNCSError Close() override {
         CNCSError oErr = CNCSJPCIOStream::Close();
         if( fpVSIL != nullptr )
         {
@@ -174,17 +169,18 @@ class VSIIOStream final: public CNCSJPCIOStream
     }
 
 #if ECWSDK_VERSION >= 40
-    VSIIOStream *Clone() override {
+    virtual VSIIOStream *Clone() override {
         CPLDebug( "ECW", "VSIIOStream::Clone()" );
         VSILFILE *fpNewVSIL = VSIFOpenL( m_Filename, "rb" );
         if (fpNewVSIL == nullptr)
         {
             return nullptr;
+        }else
+        {
+            VSIIOStream *pDst = new VSIIOStream();
+            pDst->Access(fpNewVSIL, bWritable, bSeekable, m_Filename, startOfJPData, lengthOfJPData);
+            return pDst;
         }
-        
-        VSIIOStream *pDst = new VSIIOStream();
-        pDst->Access(fpNewVSIL, bWritable, bSeekable, m_Filename, startOfJPData, lengthOfJPData);
-        return pDst;
     }
 #endif /* ECWSDK_VERSION >= 4 */
 
@@ -203,10 +199,9 @@ class VSIIOStream final: public CNCSJPCIOStream
         // if it does not have a path to a real directory, we will
         // substitute something.
         CPLString osFilenameUsed = pszFilename;
-#if ECWSDK_VERSION < 55
         CPLString osPath = CPLGetPath( pszFilename );
         struct stat sStatBuf;
-        if( !osPath.empty() && stat( osPath, &sStatBuf ) != 0 )
+        if( osPath != "" && stat( osPath, &sStatBuf ) != 0 )
         {
             osFilenameUsed = CPLGenerateTempFilename( nullptr );
             // try to preserve the extension.
@@ -217,8 +212,6 @@ class VSIIOStream final: public CNCSJPCIOStream
             }
             CPLDebug( "ECW", "Using filename '%s' for temporary directory determination purposes.", osFilenameUsed.c_str() );
         }
-#endif
-
 #ifdef WIN32
         if( CSLTestBoolean( CPLGetConfigOption( "GDAL_FILENAME_IS_UTF8", "YES" ) ) )
         {
@@ -402,7 +395,7 @@ class ECWDataset;
 
 #if ECWSDK_VERSION >= 40
 
-class ECWAsyncReader final: public GDALAsyncReader
+class ECWAsyncReader : public GDALAsyncReader
 {
 private:
     CNCSJP2FileView *poFileView = nullptr;
@@ -451,7 +444,7 @@ typedef struct
     GByte* pabyData;
 } ECWCachedMultiBandIO;
 
-class CPL_DLL ECWDataset final: public GDALJP2AbstractDataset
+class CPL_DLL ECWDataset : public GDALJP2AbstractDataset
 {
     friend class ECWRasterBand;
     friend class ECWAsyncReader;
@@ -618,7 +611,7 @@ class CPL_DLL ECWDataset final: public GDALJP2AbstractDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ECWRasterBand final: public GDALPamRasterBand
+class ECWRasterBand : public GDALPamRasterBand
 {
     friend class ECWDataset;
 
@@ -669,7 +662,7 @@ class ECWRasterBand final: public GDALPamRasterBand
                                int nBufXSize, int nBufYSize,
                                GDALDataType eDT, char **papszOptions ) override;
 #if ECWSDK_VERSION >= 50
-    void GetBandIndexAndCountForStatistics(int &bandIndex, int &bandCount) const;
+    void GetBandIndexAndCountForStatistics(int &bandIndex, int &bandCount);
     virtual CPLErr GetDefaultHistogram( double *pdfMin, double *pdfMax,
                                     int *pnBuckets, GUIntBig ** ppanHistogram,
                                     int bForce,
