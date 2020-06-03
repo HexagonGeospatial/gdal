@@ -188,7 +188,7 @@ class VSIIOStream final: public CNCSJPCIOStream
         {
             return nullptr;
         }
-
+        
         VSIIOStream *pDst = new VSIIOStream();
         pDst->Access(fpNewVSIL, bWritable, bSeekable, m_Filename, startOfJPData, lengthOfJPData);
         return pDst;
@@ -206,14 +206,14 @@ class VSIIOStream final: public CNCSJPCIOStream
         bSeekable = bSeekableIn;
         VSIFSeekL(fpVSIL, startOfJPData, SEEK_SET);
         m_Filename = CPLStrdup(pszFilename);
-
+		
 #if ECWSDK_VERSION >= 55
-        const std::string vsiStreamPrefix("STREAM=/vsi");
-        const std::string vsiPrefix("/vsi");
-        m_StreamOptions->SetIsRemoteStream(
-            std::string(m_Filename).compare(0, vsiPrefix.length(), vsiPrefix) == 0 ||
-            std::string(m_Filename).compare(0, vsiStreamPrefix.length(), vsiStreamPrefix) == 0
-        );
+		const std::string vsiStreamPrefix("STREAM=/vsi");
+		const std::string vsiPrefix("/vsi");
+		m_StreamOptions->SetIsRemoteStream(
+			std::string(m_Filename).compare(0, vsiPrefix.length(), vsiPrefix) == 0 ||
+			std::string(m_Filename).compare(0, vsiStreamPrefix.length(), vsiStreamPrefix) == 0
+		);
 #endif
         // the filename is used to establish where to put temporary files.
         // if it does not have a path to a real directory, we will
