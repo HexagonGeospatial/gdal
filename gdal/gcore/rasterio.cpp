@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 
 #include "cpl_conv.h"
 #include "cpl_cpu_features.h"
@@ -2279,6 +2280,8 @@ template<class Tout> void GDALCopyWordsByteTo16Bit(
                                 int nDstPixelStride,
                                 GPtrDiff_t nWordCount )
 {
+    static_assert( std::is_integral<Tout>::value &&
+                   sizeof(Tout) == sizeof(uint16_t), "Bad Tout" );
     if( nSrcPixelStride == static_cast<int>(sizeof(*pSrcData)) &&
         nDstPixelStride == static_cast<int>(sizeof(*pDstData)) )
     {
@@ -2336,6 +2339,8 @@ template<class Tout> void GDALCopyWordsByteTo32Bit(
                                 int nDstPixelStride,
                                 GPtrDiff_t nWordCount )
 {
+    static_assert( std::is_integral<Tout>::value &&
+                   sizeof(Tout) == sizeof(uint32_t), "Bad Tout" );
     if( nSrcPixelStride == static_cast<int>(sizeof(*pSrcData)) &&
         nDstPixelStride == static_cast<int>(sizeof(*pDstData)) )
     {
@@ -3108,7 +3113,7 @@ static inline void GDALUnrolledCopy( T* CPL_RESTRICT pDest,
     GDALUnrolledCopyGeneric<T,srcStride,dstStride>(pDest, pSrc, nIters);
 }
 
-#if (defined(__x86_64) || defined(_M_X64)) &&  !(defined(__GNUC__) && __GNUC__ < 4)
+#if (defined(__x86_64) || defined(_M_X64))
 
 #ifdef HAVE_SSSE3_AT_COMPILE_TIME
 
@@ -3222,25 +3227,26 @@ static inline void GDALFastCopy( T* CPL_RESTRICT pDest,
                                  int nSrcStride,
                                  GPtrDiff_t nIters )
 {
+    constexpr int sizeofT = static_cast<int>(sizeof(T));
     if( nIters == 1 )
     {
         *pDest = *pSrc;
     }
-    else if( nDestStride == static_cast<int>(sizeof(T)) )
+    else if( nDestStride == sizeofT )
     {
-        if( nSrcStride == static_cast<int>(sizeof(T)) )
+        if( nSrcStride == sizeofT )
         {
             memcpy(pDest, pSrc, nIters * sizeof(T));
         }
-        else if( nSrcStride == 2 * static_cast<int>(sizeof(T)) )
+        else if( nSrcStride == 2 * sizeofT )
         {
             GDALUnrolledCopy<T, 2,1>(pDest, pSrc, nIters);
         }
-        else if( nSrcStride == 3 * static_cast<int>(sizeof(T)) )
+        else if( nSrcStride == 3 * sizeofT )
         {
             GDALUnrolledCopy<T, 3,1>(pDest, pSrc, nIters);
         }
-        else if( nSrcStride == 4 * static_cast<int>(sizeof(T)) )
+        else if( nSrcStride == 4 * sizeofT )
         {
             GDALUnrolledCopy<T, 4,1>(pDest, pSrc, nIters);
         }
@@ -3249,22 +3255,22 @@ static inline void GDALFastCopy( T* CPL_RESTRICT pDest,
             while( nIters-- > 0 )
             {
                 *pDest = *pSrc;
-                pSrc += nSrcStride / static_cast<int>(sizeof(T));
+                pSrc += nSrcStride / sizeofT;
                 pDest ++;
             }
         }
     }
-    else if( nSrcStride == static_cast<int>(sizeof(T))  )
+    else if( nSrcStride == sizeofT  )
     {
-        if( nDestStride == 2 * static_cast<int>(sizeof(T)) )
+        if( nDestStride == 2 * sizeofT )
         {
             GDALUnrolledCopy<T, 1,2>(pDest, pSrc, nIters);
         }
-        else if( nDestStride == 3 * static_cast<int>(sizeof(T)) )
+        else if( nDestStride == 3 * sizeofT )
         {
             GDALUnrolledCopy<T, 1,3>(pDest, pSrc, nIters);
         }
-        else if( nDestStride == 4 * static_cast<int>(sizeof(T))  )
+        else if( nDestStride == 4 * sizeofT  )
         {
             GDALUnrolledCopy<T, 1,4>(pDest, pSrc, nIters);
         }
@@ -3274,7 +3280,7 @@ static inline void GDALFastCopy( T* CPL_RESTRICT pDest,
             {
                 *pDest = *pSrc;
                 pSrc ++;
-                pDest += nDestStride / static_cast<int>(sizeof(T));
+                pDest += nDestStride / sizeofT;
             }
         }
     }
@@ -3283,8 +3289,8 @@ static inline void GDALFastCopy( T* CPL_RESTRICT pDest,
         while( nIters-- > 0 )
         {
             *pDest = *pSrc;
-            pSrc += nSrcStride / static_cast<int>(sizeof(T));
-            pDest += nDestStride / static_cast<int>(sizeof(T));
+            pSrc += nSrcStride / sizeofT;
+            pDest += nDestStride / sizeofT;
         }
     }
 }
