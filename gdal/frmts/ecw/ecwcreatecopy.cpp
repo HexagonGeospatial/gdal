@@ -118,7 +118,7 @@ public:
     std::shared_ptr<VSIIOStream> m_OStream;
     int m_nPercentComplete;
 
-    int m_bCancelled;
+    int m_bCanceled;
 
     GDALProgressFunc  pfnProgress;
     void             *pProgressData;
@@ -147,7 +147,7 @@ GDALECWCompressor::GDALECWCompressor() :
 {
     m_poSrcDS = nullptr;
     m_nPercentComplete = -1;
-    m_bCancelled = FALSE;
+    m_bCanceled = FALSE;
     pfnProgress = GDALDummyProgress;
     pProgressData = nullptr;
     papoJP2UserBox = nullptr;
@@ -246,7 +246,7 @@ void GDALECWCompressor::WriteStatus(IEEE4 fPercentComplete, const NCS::CString &
     std::string sStatusUTF8;
     sStatusText.utf8_str(sStatusUTF8);
 
-    m_bCancelled = !pfnProgress(
+    m_bCanceled = !pfnProgress(
                     fPercentComplete/100.0,
                     sStatusUTF8.c_str(),
                     pProgressData );
@@ -256,7 +256,7 @@ void GDALECWCompressor::WriteStatus(IEEE4 fPercentComplete, const NCS::CString &
 void GDALECWCompressor::WriteStatus( UINT32 nCurrentLine )
 
 {
-    m_bCancelled =
+    m_bCanceled =
         !pfnProgress( nCurrentLine / (float) sFileInfo.nSizeY,
                       nullptr, pProgressData );
 }
@@ -268,7 +268,7 @@ void GDALECWCompressor::WriteStatus( UINT32 nCurrentLine )
 bool GDALECWCompressor::WriteCancel()
 
 {
-    return (bool) m_bCancelled;
+    return (bool) m_bCanceled;
 }
 
 /************************************************************************/
@@ -760,8 +760,9 @@ CPLErr GDALECWCompressor::Initialize(
 /*      Allow CNCSFile::SetParameter() requests.                        */
 /* -------------------------------------------------------------------- */
 
-    if( bIsJPEG2000 )
+    if (bIsJPEG2000)
     {
+
 #if ECWSDK_VERSION >= 60
 
         pszOption = CSLFetchNameValue(papszOptions, "PROFILE");
@@ -835,26 +836,26 @@ CPLErr GDALECWCompressor::Initialize(
             parameters->jp2.compress.SetPrecinctProgressionOrder(NCS::JPC::CProgressionOrderType::Type::RPCL);
 #else
         pszOption = CSLFetchNameValue(papszOptions, "PROFILE");
-        if( pszOption != nullptr && EQUAL(pszOption,"BASELINE_0") )
+        if (pszOption != nullptr && EQUAL(pszOption, "BASELINE_0"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROFILE_BASELINE_0 );
-        else if( pszOption != nullptr && EQUAL(pszOption,"BASELINE_1") )
+                CNCSJP2FileView::JP2_COMPRESS_PROFILE_BASELINE_0);
+        else if (pszOption != nullptr && EQUAL(pszOption, "BASELINE_1"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROFILE_BASELINE_1 );
-        else if( pszOption != nullptr && EQUAL(pszOption,"BASELINE_2") )
+                CNCSJP2FileView::JP2_COMPRESS_PROFILE_BASELINE_1);
+        else if (pszOption != nullptr && EQUAL(pszOption, "BASELINE_2"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROFILE_BASELINE_2 );
-        else if( pszOption != nullptr && EQUAL(pszOption,"NPJE") )
+                CNCSJP2FileView::JP2_COMPRESS_PROFILE_BASELINE_2);
+        else if (pszOption != nullptr && EQUAL(pszOption, "NPJE"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROFILE_NITF_BIIF_NPJE );
-        else if( pszOption != nullptr && EQUAL(pszOption,"EPJE") )
+                CNCSJP2FileView::JP2_COMPRESS_PROFILE_NITF_BIIF_NPJE);
+        else if (pszOption != nullptr && EQUAL(pszOption, "EPJE"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROFILE_NITF_BIIF_EPJE );
+                CNCSJP2FileView::JP2_COMPRESS_PROFILE_NITF_BIIF_EPJE);
 
-        pszOption = CSLFetchNameValue(papszOptions, "CODESTREAM_ONLY" );
-        if( pszOption == nullptr && EQUAL(CPLGetExtension(pszFilename), "j2k") )
+        pszOption = CSLFetchNameValue(papszOptions, "CODESTREAM_ONLY");
+        if (pszOption == nullptr && EQUAL(CPLGetExtension(pszFilename), "j2k"))
             pszOption = "YES";
-        if( pszOption != nullptr )
+        if (pszOption != nullptr)
             SetParameter(
                 CNCSJP2FileView::JP2_COMPRESS_CODESTREAM_ONLY,
                 CPLTestBool( pszOption ) );
@@ -900,13 +901,13 @@ CPLErr GDALECWCompressor::Initialize(
                                       CPLTestBool( pszOption ) );
 
         pszOption = CSLFetchNameValue(papszOptions, "PROGRESSION");
-        if( pszOption != nullptr && EQUAL(pszOption,"LRCP") )
+        if (pszOption != nullptr && EQUAL(pszOption, "LRCP"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROGRESSION_LRCP );
+                CNCSJP2FileView::JP2_COMPRESS_PROGRESSION_LRCP);
 
-        else if( pszOption != nullptr && EQUAL(pszOption,"RLCP") )
+        else if (pszOption != nullptr && EQUAL(pszOption, "RLCP"))
             SetParameter(
-                CNCSJP2FileView::JP2_COMPRESS_PROGRESSION_RLCP );
+                CNCSJP2FileView::JP2_COMPRESS_PROGRESSION_RLCP);
 
         else if (pszOption != nullptr && EQUAL(pszOption, "RPCL"))
             SetParameter(
@@ -914,21 +915,21 @@ CPLErr GDALECWCompressor::Initialize(
 #endif
 
         pszOption = CSLFetchNameValue(papszOptions, "GEODATA_USAGE");
-        if( pszOption == nullptr )
+        if (pszOption == nullptr)
             // Default to suppressing ECW SDK geodata, just use our own stuff.
-            SetGeodataUsage( JP2_GEODATA_USE_NONE );
-        else if( EQUAL(pszOption,"NONE") )
-            SetGeodataUsage( JP2_GEODATA_USE_NONE );
-        else if( EQUAL(pszOption,"PCS_ONLY") )
-            SetGeodataUsage( JP2_GEODATA_USE_PCS_ONLY );
-        else if( EQUAL(pszOption,"GML_ONLY") )
-            SetGeodataUsage( JP2_GEODATA_USE_GML_ONLY );
-        else if( EQUAL(pszOption,"PCS_GML") )
-            SetGeodataUsage( JP2_GEODATA_USE_PCS_GML );
-        else if( EQUAL(pszOption,"GML_PCS") )
-            SetGeodataUsage( JP2_GEODATA_USE_GML_PCS );
-        else if( EQUAL(pszOption,"ALL") )
-            SetGeodataUsage( JP2_GEODATA_USE_GML_PCS_WLD );
+            SetGeodataUsage(JP2_GEODATA_USE_NONE);
+        else if (EQUAL(pszOption, "NONE"))
+            SetGeodataUsage(JP2_GEODATA_USE_NONE);
+        else if (EQUAL(pszOption, "PCS_ONLY"))
+            SetGeodataUsage(JP2_GEODATA_USE_PCS_ONLY);
+        else if (EQUAL(pszOption, "GML_ONLY"))
+            SetGeodataUsage(JP2_GEODATA_USE_GML_ONLY);
+        else if (EQUAL(pszOption, "PCS_GML"))
+            SetGeodataUsage(JP2_GEODATA_USE_PCS_GML);
+        else if (EQUAL(pszOption, "GML_PCS"))
+            SetGeodataUsage(JP2_GEODATA_USE_GML_PCS);
+        else if (EQUAL(pszOption, "ALL"))
+            SetGeodataUsage(JP2_GEODATA_USE_GML_PCS_WLD);
 
 #if ECWSDK_VERSION >= 60
         pszOption = CSLFetchNameValue(papszOptions, "DECOMPRESS_LAYERS");
@@ -943,14 +944,14 @@ CPLErr GDALECWCompressor::Initialize(
 
 #else
         pszOption = CSLFetchNameValue(papszOptions, "DECOMPRESS_LAYERS");
-        if( pszOption != nullptr )
+        if (pszOption != nullptr)
             SetParameter(
                 CNCSJP2FileView::JP2_DECOMPRESS_LAYERS,
                 (UINT32) atoi(pszOption) );
 
         pszOption = CSLFetchNameValue(papszOptions,
-            "DECOMPRESS_RECONSTRUCTION_PARAMETER");
-        if (pszOption != nullptr)
+                                      "DECOMPRESS_RECONSTRUCTION_PARAMETER");
+        if( pszOption != nullptr )
             SetParameter(
                 CNCSJP2FileView::JPC_DECOMPRESS_RECONSTRUCTION_PARAMETER,
                 (IEEE4)CPLAtof(pszOption));
@@ -1712,15 +1713,9 @@ class ECWWriteDataset final: public GDALDataset
     virtual void   FlushCache( void ) override;
 
     virtual CPLErr GetGeoTransform( double * ) override;
-    virtual const char* _GetProjectionRef() override;
+    virtual const char* GetProjectionRef() override;
     virtual CPLErr SetGeoTransform( double * ) override;
-    virtual CPLErr _SetProjection( const char *pszWKT ) override;
-    const OGRSpatialReference* GetSpatialRef() const override {
-        return GetSpatialRefFromOldGetProjectionRef();
-    }
-    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
-        return OldSetProjectionFromSetSpatialRef(poSRS);
-    }
+    virtual CPLErr SetProjection( const char *pszWKT ) override;
 
 #ifdef OPTIMIZED_FOR_GDALWARP
     virtual CPLErr IRasterIO( GDALRWFlag eRWFlag,
@@ -1866,7 +1861,7 @@ void ECWWriteDataset::FlushCache()
 /*                         GetProjectionRef()                           */
 /************************************************************************/
 
-const char*  ECWWriteDataset::_GetProjectionRef()
+const char*  ECWWriteDataset::GetProjectionRef()
 {
     return pszProjection;
 }
@@ -1897,7 +1892,7 @@ CPLErr ECWWriteDataset::SetGeoTransform( double *padfGeoTransform )
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr ECWWriteDataset::_SetProjection( const char *pszWKT )
+CPLErr ECWWriteDataset::SetProjection( const char *pszWKT )
 
 {
     CPLFree( pszProjection );

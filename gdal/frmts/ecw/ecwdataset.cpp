@@ -1184,10 +1184,10 @@ CPLErr ECWDataset::SetGeoTransform( double * padfGeoTransform )
 /*                            SetProjection()                           */
 /************************************************************************/
 
-CPLErr ECWDataset::_SetProjection( const char* pszProjectionIn )
+CPLErr ECWDataset::SetProjection( const char* pszProjectionIn )
 {
     if ( bIsJPEG2000 || eAccess == GA_ReadOnly )
-        return GDALPamDataset::_SetProjection(pszProjectionIn);
+        return GDALPamDataset::SetProjection(pszProjectionIn);
 
     if ( !( (pszProjection == nullptr && pszProjectionIn == nullptr) ||
             (pszProjection != nullptr && pszProjectionIn != nullptr &&
@@ -2544,14 +2544,14 @@ CNCSJP2FileView *ECWDataset::OpenFileView( const char *pszDatasetName,
         poFileView = new CNCSJP2FileView();
 
 #if ECWSDK_VERSION >= 55
-       NCS::CString streamName(pszDatasetName);
-       auto vsiIoStream = NCS::CView::FindSteamByStreamNameFromOpenDatasets(streamName);
-       if (!vsiIoStream) {
-           vsiIoStream = std::make_shared<VSIIOStream>();
-           std::static_pointer_cast<VSIIOStream>(vsiIoStream)->Access(fpVSIL, FALSE, TRUE, pszDatasetName, 0, -1);
-           bUsingCustomStream = TRUE;
-       }
-       oErr = poFileView->Open(vsiIoStream, bProgressive);
+        NCS::CString streamName(pszDatasetName);
+        auto vsiIoStream = NCS::CView::FindSteamByStreamNameFromOpenDatasets(streamName);
+        if (!vsiIoStream) {
+            vsiIoStream = std::make_shared<VSIIOStream>();
+            std::static_pointer_cast<VSIIOStream>(vsiIoStream)->Access(fpVSIL, FALSE, TRUE, pszDatasetName, 0, -1);
+            bUsingCustomStream = TRUE;
+        }
+        oErr = poFileView->Open(vsiIoStream, bProgressive);
 #else
         auto vsiIoStream = new VSIIOStream();
         vsiIoStream->Access(fpVSIL, FALSE, TRUE, pszDatasetName, 0, -1);
@@ -2577,9 +2577,9 @@ CNCSJP2FileView *ECWDataset::OpenFileView( const char *pszDatasetName,
         if (poUnderlyingIOStream)
             poUnderlyingIOStream->nFileViewCount++;
 
-        if ( vsiIoStream != poUnderlyingIOStream )
+        if (poIOStream != poUnderlyingIOStream)
         {
-            delete vsiIoStream;
+            delete poIOStream;
         }
         else
         {
@@ -2790,7 +2790,7 @@ GDALDataset *ECWDataset::Open( GDALOpenInfo * poOpenInfo, int bIsJPEG2000 )
          poDS->SetMetadataItem("VERSION", CPLString().Printf("%d", poDS->psFileInfo->nFormatVersion));
 #if ECWSDK_VERSION>=51
     // output jp2 header info
-    if( bIsJPEG2000 && poDS->poFileView ) {
+    if (bIsJPEG2000 && poDS->poFileView) {
 #if ECWSDK_VERSION>=60
         NCS::CString comments = poDS->poFileView->metadata->jp2.Comments();
         if (!comments.empty()) {
@@ -3251,7 +3251,7 @@ void ECWDataset::ECW2WKTProjection()
         /* have "Upward" orientation (Y coordinates increase "Upward"). */
         /* Setting ECW_ALWAYS_UPWARD=FALSE option relexes that policy   */
         /* and makes the driver rely on the actual Y-resolution         */
-        /* value (sign) of an image. This allows correctly processing   */
+        /* value (sign) of an image. This allows to correctly process   */
         /* rare images with "Downward" orientation, where Y coordinates */
         /* increase "Downward" and Y-resolution is positive.            */
         if( CPLTestBool( CPLGetConfigOption("ECW_ALWAYS_UPWARD","TRUE") ) )
@@ -3532,7 +3532,7 @@ void ECWInitialize()
 /*      This will disable automatic conversion of YCbCr to RGB by       */
 /*      the toolkit.                                                    */
 /* -------------------------------------------------------------------- */
-    if( !CPLTestBool( CPLGetConfigOption("CONVERT_YCBCR_TO_RGB","YES") ) )
+    if (!CPLTestBool(CPLGetConfigOption("CONVERT_YCBCR_TO_RGB", "YES")))
 #if ECWSDK_VERSION>= 60
         NCS::SDK::CFileBase::sConfig().SetManageICC(false);
 #else
@@ -3555,7 +3555,7 @@ void ECWInitialize()
     if( pszEcwCacheSize == nullptr )
         pszEcwCacheSize = CPLGetConfigOption("ECW_CACHE_MAXMEM",nullptr);
 
-    if( pszEcwCacheSize != nullptr )
+    if (pszEcwCacheSize != nullptr)
 #if ECWSDK_VERSION>= 60
         NCS::SDK::CFileBase::sConfig().SetCacheMaxmem((UINT64)atoi(pszEcwCacheSize));
 #else
@@ -3608,6 +3608,7 @@ void ECWInitialize()
 /* -------------------------------------------------------------------- */
 /*      Various other configuration items.                              */
 /* -------------------------------------------------------------------- */
+
 #if ECWSDK_VERSION>= 60
     pszOpt = CPLGetConfigOption("ECWP_BLOCKING_TIME_MS", nullptr);
     if (pszOpt)
