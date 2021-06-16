@@ -1184,10 +1184,10 @@ CPLErr ECWDataset::SetGeoTransform( double * padfGeoTransform )
 /*                            SetProjection()                           */
 /************************************************************************/
 
-CPLErr ECWDataset::SetProjection( const char* pszProjectionIn )
+CPLErr ECWDataset::_SetProjection( const char* pszProjectionIn )
 {
     if ( bIsJPEG2000 || eAccess == GA_ReadOnly )
-        return GDALPamDataset::SetProjection(pszProjectionIn);
+        return GDALPamDataset::_SetProjection(pszProjectionIn);
 
     if ( !( (pszProjection == nullptr && pszProjectionIn == nullptr) ||
             (pszProjection != nullptr && pszProjectionIn != nullptr &&
@@ -2577,9 +2577,9 @@ CNCSJP2FileView *ECWDataset::OpenFileView( const char *pszDatasetName,
         if (poUnderlyingIOStream)
             poUnderlyingIOStream->nFileViewCount++;
 
-        if (poIOStream != poUnderlyingIOStream)
+        if ( vsiIoStream != poUnderlyingIOStream )
         {
-            delete poIOStream;
+            delete vsiIoStream;
         }
         else
         {
@@ -3251,7 +3251,7 @@ void ECWDataset::ECW2WKTProjection()
         /* have "Upward" orientation (Y coordinates increase "Upward"). */
         /* Setting ECW_ALWAYS_UPWARD=FALSE option relexes that policy   */
         /* and makes the driver rely on the actual Y-resolution         */
-        /* value (sign) of an image. This allows to correctly process   */
+        /* value (sign) of an image. This allows correctly processing   */
         /* rare images with "Downward" orientation, where Y coordinates */
         /* increase "Downward" and Y-resolution is positive.            */
         if( CPLTestBool( CPLGetConfigOption("ECW_ALWAYS_UPWARD","TRUE") ) )
