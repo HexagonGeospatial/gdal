@@ -126,7 +126,7 @@ CNCSError JP2UserBox::UnParse( class CNCSJP2File &JP2File,
                                CNCSJPCIOStream &Stream )
 #endif
 {
-    CNCSError Error(GetCNCSError(NCS_SUCCESS));
+    CNCSError Error;
 
     if( m_nTBox == 0 )
     {
