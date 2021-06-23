@@ -103,6 +103,258 @@ CPL_CVSID("$Id$")
 #  include <direct.h>
 #endif
 
+#ifdef MULTIPLE_HEAPS
+//for getenv
+#include <stdlib.h> 
+
+typedef void*   (*custom_malloc_t)         (size_t);
+typedef void*   (*custom_realloc_t)        (void*, size_t);
+typedef void*   (*custom_calloc_t)         (size_t, size_t);
+typedef void*   (*custom_aligned_malloc_t) (size_t, size_t);
+typedef void    (*custom_free_t)           (void*);
+typedef void    (*custom_aligned_free_t)   (void*);
+
+static custom_malloc_t         custom_malloc         = nullptr;
+static custom_realloc_t        custom_realloc        = nullptr;
+static custom_calloc_t         custom_calloc         = nullptr;
+static custom_aligned_malloc_t custom_aligned_malloc = nullptr;
+static custom_free_t           custom_free           = nullptr;
+static custom_aligned_free_t   custom_aligned_free   = nullptr;
+
+typedef unsigned int HeapNumberType;
+#ifdef _WIN64
+#define MEMORY_ALIGNMENT 16
+#else
+#define MEMORY_ALIGNMENT 8
+#endif
+#define MIN_NUMBER_OF_HEAPS 1
+#define MAX_NUMBER_OF_HEAPS 40000
+#include "windows.h"
+#include <vector>
+#include <atomic>
+/* Pointer structure
+p <--pointer returned to client
+h <--heap number. 
+b <--pointer to pointer allocated by HeapAlloc. 
+a <-- alignment padding. 
+memory: 
+aaaahbxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+p points at first x after b. 
+b point at pointer allocated by HeapAlloc. 
+h is a heap number. 
+xxxxxxx is the contents of memory pointed to by p. 
+*/
+class CHeapsManager
+{
+    //We only use environment because CPLGetConfigOption could try to alloc memory when we ask which allocation mechanism should be used. 
+    static bool IsTbbMallocDisabled() {
+        const char *pszDisableTbbMallocKey = "GDAL_DISABLE_TBB_MALLOC";
+        const char *pszResult = getenv(pszDisableTbbMallocKey);
+        if (pszResult == nullptr) return false;
+        return CSLTestBoolean(pszResult) == TRUE;
+    }
+#ifdef WIN32
+    static void DestroyHeap(HANDLE hHeap) {
+        HeapDestroy(hHeap);
+    }
+    static HANDLE CreateHeap() {
+        HANDLE result = HeapCreate(0, 0, 0);
+        ULONG nHeapInfo = 2;
+        HeapSetInformation(result, HeapCompatibilityInformation, &nHeapInfo, sizeof(nHeapInfo));
+        return result;
+    }
+
+    static HeapNumberType& HeapsNum() {
+        static HeapNumberType heapsNum = 0;
+        return heapsNum;
+    }
+    static std::vector<HANDLE>& Heaps(){
+        static std::vector<HANDLE> heaps = std::vector<HANDLE>();
+        return heaps;
+    }
+#endif
+public: 
+    static void UpdateFromConfiguration() {
+#ifdef WIN32
+        // Allocation can take place when we read values from config so we need to have at least one heap before we proceed. 
+        if (HeapsNum() == 0){
+            Init(1);
+        }
+        const char* pszNumberOfHeaps = CPLGetConfigOption("GDAL_NUMBER_OF_HEAPS", NULL);
+        if (pszNumberOfHeaps != NULL)
+        {
+            long nNumberOfHeaps = CPLScanLong(pszNumberOfHeaps, strlen(pszNumberOfHeaps));
+            if (nNumberOfHeaps > MAX_NUMBER_OF_HEAPS){
+                nNumberOfHeaps = MAX_NUMBER_OF_HEAPS;
+            }
+            if (nNumberOfHeaps < MIN_NUMBER_OF_HEAPS){
+                nNumberOfHeaps = MIN_NUMBER_OF_HEAPS;
+            }
+            Init((HeapNumberType)nNumberOfHeaps);
+        }
+#else 
+        Init(1);
+#endif
+    }
+    static bool TryInitializeTbbMalloc() {  
+    
+#if (defined(WIN32) || defined(LINUX))
+        bool tbbMallocDisabled = IsTbbMallocDisabled();
+        if (tbbMallocDisabled){
+            return false;
+        }
+#ifdef WIN32
+            const char *tBBMallocName = "tbbmalloc.dll";
+            static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
+            if (m_xTBBMalloc) {
+                custom_malloc = (custom_malloc_t)GetProcAddress(m_xTBBMalloc, "scalable_malloc");
+                custom_realloc = (custom_realloc_t)GetProcAddress(m_xTBBMalloc, "scalable_realloc");
+                custom_calloc = (custom_calloc_t)GetProcAddress(m_xTBBMalloc, "scalable_calloc");
+                custom_aligned_malloc = (custom_aligned_malloc_t)GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc");
+                custom_free = (custom_free_t)GetProcAddress(m_xTBBMalloc, "scalable_free");
+                custom_aligned_free = (custom_aligned_free_t)GetProcAddress(m_xTBBMalloc, "scalable_aligned_free");
+            }
+#else
+            const char *tBBMallocName = "libtbbmalloc.so.2";
+            static void * m_xTBBMalloc = dlopen(tBBMallocName);
+            if (m_xTBBMalloc) {
+
+                custom_malloc = (custom_malloc_t)dlsym(m_xTBBMalloc, "scalable_malloc");
+                custom_realloc = (custom_realloc_t)dlsym(m_xTBBMalloc, "scalable_realloc");
+                custom_calloc = (custom_calloc_t)dlsym(m_xTBBMalloc, "scalable_calloc");
+                custom_aligned_malloc = (custom_aligned_malloc_t)dlsym(m_xTBBMalloc, "scalable_aligned_malloc");
+                custom_free = (custom_free_t)dlsym(m_xTBBMalloc, "scalable_free");
+                custom_aligned_free = (custom_aligned_free_t)dlsym(m_xTBBMalloc, "scalable_aligned_free");
+            }
+#endif
+        return custom_malloc != nullptr && 
+               custom_realloc != nullptr && 
+               custom_calloc != nullptr &&
+               custom_aligned_malloc != nullptr &&
+               custom_free != nullptr &&
+               custom_aligned_free != nullptr;
+#else 
+        return false;
+#endif
+
+    }
+
+#ifndef WIN32
+    static void *AlignedAllocToPosixMemAlignBridge(size_t size, size_t alignment) {
+        void* pRet = nullptr;
+        if( posix_memalign( &pRet, nAlignment, nSize ) != 0 )
+        {
+            pRet = nullptr;
+        }
+        return pRet;
+    }
+    return pRet;
+#endif
+    
+    static void Init(HeapNumberType nHeaps) {
+
+        if (!TryInitializeTbbMalloc()){
+#ifdef WIN32
+            if (nHeaps > 0){
+                custom_malloc = &CHeapsManager::MAlloc;
+                custom_realloc = &CHeapsManager::Realloc;
+                custom_calloc = &CHeapsManager::Calloc;
+                custom_aligned_malloc = &CHeapsManager::AlignedMAlloc;
+                custom_free = &CHeapsManager::Free;
+                custom_aligned_free = &CHeapsManager::AlignedFree;
+                // number of heaps can only increase because memory could be already allocated on heap nHeaps+1. 
+                if (nHeaps > Heaps().size()){
+                    for (int i = nHeaps - (HeapNumberType)Heaps().size(); i >= 0; i--){
+                        Heaps().push_back(CreateHeap());
+                    }
+                    HeapsNum() = nHeaps;
+                }
+            }
+            else 
+#endif
+            {
+                custom_malloc = malloc;
+                custom_realloc = realloc;
+                custom_calloc = calloc;
+#ifdef WIN32
+                custom_aligned_malloc = _aligned_malloc;
+                custom_aligned_free = _aligned_free;
+#else
+                custom_aligned_malloc = AlignedAllocToPosixMemAlignBridge;
+                custom_aligned_free = free;
+#endif
+                custom_free = free;
+            }
+        }
+    }
+    static void Fini(){
+#ifdef WIN32
+        for (UINT32 i = 0; i < Heaps().size(); i++){
+            HeapDestroy(Heaps()[i]);
+        }
+#endif
+    }
+#ifdef WIN32
+    static void *CHeapsManager::Realloc(void *p, size_t nSize){
+        if (p == nullptr) return Alloc(nSize);
+        HeapNumberType *pHeapNumber;
+        pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(p) - sizeof(void *) - sizeof(HeapNumberType));
+        HeapNumberType nHeapNum = *pHeapNumber;
+        void *mem = HeapReAlloc(Heaps()[nHeapNum], 0, ((void**)p)[-1], nSize + sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1);
+        void *aligned = reinterpret_cast<void *>((reinterpret_cast<uintptr_t>(mem)+sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1) & ~(MEMORY_ALIGNMENT - 1));
+        void **ptr = reinterpret_cast<void **>(aligned);
+        ptr[-1] = mem;
+        pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(ptr)-sizeof(void *) - sizeof(HeapNumberType));
+        *pHeapNumber = nHeapNum;
+        return aligned;
+
+    }
+    static void *CHeapsManager::Calloc(size_t nCount, size_t nSize) {
+        return Alloc(nCount*nSize, HEAP_ZERO_MEMORY);
+    }
+    static void *CHeapsManager::MAlloc(size_t nSize) {
+        return CHeapsManager::Alloc(nSize, 0);
+    }
+    static void *CHeapsManager::Alloc(size_t nSize, DWORD  dwFlags=0) {
+        static std::atomic<HeapNumberType> nNext(0l);
+        HeapNumberType nHeapNum = nNext++ % HeapsNum();
+        void *mem = HeapAlloc(Heaps()[nHeapNum], dwFlags, nSize + sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1);
+        void *aligned = reinterpret_cast<void *>((reinterpret_cast<uintptr_t>(mem)+sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1) & ~(MEMORY_ALIGNMENT - 1));
+        void **ptr = reinterpret_cast<void **>(aligned);
+        ptr[-1] = mem;
+        HeapNumberType *pHeapNumber;
+        pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(ptr)-sizeof(void *) - sizeof(HeapNumberType));
+        *pHeapNumber = nHeapNum;
+        return aligned;
+    }
+    static void CHeapsManager::Free(void *p) {
+        if (p){
+            HeapNumberType *pHeapNumber;
+            pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(p)-sizeof(void *) - sizeof(HeapNumberType));
+            HeapFree(Heaps()[*pHeapNumber], 0, ((void**)p)[-1]);
+        }
+    }
+
+    // Not using multiple heaps for alignedMalloc/alignedFree due to nowhere to store heap number, real pointer or alignment size
+    // We could just use an alignment much larger than expected (e.g. 256 bytes) to give the implementation enough room to store 
+    // and infer the information required on free, but since no drivers are using gdal's aligned allocator and we will use tbbmalloc
+    // in our software we have decided not to solve this problem for now.
+    static void *CHeapsManager::AlignedMAlloc(size_t size, size_t alignment) {
+        return _aligned_malloc(size, alignment);
+    }
+    static void CHeapsManager::AlignedFree(void *p) {
+        _aligned_free(p);
+    }
+#endif
+};
+
+void VSIInit(){
+    CHeapsManager::UpdateFromConfiguration();
+}
+void VSIFini(){
+    CHeapsManager::Fini();
+}
+#endif
 /************************************************************************/
 /*                              VSIFOpen()                              */
 /************************************************************************/
@@ -443,8 +695,12 @@ static GIntBig nMaxCumulAllocSize = -1;
 /** Analog of calloc(). Use VSIFree() to free */
 void *VSICalloc( size_t nCount, size_t nSize )
 {
+#ifdef MULTIPLE_HEAPS
+    return custom_calloc(nCount, nSize);
+#else
     // cppcheck-suppress invalidFunctionArg
     return calloc( nCount, nSize );
+#endif
 }
 
 #else  // DEBUG_VSIMALLOC
@@ -558,7 +814,11 @@ void *VSICalloc( size_t nCount, size_t nSize )
 void *VSIMalloc( size_t nSize )
 
 {
+#ifdef MULTIPLE_HEAPS
+    return custom_malloc( nSize );
+#else
     return malloc( nSize );
+#endif
 }
 
 #else  // DEBUG_VSIMALLOC
@@ -815,7 +1075,13 @@ void * VSIRealloc( void * pData, size_t nNewSize )
 #endif
     return ptr + 2 * sizeof(void*);
 #else
+    
+#ifdef MULTIPLE_HEAPS
+    return custom_realloc(pData, nNewSize);
+#else
     return realloc( pData, nNewSize );
+#endif
+
 #endif
 }
 
@@ -870,7 +1136,11 @@ void VSIFree( void * pData )
 
 #else
     if( pData != nullptr )
+#ifdef MULTIPLE_HEAPS
+        custom_free(pData);
+#else
         free( pData );
+#endif
 #endif
 }
 
@@ -891,7 +1161,9 @@ void VSIFree( void * pData )
 
 void* VSIMallocAligned( size_t nAlignment, size_t nSize )
 {
-#if defined(HAVE_POSIX_MEMALIGN) && !defined(DEBUG_VSIMALLOC)
+#if defined(MULTIPLE_HEAPS)
+    return custom_aligned_malloc(nSize, nAlignment);
+#elif defined(HAVE_POSIX_MEMALIGN) && !defined(DEBUG_VSIMALLOC)
     void* pRet = nullptr;
     if( posix_memalign( &pRet, nAlignment, nSize ) != 0 )
     {
@@ -974,7 +1246,9 @@ void *VSIMallocAlignedAutoVerbose( size_t nSize, const char* pszFile,
 
 void VSIFreeAligned( void* ptr )
 {
-#if defined(HAVE_POSIX_MEMALIGN) && !defined(DEBUG_VSIMALLOC)
+#if defined(MULTIPLE_HEAPS)
+    custom_aligned_free(ptr);
+#elif defined(HAVE_POSIX_MEMALIGN) && !defined(DEBUG_VSIMALLOC)
     free(ptr);
 #elif defined(_WIN32) && !defined(DEBUG_VSIMALLOC)
     _aligned_free(ptr);

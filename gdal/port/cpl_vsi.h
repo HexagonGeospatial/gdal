@@ -249,6 +249,14 @@ void CPL_DLL   *VSIMallocAligned( size_t nAlignment, size_t nSize ) CPL_WARN_UNU
 void CPL_DLL   *VSIMallocAlignedAuto( size_t nSize ) CPL_WARN_UNUSED_RESULT;
 void CPL_DLL    VSIFreeAligned( void* ptr );
 
+#ifdef WIN32 
+#define MULTIPLE_HEAPS
+#ifdef MULTIPLE_HEAPS
+void VSIInit();
+void VSIFini();
+#endif
+#endif
+
 void CPL_DLL   *VSIMallocAlignedAutoVerbose( size_t nSize, const char* pszFile, int nLine ) CPL_WARN_UNUSED_RESULT;
 /** VSIMallocAlignedAutoVerbose() with FILE and LINE reporting */
 #define VSI_MALLOC_ALIGNED_AUTO_VERBOSE( size ) VSIMallocAlignedAutoVerbose(size,__FILE__,__LINE__)
