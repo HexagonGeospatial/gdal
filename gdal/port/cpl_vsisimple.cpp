@@ -98,9 +98,9 @@ CPL_CVSID("$Id$")
 #if !defined(WIN32)
 #  include <unistd.h>
 #else
-#  include <io.h>
-#  include <fcntl.h>
-#  include <direct.h>
+#include <io.h>
+#include <fcntl.h>
+#include <direct.h>
 #endif
 
 #ifdef MULTIPLE_HEAPS
