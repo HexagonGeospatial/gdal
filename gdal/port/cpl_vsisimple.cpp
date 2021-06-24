@@ -207,24 +207,24 @@ public:
             const char *tBBMallocName = "tbbmalloc.dll";
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
             if (m_xTBBMalloc) {
-                custom_malloc = static_cast<custom_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
-                custom_realloc = static_cast<custom_realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
-                custom_calloc = static_cast<custom_calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
-                custom_aligned_malloc = static_cast<custom_aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
-                custom_free = static_cast<custom_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
-                custom_aligned_free = static_cast<custom_aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
+                custom_malloc = reinterpret_cast<custom_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
+                custom_realloc = reinterpret_cast<custom_realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
+                custom_calloc = reinterpret_cast<custom_calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
+                custom_aligned_malloc = reinterpret_cast<custom_aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
+                custom_free = reinterpret_cast<custom_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
+                custom_aligned_free = reinterpret_cast<custom_aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
             }
 #else
             const char *tBBMallocName = "libtbbmalloc.so.2";
             static void * m_xTBBMalloc = dlopen(tBBMallocName);
             if (m_xTBBMalloc) {
 
-                custom_malloc = (custom_malloc_t)dlsym(m_xTBBMalloc, "scalable_malloc");
-                custom_realloc = (custom_realloc_t)dlsym(m_xTBBMalloc, "scalable_realloc");
-                custom_calloc = (custom_calloc_t)dlsym(m_xTBBMalloc, "scalable_calloc");
-                custom_aligned_malloc = (custom_aligned_malloc_t)dlsym(m_xTBBMalloc, "scalable_aligned_malloc");
-                custom_free = (custom_free_t)dlsym(m_xTBBMalloc, "scalable_free");
-                custom_aligned_free = (custom_aligned_free_t)dlsym(m_xTBBMalloc, "scalable_aligned_free");
+                custom_malloc = reinterpret_cast<custom_malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
+                custom_realloc = reinterpret_cast<custom_realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
+                custom_calloc = reinterpret_cast<custom_calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
+                custom_aligned_malloc = reinterpret_cast<custom_aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
+                custom_free = reinterpret_cast<custom_free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
+                custom_aligned_free = reinterpret_cast<custom_aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
             }
 #endif
         return custom_malloc != nullptr && 
