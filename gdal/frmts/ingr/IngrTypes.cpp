@@ -353,10 +353,10 @@ void CPL_STDCALL INGR_GetTransMatrix( INGR_HeaderOne *pHeaderOne,
     // Convert to GDAL GeoTransformation Matrix
     // -------------------------------------------------------------
 
-    padfGeoTransform[0] = adfConcat[3] - adfConcat[0] / 2;
+    padfGeoTransform[0] = adfConcat[3];
     padfGeoTransform[1] = adfConcat[0];
     padfGeoTransform[2] = adfConcat[1];
-    padfGeoTransform[3] = adfConcat[7] + adfConcat[5] / 2;
+    padfGeoTransform[3] = adfConcat[7];
     padfGeoTransform[4] = adfConcat[4];
     padfGeoTransform[5] = - adfConcat[5];
 }
