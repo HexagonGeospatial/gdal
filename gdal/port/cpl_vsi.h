@@ -250,7 +250,7 @@ void CPL_DLL   *VSIMallocAlignedAuto( size_t nSize ) CPL_WARN_UNUSED_RESULT;
 void CPL_DLL    VSIFreeAligned( void* ptr );
 
 #ifdef WIN32 
-#define MULTIPLE_HEAPS
+//#define MULTIPLE_HEAPS
 #ifdef MULTIPLE_HEAPS
 void VSIInit();
 void VSIFini();
