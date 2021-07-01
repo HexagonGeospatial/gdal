@@ -104,8 +104,6 @@ CPL_CVSID("$Id$")
 #endif
 
 #ifdef MULTIPLE_HEAPS
-//for getenv
-#include <stdlib.h> 
 
 typedef void*   (*custom_malloc_t)         (size_t);
 typedef void*   (*custom_realloc_t)        (void*, size_t);
@@ -252,7 +250,6 @@ public:
 #endif
     
     static void Init(HeapNumberType nHeaps) {
-
         if (!TryInitializeTbbMalloc()){
 #ifdef WIN32
             if (nHeaps > 0){
