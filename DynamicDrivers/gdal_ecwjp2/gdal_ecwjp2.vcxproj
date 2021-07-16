@@ -79,7 +79,7 @@
     <TargetName>gdal_ECW_JP2ECW</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>D:\gdal_test\sdk-3.3.0.21-windows-msvc141-x64\x64\Release\gdalplugins\</OutDir>
+    <OutDir>$(CROCKETT_BIN)\$(Platform)$(Configuration)\</OutDir>
     <IntDir>$(CROCKETT_INT)\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>gdal_ECW_JP2ECW</TargetName>
   </PropertyGroup>
