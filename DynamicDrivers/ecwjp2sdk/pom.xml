@@ -18,8 +18,7 @@
 	<packaging>pom</packaging>
 
 	<properties>
-		<!--ecwjp2sdk.version>${env.ECWJP2SDK_VERSION}</ecwjp2sdk.version-->
-		<ecwjp2sdk.version>6.0.0.1311</ecwjp2sdk.version>		
+		<ecwjp2sdk.version>${env.ECWJP2SDK_VERSION}</ecwjp2sdk.version>
 		<copyToDir>../root</copyToDir>
 	</properties>
 	<profiles>
