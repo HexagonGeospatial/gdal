@@ -202,19 +202,16 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\root\arch\x64Debug\obj\sdk\target\dependency\frmts\ecw\ecwasyncreader.cpp" />
-    <ClCompile Include="..\root\arch\x64Debug\obj\sdk\target\dependency\frmts\ecw\ecwcreatecopy.cpp" />
-    <ClCompile Include="..\root\arch\x64Debug\obj\sdk\target\dependency\frmts\ecw\ecwdataset.cpp" />
-    <ClCompile Include="..\root\arch\x64Debug\obj\sdk\target\dependency\frmts\ecw\jp2userbox.cpp" />
+    <ClCompile Include="..\..\gdal\frmts\ecw\ecwasyncreader.cpp" />
+    <ClCompile Include="..\..\gdal\frmts\ecw\ecwcreatecopy.cpp" />
+    <ClCompile Include="..\..\gdal\frmts\ecw\ecwdataset.cpp" />
+    <ClCompile Include="..\..\gdal\frmts\ecw\jp2userbox.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\root\arch\x64Debug\obj\sdk\target\dependency\frmts\ecw\ecwsdk_headers.h" />
-    <ClInclude Include="..\root\arch\x64Debug\obj\sdk\target\dependency\frmts\ecw\gdal_ecw.h" />
-    <ClInclude Include="..\root\arch\x64Debug\obj\sdk\target\dependency\gcore\gdal.h" />
-    <ClInclude Include="..\root\arch\x64Debug\obj\sdk\target\dependency\port\gdal_csv.h" />
+    <ClInclude Include="..\..\gdal\frmts\ecw\gdal_ecw.h" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="..\root\arch\x64Debug\obj\sdk\target\dependency\gcore\Version.rc" />
+    <ResourceCompile Include="..\..\gdal\gcore\Version.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
