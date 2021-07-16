@@ -171,7 +171,7 @@ set GDAL_SUFFIX=1
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(CROCKETT_LIB)\$(Platform)$(Configuration)\gdal_i.lib</Outputs>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Unpacking gdal...</Message>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">if NOT DEFINED THIRD_PARTY_ROOT (
-set THIRD_PARTY_ROOT=..\..\..\..
+set THIRD_PARTY_ROOT=..\..\..\..\..\
 )
 if NOT DEFINED JAVA_HOME (
 set JAVA_HOME="%THIRD_PARTY_ROOT%\jdk\jdk1.8.0_60\dist x64\jdk"
