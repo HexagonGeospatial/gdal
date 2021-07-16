@@ -1,0 +1,235 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>com.hexagon.thirdparty</groupId>
+		<artifactId>InsertCoinThirdPartyParent</artifactId>
+		<relativePath>../../../../maven/ic_parent.xml</relativePath>
+		<version>1.0.0</version>
+	</parent>
+	<name>ecwjp2 gdal driver Publish Pom</name>
+	<description>Publishes ecwjp2 gdal driver</description>
+	<url/>
+	<groupId>org.gdal.drivers</groupId>
+	<artifactId>ecwjp2</artifactId>
+	<version>1.0.0</version>
+	<packaging>pom</packaging>
+	<properties>
+		<ecwjp2sdk.version>${env.ECWJP2SDK_VERSION}</ecwjp2sdk.version>
+		<gdal.version>${env.GDAL_VERSION}</gdal.version>
+		<copyToDir>../root</copyToDir>
+		<build.command />
+		<so.ext />
+		<pdb.ext />
+	</properties>
+	<profiles>
+		<profile>
+			<id>windowsBuild</id>
+			<activation>
+				<os>
+					<family>windows</family>
+				</os>
+			</activation>
+			<properties>
+				<build.command>build_windows.bat</build.command>
+				<so.ext>.dll</so.ext>
+				<pdb.ext>.pdb</pdb.ext>
+				<code.signing.dir>${copyToDir}/codesigning</code.signing.dir>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-dependency-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>windows-only-artefacts</id>
+								<phase>generate-sources</phase>
+								<goals>
+									<goal>unpack</goal>
+								</goals>
+								<configuration>
+									<artifactItems>
+										<artifactItem>
+											<groupId>com.hexagon.geospatial.build</groupId>
+											<artifactId>CodeSigningTools</artifactId>
+											<version>${code.signing.tools.version}</version>
+											<classifier />
+											<type>${default.platform.type}</type>
+											<outputDirectory>${code.signing.dir}</outputDirectory>
+											<includes>**/**</includes>
+											<overWrite>${overwriteFlag}</overWrite>
+										</artifactItem>
+									</artifactItems>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<version>3.0.0</version>
+						<executions>
+							<!--compile-->
+							<execution>
+								<id>main</id>
+								<phase>compile</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<target>
+										<exec dir="${project.basedir}" executable="cmd" failonerror="true">
+											<env key="CODE_SIGNING_DIR" path="${code.signing.dir}" />
+											<env key="VERPATCH_DIR" path="${project.basedir}/.." />
+											<env key="SIGN_PROGRAM" value="&quot;ECWJP2 GDAL Driver&quot;" />
+											<env key="CURRENT_BUILD_VERSION" value="${env.LIBRARY_VERSION}" />
+											<env key="LIB_NCSECW" value="${env.LIB_NCSECW}" />
+											<env key="RELEASE_BIN_DIR" path="${copyToDir}/bin/${platformName}Release" />
+											<env key="DEBUG_BIN_DIR" path="${copyToDir}/bin/${platformName}Debug" />
+											<arg value="/c" />
+											<arg path="${project.basedir}/../tools/${build.command}" />
+											<arg value="${cpuArch}" />
+											<arg value="${compiler}" />
+											<arg value="gdal_ecwjp2" />
+											<arg value="&quot;${vcvarsPath}&quot;" />
+											<arg value="${vcvarsCpuArch}" />
+										</exec>
+									</target>
+								</configuration>
+							</execution>
+							<!--build merge modules (release, debug)-->
+							<execution>
+								<id>generate-msms</id>
+								<phase>prepare-package</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<target>
+										<echo message="Generating Merge Module: ${platformName}Release" />
+										<exec dir="${project.basedir}\installers-msm" executable="${installShield.buildCommand}" failonerror="true">
+											<arg value="-x" />
+											<arg value="-p" />
+											<arg value="gdal-ecw-${cpuArch}-release.ism" />
+											<arg value="-r" />
+											<arg value="Release" />
+											<arg value="-a" />
+											<arg value="${cpuArch}" />
+											<arg value="-y" />
+											<arg value="${env.LIBRARY_VERSION}" />
+										</exec>
+										<echo message="Generating Merge Module: ${platformName}Debug" />
+										<exec dir="${project.basedir}\installers-msm" executable="${installShield.buildCommand}" failonerror="true">
+											<arg value="-x" />
+											<arg value="-p" />
+											<arg value="gdal-ecw-${cpuArch}-debug.ism" />
+											<arg value="-r" />
+											<arg value="Debug" />
+											<arg value="-a" />
+											<arg value="${cpuArch}" />
+											<arg value="-y" />
+											<arg value="${env.LIBRARY_VERSION}" />
+										</exec>
+									</target>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<!--Zip merge module-->
+					<plugin>
+						<artifactId>maven-assembly-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>package-msms</id>
+								<phase>package</phase>
+								<goals>
+									<goal>single</goal>
+								</goals>
+								<configuration>
+									<finalName>${project.artifactId}-${gdal.version}-${ecwjp2sdk.version}-msm</finalName>
+									<outputDirectory>${project.basedir}</outputDirectory>
+									<descriptors>
+										<descriptor>./assembly-msm.xml</descriptor>
+									</descriptors>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+		<profile>
+			<id>x64linux</id>
+			<properties>
+				<cpuArch>x64</cpuArch>
+			</properties>
+		</profile>
+		<profile>
+			<id>linux</id>
+			<activation>
+				<os>
+					<family>unix</family>
+					<name>linux</name>
+				</os>
+			</activation>
+			<properties>
+				<build.command>build_linux.sh</build.command>
+				<so.ext>.so</so.ext>
+				<pdb.ext>.so.debug</pdb.ext>
+			</properties>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<version>3.0.0</version>
+						<executions>
+							<execution>
+								<id>main</id>
+								<phase>compile</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<target>
+										<exec dir="${project.basedir}" executable="${project.basedir}/../tools/${build.command}" failonerror="true">
+											<arg value="${cpuArch}" />
+											<arg value="${compiler}" />
+											<arg value="gdal_ecwjp2" />
+										</exec>
+									</target>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+	<build>
+		<directory>${project.basedir}/target</directory>
+		<plugins>
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<executions>
+					<!--Zip dll/so-->
+					<execution>
+						<id>package-dll-so</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+						<configuration>
+							<finalName>${project.artifactId}-${gdal.version}-${ecwjp2sdk.version}</finalName>
+							<outputDirectory>${project.basedir}</outputDirectory>
+							<descriptors>
+								<descriptor>./assembly.xml</descriptor>
+							</descriptors>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
+

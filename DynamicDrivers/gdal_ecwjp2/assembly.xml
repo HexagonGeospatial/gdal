@@ -1,0 +1,37 @@
+<assembly xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0 http://maven.apache.org/xsd/assembly-1.1.0.xsd">
+  <!-- The assembly file describes the .zip file (see <format>) that needs to be published to the repository. -->
+  <!-- the <id> automatically because the assembly's classifier, which is used in the name of the .zip file 
+       The classifier allows multiple flavors of the same software and version to be published under the 
+       same repository directory. -->
+  <!-- Normally we would scoop up and .zip most all the built output.  For QT, it's so large, that we only .zip what we need.
+
+       When we require new components, we'll have to add the items to the assembly description and rebuild the software. -->
+  <id>${osFamily}-${compiler}-${cpuArch}</id>
+  <formats>
+    <format>zip</format>
+  </formats>
+  <includeBaseDirectory>false</includeBaseDirectory>
+  <fileSets>
+    <!-- Release gdal driver -->
+    <fileSet>
+      <directory>${copyToDir}/bin/${platformName}Release</directory>
+      <outputDirectory>gdalplugins/Release</outputDirectory>
+      <includes>
+        <include>gdal_ECW_JP2ECW${so.ext}</include>
+        <include>gdal_ECW_JP2ECW${pdb.ext}</include>
+      </includes>
+    </fileSet>
+    <!-- Debug gdal driver -->
+    <fileSet>
+      <directory>${copyToDir}/bin/${platformName}Debug</directory>
+      <outputDirectory>gdalplugins/Debug</outputDirectory>
+      <includes>
+        <include>gdal_ECW_JP2ECW${so.ext}</include>
+        <include>gdal_ECW_JP2ECW${pdb.ext}</include>
+      </includes>
+    </fileSet>
+  </fileSets>
+</assembly>
+
