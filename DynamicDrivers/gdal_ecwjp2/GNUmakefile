@@ -8,7 +8,7 @@ endif
 
 LNK_FLAGS=-Wl,--no-undefined
 
-SRC_PATH=../root/arch/$(ARCH)linux$(CONF)/obj/sdk/target/dependency/frmts/ecw
+SRC_PATH=../../gdal/frmts/ecw
 
 OBJ=$(SRC_PATH)/ecwasyncreader.o $(SRC_PATH)/jp2userbox.o $(SRC_PATH)/ecwcreatecopy.o $(SRC_PATH)/ecwdataset.o
 
@@ -46,7 +46,7 @@ LIB_INCLUDES=-I$(CROCKETT_INCLUDE) -I$(NCSECW_INCLUDE)
 
 INCLUDES=$(GDAL_INCLUDES) $(LIB_INCLUDES)
 
-EXTRA_CPPFLAGS := -DFRMT_ecw -DHAVE_COMPRESS -DHAVE_ECW_BUILDNUMBER_H -DGDAL_FORCE_CASHE_CLOSE -std=c++11 $(EXTRA_CXX_OPTIONS)
+EXTRA_CPPFLAGS := -DFRMT_ecw -DHAVE_COMPRESS -DHAVE_ECW_BUILDNUMBER_H -DGDAL_FORCE_CASHE_CLOSE -DGDAL_COMPILATION -std=c++11 $(EXTRA_CXX_OPTIONS)
 
 ifeq ($(CONF),Debug)
 	CPPFLAGS	:=	-g -pthread -fPIC $(INCLUDES) $(EXTRA_CPPFLAGS) 
