@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(GDAL_INCLUDES);$(ECWJP2_INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <PreprocessorDefinitions>DEBUG;HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>DEBUG;HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;GDAL_COMPILATION;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -120,7 +120,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(GDAL_INCLUDES);$(ECWJP2_INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;GDAL_COMPILATION;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -145,7 +145,7 @@
     <ClCompile />
     <ClCompile>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(GDAL_INCLUDES);$(ECWJP2_INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;GDAL_COMPILATION;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
     </ClCompile>
     <Link>
@@ -171,7 +171,7 @@
     <ClCompile>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(GDAL_INCLUDES);$(ECWJP2_INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <PreprocessorDefinitions>DEBUG;HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>DEBUG;HAVE_ECW_BUILDNUMBER_H;FRMT_ecw;HAVE_COMPRESS;GDAL_COMPILATION;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(CROCKETT_LIB)\$(Platform)$(Configuration)</AdditionalLibraryDirectories>

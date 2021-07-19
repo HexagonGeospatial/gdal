@@ -4,7 +4,7 @@
   <PropertyGroup Label="UserMacros">
     <SOLUTION_DIR>$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), DynamicDrivers.props))</SOLUTION_DIR>
     <SOURCES_ROOT>$(SOLUTION_DIR)</SOURCES_ROOT>
-    <THIRD_PARTY_ROOT>$(SOURCES_ROOT)..\..\..\</THIRD_PARTY_ROOT>
+    <THIRD_PARTY_ROOT>$(SOURCES_ROOT)..\..\..\..\</THIRD_PARTY_ROOT>
     <CROCKETT_ROOT>$(SOURCES_ROOT)root</CROCKETT_ROOT>
     <CROCKETT_BIN>$(CROCKETT_ROOT)\bin</CROCKETT_BIN>
     <CROCKETT_INCLUDE>$(CROCKETT_ROOT)\usr\include</CROCKETT_INCLUDE>
