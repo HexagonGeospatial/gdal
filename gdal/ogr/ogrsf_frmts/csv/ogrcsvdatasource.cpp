@@ -824,7 +824,8 @@ bool OGRCSVDataSource::OpenTable( const char *pszFilename,
 
     char **papszFields = OGRCSVReadParseLineL(fp, chDelimiter, false);
 
-    if( CSLCount(papszFields) < 2 )
+    // Require one column (not two) which is a valid use case. See spec: https://giswiki.hsr.ch/GeoCSV
+    if( CSLCount(papszFields) < 1 )
     {
         VSIFCloseL(fp);
         CSLDestroy(papszFields);

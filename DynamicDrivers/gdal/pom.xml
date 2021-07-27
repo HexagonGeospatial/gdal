@@ -1,0 +1,181 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>com.hexagon.thirdparty</groupId>
+		<artifactId>InsertCoinThirdPartyParent</artifactId>
+		<relativePath>../../../../../maven/ic_parent.xml</relativePath>
+		<version>1.0.0</version>
+	</parent>
+	<name>gdal sdk</name>
+	<description>Unpacks the GDAL SDK to the various needed directories in root.</description>
+	<url/>
+	<groupId>org.gdal</groupId>
+	<artifactId>sdk</artifactId>
+	<version>1.0.0</version>
+	<packaging>pom</packaging>
+	<properties>
+		<copyToDir>../root</copyToDir>
+		<!--gdal.version>${env.GDAL_VERSION}.${env.GDAL_SUFFIX}</gdal.version-->
+		<gdal.version>3.3.0.21</gdal.version>
+		<gdal.package>zip</gdal.package>
+	</properties>
+	<profiles>
+		<profile>
+			<!-- Windows 32-bit Release -->
+			<id>Win32</id>
+			<properties>
+				<bin.includes>*.dll</bin.includes>
+				<pdb.includes>*.pdb</pdb.includes>
+				<lib.includes>*.lib</lib.includes>
+			</properties>
+		</profile>
+		<profile>
+			<!-- Windows 32-bit Release -->
+			<id>x64</id>
+			<properties>
+				<bin.includes>*.dll</bin.includes>
+				<pdb.includes>*.pdb</pdb.includes>
+				<lib.includes>*.lib</lib.includes>
+			</properties>
+		</profile>
+		<profile>
+			<!-- Linux 64-bit Release -->
+			<id>x64linux</id>
+			<properties>
+				<bin.includes>*</bin.includes>
+				<pdb.includes>*.debug</pdb.includes>
+				<lib.includes>*</lib.includes>
+			</properties>
+		</profile>
+		<profile>
+			<!-- Linux 32-bit Release -->
+			<id>x86linux</id>
+			<properties>
+				<bin.includes>*</bin.includes>
+				<pdb.includes>*.debug</pdb.includes>
+				<lib.includes>*</lib.includes>
+			</properties>
+		</profile>
+		<profile>
+			<!-- Windows 32-bit Release -->
+			<id>Release</id>
+			<properties/>
+		</profile>
+		<profile>
+			<!-- Windows 32-bit URelease -->
+			<id>URelease</id>
+			<properties/>
+		</profile>
+	</profiles>
+	<build>
+		<directory>${copyToDir}/arch/${archm}/obj/${project.artifactId}/target</directory>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>unpack</goal>
+						</goals>
+						<configuration>
+							<artifactItems>
+								<artifactItem>
+									<groupId>org.gdal</groupId>
+									<artifactId>sdk</artifactId>
+									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<version>${gdal.version}</version>
+									<type>${gdal.package}</type>
+									<includes>${platformName}/${configurationName}/*</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+								<artifactItem>
+									<groupId>org.gdal</groupId>
+									<artifactId>sdk</artifactId>
+									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<version>${gdal.version}</version>
+									<type>${gdal.package}</type>
+									<includes>gcore/*.h</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+								<artifactItem>
+									<groupId>org.gdal</groupId>
+									<artifactId>sdk</artifactId>
+									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<version>${gdal.version}</version>
+									<type>${gdal.package}</type>
+									<includes>gcore/Version.rc</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+								<artifactItem>
+									<groupId>org.gdal</groupId>
+									<artifactId>sdk</artifactId>
+									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<version>${gdal.version}</version>
+									<type>${gdal.package}</type>
+									<includes>port/*.h</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+								<artifactItem>
+									<groupId>org.gdal</groupId>
+									<artifactId>sdk</artifactId>
+									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<version>${gdal.version}</version>
+									<type>${gdal.package}</type>
+									<includes>ogr/**</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+								<artifactItem>
+									<groupId>org.gdal</groupId>
+									<artifactId>sdk</artifactId>
+									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<version>${gdal.version}</version>
+									<type>${gdal.package}</type>
+									<includes>frmts/**</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+							</artifactItems>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<tasks>
+								<copy todir="${copyToDir}\usr\lib\${archm}" overwrite="${overwriteFlag}">
+									<fileset dir="${project.build.directory}\dependency\${platformName}\${configurationName}">
+										<include name="${lib.includes}" />
+									</fileset>
+								</copy>
+								<copy todir="${copyToDir}\usr\include\${archm}\gcore" overwrite="${overwriteFlag}">
+									<fileset dir="${project.build.directory}\dependency\gcore">
+										<include name="**/*" />
+									</fileset>
+								</copy>
+								<copy todir="${copyToDir}\usr\include\${archm}\ogr" overwrite="${overwriteFlag}">
+									<fileset dir="${project.build.directory}\dependency\ogr">
+										<include name="**/**" />
+									</fileset>
+								</copy>
+								<copy todir="${copyToDir}\usr\include\${archm}\port" overwrite="${overwriteFlag}">
+									<fileset dir="${project.build.directory}\dependency\port">
+										<include name="**/*" />
+									</fileset>
+								</copy>
+							</tasks>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>

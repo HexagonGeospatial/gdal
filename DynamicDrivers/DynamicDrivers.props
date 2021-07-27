@@ -1,0 +1,95 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <SOLUTION_DIR>$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), DynamicDrivers.props))</SOLUTION_DIR>
+    <SOURCES_ROOT>$(SOLUTION_DIR)</SOURCES_ROOT>
+    <THIRD_PARTY_ROOT>$(SOURCES_ROOT)..\..\..\..\</THIRD_PARTY_ROOT>
+    <CROCKETT_ROOT>$(SOURCES_ROOT)root</CROCKETT_ROOT>
+    <CROCKETT_BIN>$(CROCKETT_ROOT)\bin</CROCKETT_BIN>
+    <CROCKETT_INCLUDE>$(CROCKETT_ROOT)\usr\include</CROCKETT_INCLUDE>
+    <CROCKETT_LIB>$(CROCKETT_ROOT)\usr\lib</CROCKETT_LIB>
+    <CROCKETT_INT>$(CROCKETT_ROOT)\arch\int</CROCKETT_INT>
+    <HD_IPP>$(THIRD_PARTY_ROOT)\IPP\8.0\Windows\Composer XE 2013 SP1\ipp</HD_IPP>
+    <ECWJP2_INCLUDE>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ecwjp2_sdk</ECWJP2_INCLUDE>
+    <HD_IPP_LIBS>ippcoremt.lib;ippjmt.lib;ippccmt.lib;ippsmt.lib;ippimt.lib;</HD_IPP_LIBS>
+    <GDAL_INCLUDES>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\gcore;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\port;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\frmts</GDAL_INCLUDES>
+    <SIGN_COMMAND>$(THIRD_PARTY_ROOT)\..\Mainline\Generation_3\sources_ecwjp2v4\Source\BuildUtilities\sign\SignFile.bat</SIGN_COMMAND>
+    <VERPATCH_COMMAND>$(SOLUTION_DIR)\verpatch.exe</VERPATCH_COMMAND>
+    <RCEDIT_COMMAND>$(SOLUTION_DIR)\rcedit.exe</RCEDIT_COMMAND>
+    <lib_ncsecw Condition="'$(LIB_NCSECW)' == ''">ecw60</lib_ncsecw>
+  </PropertyGroup>
+  <PropertyGroup>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <Midl>
+      <AdditionalIncludeDirectories>$(GDAL_INCLUDES)</AdditionalIncludeDirectories>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="SOLUTION_DIR">
+      <Value>$(SOLUTION_DIR)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="SOURCES_ROOT">
+      <Value>$(SOURCES_ROOT)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="THIRD_PARTY_ROOT">
+      <Value>$(THIRD_PARTY_ROOT)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="CROCKETT_ROOT">
+      <Value>$(CROCKETT_ROOT)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="CROCKETT_BIN">
+      <Value>$(CROCKETT_BIN)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="CROCKETT_INCLUDE">
+      <Value>$(CROCKETT_INCLUDE)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="CROCKETT_LIB">
+      <Value>$(CROCKETT_LIB)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="CROCKETT_INT">
+      <Value>$(CROCKETT_INT)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="HD_IPP">
+      <Value>$(HD_IPP)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="ECWJP2_INCLUDE">
+      <Value>$(ECWJP2_INCLUDE)</Value>
+    </BuildMacro>
+    <BuildMacro Include="HD_IPP_LIBS">
+      <Value>$(HD_IPP_LIBS)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="GDAL_INCLUDES">
+      <Value>$(GDAL_INCLUDES)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="SIGN_COMMAND">
+      <Value>$(SIGN_COMMAND)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="VERPATCH_COMMAND">
+      <Value>$(VERPATCH_COMMAND)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="RCEDIT_COMMAND">
+      <Value>$(RCEDIT_COMMAND)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="LIB_NCSECW">
+      <Value>$(LIB_NCSECW)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+  </ItemGroup>
+</Project>
