@@ -181,7 +181,7 @@
 		<col def="S0">ISDotNetInstallerArgsCommit</col>
 		<col def="S0">ISDotNetInstallerArgsUninstall</col>
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
-		<row><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>{CB4322D7-2F4C-4DBA-A04E-334F2F3D3D13}</td><td>INSTALLDIR.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>264</td><td/><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>1</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>gdal_ECW_JP2ECW.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>{CB4322D7-2F4C-4DBA-A04E-334F2F3D3D13}</td><td>INSTALLDIR.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>264</td><td/><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>1</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
 	<table name="Condition">
@@ -240,6 +240,7 @@
 		<row><td>ISPreventDowngrade</td><td>19</td><td/><td>[IS_PREVENT_DOWNGRADE_EXIT]</td><td/><td>Exits install when a newer version of this product is found</td></row>
 		<row><td>SetAllUsersProfileNT</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%SystemRoot]\Profiles\All Users</td><td/><td/></row>
 		<row><td>setAllUsersProfile2K</td><td>51</td><td>ALLUSERSPROFILE</td><td>[%ALLUSERSPROFILE]</td><td/><td/></row>
+		<row><td>setPublicProfileVista</td><td>51</td><td>PUBLIC</td><td>[%PUBLIC]</td><td/><td/></row>
 		<row><td>setUserProfileNT</td><td>51</td><td>USERPROFILE</td><td>[%USERPROFILE]</td><td/><td/></row>
 	</table>
 
@@ -280,6 +281,7 @@
 		<row><td>INSTALLDIR.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>TARGETDIR</td><td>.</td><td/><td>0</td><td/></row>
 		<row><td>LocalAppDataFolder</td><td>TARGETDIR</td><td>.:LocalA~1|LocalAppData</td><td/><td>0</td><td/></row>
 		<row><td>MyPicturesFolder</td><td>TARGETDIR</td><td>.:MyPict~1|MyPictures</td><td/><td>0</td><td/></row>
+		<row><td>PUBLIC</td><td>TARGETDIR</td><td>.:PUBLIC~1|Public</td><td/><td>0</td><td/></row>
 		<row><td>PersonalFolder</td><td>TARGETDIR</td><td>.:Personal</td><td/><td>0</td><td/></row>
 		<row><td>PrimaryVolumePath</td><td>TARGETDIR</td><td>.:Primar~1|PrimaryVolumePath</td><td/><td>0</td><td/></row>
 		<row><td>ProgramFiles64Folder</td><td>TARGETDIR</td><td>.:Prog64~1|Program Files 64</td><td/><td>0</td><td/></row>
@@ -368,7 +370,7 @@
 		<col def="S255">ISBuildSourcePath</col>
 		<col def="I4">ISAttributes</col>
 		<col def="S72">ISComponentSubFolder_</col>
-		<row><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>gdal_ECW_JP2.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;CROCKETT_BIN&gt;\x64Release\gdal_ECW_JP2ECW.dll</td><td>1</td><td/></row>
+		<row><td>gdal_ECW_JP2ECW.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>gdal_ECW_JP2ECW.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>gdal_ECW_JP2ECW.dll</td><td>0</td><td/><td/><td/><td>1</td><td>&lt;CROCKETT_BIN&gt;\x64Release\gdal_ECW_JP2ECW.dll</td><td>1</td><td/></row>
 	</table>
 
 	<table name="Font">
@@ -484,7 +486,7 @@
 		<col def="S0">FTPLocation</col>
 		<col def="S0">HTTPLocation</col>
 		<col def="S0">Miscellaneous</col>
-		<row><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td/><td/><td>_E675B929_C8E3_497F_A946_A6B9A9E1A0AA_FILTER</td><td/><td/><td/><td/></row>
+		<row><td>gdal_ECW_JP2ECW.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td/><td/><td>_E675B929_C8E3_497F_A946_A6B9A9E1A0AA_FILTER</td><td/><td/><td/><td/></row>
 	</table>
 
 	<table name="ISCustomActionReference">
@@ -1191,7 +1193,7 @@ UgBlAGwAZQBhAHMAZQABAHgANgA0AA==
 		<row><td>SaveAsSchema</td><td/></row>
 		<row><td>SccEnabled</td><td>0</td></row>
 		<row><td>SccPath</td><td/></row>
-		<row><td>SchemaVersion</td><td>777</td></row>
+		<row><td>SchemaVersion</td><td>784</td></row>
 		<row><td>Type</td><td>MSM</td></row>
 	</table>
 
@@ -1206,6 +1208,11 @@ UgBlAGwAZQBhAHMAZQABAHgANgA0AA==
 	<table name="IsolatedComponent">
 		<col key="yes" def="s72">Component_Shared</col>
 		<col key="yes" def="s72">Component_Application</col>
+	</table>
+
+	<table name="LaunchCondition">
+		<col key="yes" def="s255">Condition</col>
+		<col def="l255">Description</col>
 	</table>
 
 	<table name="ListBox">
@@ -1273,7 +1280,7 @@ UgBlAGwAZQBhAHMAZQABAHgANgA0AA==
 		<col key="yes" def="s72">Component</col>
 		<col key="yes" def="s72">ModuleID</col>
 		<col key="yes" def="i2">Language</col>
-		<row><td>gdal_ECW_JP2.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>gdal_ecw_x64_release.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>0</td></row>
+		<row><td>gdal_ECW_JP2ECW.dll.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>gdal_ecw_x64_release.F46668F0_6C61_448E_AC6B_5165CBE9970F</td><td>0</td></row>
 	</table>
 
 	<table name="ModuleConfiguration">
@@ -1761,7 +1768,7 @@ UgBlAGwAZQBhAHMAZQABAHgANgA0AA==
 		<row><td>AppId</td><td>RunAsInteractiveUser</td><td>Y</td><td>0</td><td>1</td><td/><td/><td/><td/><td/></row>
 		<row><td>AppId</td><td>ServiceParameters</td><td>Y</td><td/><td/><td/><td/><td>Text</td><td/><td/></row>
 		<row><td>AppSearch</td><td>Property</td><td>N</td><td/><td/><td/><td/><td>Identifier</td><td/><td>The property associated with a Signature</td></row>
-		<row><td>AppSearch</td><td>Signature_</td><td>N</td><td/><td/><td>ISXmlLocator;Signature</td><td>1</td><td>Identifier</td><td/><td>The Signature_ represents a unique file signature and is also the foreign key in the Signature,  RegLocator, IniLocator, CompLocator and the DrLocator tables.</td></row>
+		<row><td>AppSearch</td><td>Signature_</td><td>N</td><td/><td/><td>ISXmlLocator;Signature;RegLocator;IniLocator;DrLocator;CompLocator</td><td>1</td><td>Identifier</td><td/><td>The Signature_ represents a unique file signature and is also the foreign key in the Signature,  RegLocator, IniLocator, CompLocator and the DrLocator tables.</td></row>
 		<row><td>Binary</td><td>Data</td><td>Y</td><td/><td/><td/><td/><td>Binary</td><td/><td>Binary stream. The binary icon data in PE (.DLL or .EXE) or icon (.ICO) format.</td></row>
 		<row><td>Binary</td><td>ISBuildSourcePath</td><td>Y</td><td/><td/><td/><td/><td>Text</td><td/><td>Full path to the ICO or EXE file.</td></row>
 		<row><td>Binary</td><td>Name</td><td>N</td><td/><td/><td/><td/><td>Identifier</td><td/><td>Unique key identifying the binary data.</td></row>
@@ -2423,6 +2430,8 @@ UgBlAGwAZQBhAHMAZQABAHgANgA0AA==
 		<row><td>InstallUISequence</td><td>Sequence</td><td>Y</td><td>-4</td><td>32767</td><td/><td/><td/><td/><td>Number that determines the sort order in which the actions are to be executed.  Leave blank to suppress action.</td></row>
 		<row><td>IsolatedComponent</td><td>Component_Application</td><td>N</td><td/><td/><td>Component</td><td>1</td><td>Identifier</td><td/><td>Key to Component table item for application</td></row>
 		<row><td>IsolatedComponent</td><td>Component_Shared</td><td>N</td><td/><td/><td>Component</td><td>1</td><td>Identifier</td><td/><td>Key to Component table item to be isolated</td></row>
+		<row><td>LaunchCondition</td><td>Condition</td><td>N</td><td/><td/><td/><td/><td>Condition</td><td/><td>Expression which must evaluate to TRUE in order for install to commence.</td></row>
+		<row><td>LaunchCondition</td><td>Description</td><td>N</td><td/><td/><td/><td/><td>Text</td><td/><td>Localizable text to display when condition fails and install must abort.</td></row>
 		<row><td>ListBox</td><td>Order</td><td>N</td><td>1</td><td>32767</td><td/><td/><td/><td/><td>A positive integer used to determine the ordering of the items within one list..The integers do not have to be consecutive.</td></row>
 		<row><td>ListBox</td><td>Property</td><td>N</td><td/><td/><td/><td/><td>Identifier</td><td/><td>A named property to be tied to this item. All the items tied to the same property become part of the same listbox.</td></row>
 		<row><td>ListBox</td><td>Text</td><td>Y</td><td/><td/><td/><td/><td>Text</td><td/><td>The visible text to be assigned to the item. Optional. If this entry or the entire column is missing, the text is the same as the value.</td></row>
