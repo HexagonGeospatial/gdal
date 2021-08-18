@@ -181,7 +181,7 @@
 		<col def="S0">ISDotNetInstallerArgsCommit</col>
 		<col def="S0">ISDotNetInstallerArgsUninstall</col>
 		<col def="S0">ISDotNetInstallerArgsRollback</col>
-		<row><td>gdal_ECW_JP2ECW.dll.FA89CCDE_90B4_4E16_94D5_CB3D5D3CFA7A</td><td>{D9CCA8DC-F5D2-4BBE-AF8A-C74328743CE4}</td><td>INSTALLDIR.FA89CCDE_90B4_4E16_94D5_CB3D5D3CFA7A</td><td>264</td><td/><td>gdal_ECW_JP2.dll.FA89CCDE_90B4_4E16_94D5_CB3D5D3CFA7A</td><td>1</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
+		<row><td>gdal_ECW_JP2ECW.dll.FA89CCDE_90B4_4E16_94D5_CB3D5D3CFA7A</td><td>{D9CCA8DC-F5D2-4BBE-AF8A-C74328743CE4}</td><td>INSTALLDIR.FA89CCDE_90B4_4E16_94D5_CB3D5D3CFA7A</td><td>264</td><td/><td>gdal_ECW_JP2ECW.dll.FA89CCDE_90B4_4E16_94D5_CB3D5D3CFA7A</td><td>1</td><td/><td/><td/><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td><td>/LogFile=</td></row>
 	</table>
 
 	<table name="Condition">
