@@ -148,9 +148,7 @@ extern "C" int WINAPI DllMain( HINSTANCE /* hInstance */,
 #ifdef IPPJ_HUFF
         ippInit();
 #endif
-#ifdef MULTIPLE_HEAPS
         VSIInit();
-#endif
         // nothing to do
     }
     else if (dwReason == DLL_THREAD_ATTACH)
@@ -164,9 +162,6 @@ extern "C" int WINAPI DllMain( HINSTANCE /* hInstance */,
     else if (dwReason == DLL_PROCESS_DETACH)
     {
         GDALDestroy();
-#ifdef MULTIPLE_HEAPS
-        VSIFini();
-#endif
     }
 
     return 1; // ignored for all reasons but DLL_PROCESS_ATTACH
