@@ -102,7 +102,7 @@ CPL_CVSID("$Id$")
 #include <io.h>
 #include <fcntl.h>
 #include <direct.h>
-#include <Windows.h>
+#include <windows.h>
 #endif
 
 typedef void* (*malloc_t)(size_t);
@@ -115,13 +115,13 @@ typedef void* (*aligned_malloc_t)(size_t, size_t);
 typedef void (*aligned_free_t)(void*);
 typedef size_t(*aligned_malloc_overhead_t)(size_t);
 
-static malloc_t				p_malloc = nullptr;
-static realloc_t			p_realloc = nullptr;
-static calloc_t				p_calloc = nullptr;
-static free_t				p_free = nullptr;
+static malloc_t             p_malloc = nullptr;
+static realloc_t            p_realloc = nullptr;
+static calloc_t             p_calloc = nullptr;
+static free_t               p_free = nullptr;
 
-static aligned_malloc_t				p_aligned_malloc = nullptr;
-static aligned_free_t				p_aligned_free = nullptr;
+static aligned_malloc_t     p_aligned_malloc = nullptr;
+static aligned_free_t       p_aligned_free = nullptr;
 
 struct MallocMemoryAllocation
 {
@@ -151,9 +151,9 @@ struct MallocMemoryAllocation
 
     static void* f_aligned_malloc(size_t size, size_t nAlignment)
     {
-#if defined(WIN32) && !defined(HAVE_POSIX_MEMALIGN)
+#if defined(_WIN32)
         return _aligned_malloc(size, nAlignment);
-#else
+#elif defined(HAVE_POSIX_MEMALIGN)
         void* pRet = nullptr;
         if( posix_memalign( &pRet, nAlignment, size ) != 0 )
         {
@@ -165,9 +165,9 @@ struct MallocMemoryAllocation
 
     static void f_aligned_free(void *p)
     {
-#if defined(WIN32) && !defined(HAVE_POSIX_MEMALIGN)
+#if defined(_WIN32)
         _aligned_free(p);
-#else
+#elif defined(HAVE_POSIX_MEMALIGN)
         free(p);
 #endif
     }
@@ -184,13 +184,13 @@ struct TbbMallocMemoryAllocation
     typedef void* (*tbb_aligned_malloc_t)(size_t, size_t);
     typedef void(*tbb_aligned_free_t)(void*);
 
-    static tbb_malloc_t	ptbb_malloc;
-    static tbb_calloc_t ptbb_calloc;
-    static tbb_realloc_t	ptbb_realloc;
-    static tbb_free_t		ptbb_free;
+    static tbb_malloc_t     ptbb_malloc;
+    static tbb_calloc_t     ptbb_calloc;
+    static tbb_realloc_t    ptbb_realloc;
+    static tbb_free_t       ptbb_free;
 
     static tbb_aligned_malloc_t ptbb_aligned_malloc;
-    static tbb_aligned_free_t ptbb_aligned_free;
+    static tbb_aligned_free_t   ptbb_aligned_free;
 
     static bool Init()
     {
@@ -256,10 +256,10 @@ struct TbbMallocMemoryAllocation
     }
 };
 
-TbbMallocMemoryAllocation::tbb_malloc_t		TbbMallocMemoryAllocation::ptbb_malloc = nullptr;
-TbbMallocMemoryAllocation::tbb_calloc_t		TbbMallocMemoryAllocation::ptbb_calloc = nullptr;
-TbbMallocMemoryAllocation::tbb_realloc_t	TbbMallocMemoryAllocation::ptbb_realloc = nullptr;
-TbbMallocMemoryAllocation::tbb_free_t		TbbMallocMemoryAllocation::ptbb_free = nullptr;
+TbbMallocMemoryAllocation::tbb_malloc_t     TbbMallocMemoryAllocation::ptbb_malloc = nullptr;
+TbbMallocMemoryAllocation::tbb_calloc_t     TbbMallocMemoryAllocation::ptbb_calloc = nullptr;
+TbbMallocMemoryAllocation::tbb_realloc_t    TbbMallocMemoryAllocation::ptbb_realloc = nullptr;
+TbbMallocMemoryAllocation::tbb_free_t       TbbMallocMemoryAllocation::ptbb_free = nullptr;
 
 TbbMallocMemoryAllocation::tbb_aligned_malloc_t TbbMallocMemoryAllocation::ptbb_aligned_malloc = nullptr;
 TbbMallocMemoryAllocation::tbb_aligned_free_t TbbMallocMemoryAllocation::ptbb_aligned_free = nullptr;
