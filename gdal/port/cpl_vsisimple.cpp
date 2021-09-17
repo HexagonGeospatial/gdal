@@ -119,83 +119,81 @@ static malloc_t				p_malloc = nullptr;
 static realloc_t			p_realloc = nullptr;
 static calloc_t				p_calloc = nullptr;
 static free_t				p_free = nullptr;
-static malloc_overhead_t	p_malloc_overhead = nullptr;
 
 static aligned_malloc_t				p_aligned_malloc = nullptr;
 static aligned_free_t				p_aligned_free = nullptr;
-static aligned_malloc_overhead_t	p_aligned_malloc_overhead = nullptr;
 
 struct MallocMemoryAllocation
 {
-	static void Init() {
+    static void Init() {
 
-	}
-	static void* f_malloc(size_t size) 
-	{
-		return malloc(size);
-	}
-	static void* f_realloc(void *p, size_t size) 
-	{
-		return realloc(p, size);
-	}
-	static void* f_calloc( size_t size,size_t num) 
-	{
-		return calloc(size, num);
-	}
-	static void f_free(void *p) 
-	{
-		free(p);
-	}
-	static size_t f_malloc_overhead()
-	{
-		return 0;
-	}
-	static void* f_aligned_malloc(size_t size, size_t nAlignment)
-	{
+    }
+
+    static void* f_malloc(size_t size) 
+    {
+        return malloc(size);
+    }
+
+    static void* f_realloc(void *p, size_t size) 
+    {
+        return realloc(p, size);
+    }
+
+    static void* f_calloc( size_t size,size_t num) 
+    {
+        return calloc(size, num);
+    }
+
+    static void f_free(void *p) 
+    {
+        free(p);
+    }
+
+    static void* f_aligned_malloc(size_t size, size_t nAlignment)
+    {
 #if defined(WIN32) && !defined(HAVE_POSIX_MEMALIGN)
         return _aligned_malloc(size, nAlignment);
 #else
-	    void* pRet = nullptr;
+        void* pRet = nullptr;
         if( posix_memalign( &pRet, nAlignment, size ) != 0 )
         {
             pRet = nullptr;
         }
         return pRet;
 #endif
-	}
-	static void f_aligned_free(void *p)
-	{
+    }
+
+    static void f_aligned_free(void *p)
+    {
 #if defined(WIN32) && !defined(HAVE_POSIX_MEMALIGN)
-		_aligned_free(p);
+        _aligned_free(p);
 #else
         free(p);
 #endif
-	}
-	static size_t f_aligned_malloc_overhead(size_t nAlignment)
-	{
-		return nAlignment;
-	}
+    }
+
 };
 
 struct TbbMallocMemoryAllocation
 {
     typedef void* (*tbb_malloc_t)(size_t);
-	typedef void* (*tbb_calloc_t)(size_t, size_t);
-	typedef void* (*tbb_realloc_t)(void*, size_t);
-	typedef void(*tbb_free_t)(void*);
+    typedef void* (*tbb_calloc_t)(size_t, size_t);
+    typedef void* (*tbb_realloc_t)(void*, size_t);
+    typedef void(*tbb_free_t)(void*);
 
-	typedef void* (*tbb_aligned_malloc_t)(size_t, size_t);
-	typedef void(*tbb_aligned_free_t)(void*);
+    typedef void* (*tbb_aligned_malloc_t)(size_t, size_t);
+    typedef void(*tbb_aligned_free_t)(void*);
 
-	static tbb_malloc_t	ptbb_malloc;
-	static tbb_calloc_t ptbb_calloc;
-	static tbb_realloc_t	ptbb_realloc;
-	static tbb_free_t		ptbb_free;
+    static tbb_malloc_t	ptbb_malloc;
+    static tbb_calloc_t ptbb_calloc;
+    static tbb_realloc_t	ptbb_realloc;
+    static tbb_free_t		ptbb_free;
 
-	static tbb_aligned_malloc_t ptbb_aligned_malloc;
-	static tbb_aligned_free_t ptbb_aligned_free;
+    static tbb_aligned_malloc_t ptbb_aligned_malloc;
+    static tbb_aligned_free_t ptbb_aligned_free;
 
-    static bool Init() {
+    static bool Init()
+    {
 #ifdef WIN32
             const char *tBBMallocName = "tbbmalloc.dll";
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
@@ -211,7 +209,6 @@ struct TbbMallocMemoryAllocation
             const char *tBBMallocName = "libtbbmalloc.so.2";
             static void * m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
             if (m_xTBBMalloc) {
-
                 ptbb_malloc = reinterpret_cast<tbb_malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
                 ptbb_realloc = reinterpret_cast<tbb_realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
                 ptbb_calloc = reinterpret_cast<tbb_calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
@@ -229,43 +226,34 @@ struct TbbMallocMemoryAllocation
     }
 
     static void* f_malloc(size_t size)
-	{
-		return ptbb_malloc(size);
-	}
-	static void *f_calloc(size_t num, size_t size)
-	{
-		return ptbb_calloc(num, size);
-	}
-	static void* f_realloc(void *p, size_t size)
-	{
-		return ptbb_realloc(p, size);
-	}
-	static void f_free(void *p)
-	{
-		ptbb_free(p);
-	}
-	static size_t f_malloc_overhead()
-	{
-		// scalable aligned malloc will pool memory in a user code data structure
-		// so the overhead is not static and 64 is just an estimate due to x86 
-		// cache line size
-		return 64;
-	}
-	static void* f_aligned_malloc(size_t size, size_t nAlignment)
-	{
-		return ptbb_aligned_malloc(size, nAlignment);
-	}
-	static void f_aligned_free(void *p)
-	{
-		ptbb_aligned_free(p);
-	}
-	static size_t f_aligned_malloc_overhead(size_t nAlignment)
-	{
-		// scalable aligned malloc will pool memory in a user code data structure
-		// so the overhead is not static and 64 is just an estimate due to x86 
-		// cache line size
-		return 64;
-	}
+    {
+        return ptbb_malloc(size);
+    }
+
+    static void *f_calloc(size_t num, size_t size)
+    {
+        return ptbb_calloc(num, size);
+    }
+
+    static void* f_realloc(void *p, size_t size)
+    {
+        return ptbb_realloc(p, size);
+    }
+
+    static void f_free(void *p)
+    {
+        ptbb_free(p);
+    }
+
+    static void* f_aligned_malloc(size_t size, size_t nAlignment)
+    {
+        return ptbb_aligned_malloc(size, nAlignment);
+    }
+
+    static void f_aligned_free(void *p)
+    {
+        ptbb_aligned_free(p);
+    }
 };
 
 TbbMallocMemoryAllocation::tbb_malloc_t		TbbMallocMemoryAllocation::ptbb_malloc = nullptr;
@@ -278,22 +266,20 @@ TbbMallocMemoryAllocation::tbb_aligned_free_t TbbMallocMemoryAllocation::ptbb_al
 
 template<typename T> void AssociateMemoryPointers()
 {
-	p_malloc = T::f_malloc;
-	p_realloc = T::f_realloc;
-	p_calloc = T::f_calloc;
-	p_free = T::f_free;
-	p_malloc_overhead = T::f_malloc_overhead;
+    p_malloc = T::f_malloc;
+    p_realloc = T::f_realloc;
+    p_calloc = T::f_calloc;
+    p_free = T::f_free;
 
-	p_aligned_malloc = T::f_aligned_malloc;
-	p_aligned_free = T::f_aligned_free;
-	p_aligned_malloc_overhead = T::f_aligned_malloc_overhead;
+    p_aligned_malloc = T::f_aligned_malloc;
+    p_aligned_free = T::f_aligned_free;
 }
 
 class MemoryManager
 {
 public: 
-    static void Init() {
-
+    static void Init()
+    {
        if (TbbMallocMemoryAllocation::Init()) {
            AssociateMemoryPointers<TbbMallocMemoryAllocation>();
        } else {
@@ -302,7 +288,8 @@ public:
     }
 };
 
-void VSIInit(){
+void VSIInit()
+{
     MemoryManager::Init();
 }
 
