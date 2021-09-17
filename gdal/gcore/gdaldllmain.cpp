@@ -115,6 +115,7 @@ static void GDALInitialize() __attribute__ ((constructor)) ;
 
 static void GDALInitialize()
 {
+    VSIInit();
     // nothing to do
     //CPLDebug("GDAL", "Library loaded");
 #ifdef DEBUG

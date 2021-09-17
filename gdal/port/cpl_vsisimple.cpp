@@ -115,14 +115,6 @@ typedef void* (*aligned_malloc_t)(size_t, size_t);
 typedef void (*aligned_free_t)(void*);
 typedef size_t(*aligned_malloc_overhead_t)(size_t);
 
-static malloc_t             p_malloc = nullptr;
-static realloc_t            p_realloc = nullptr;
-static calloc_t             p_calloc = nullptr;
-static free_t               p_free = nullptr;
-
-static aligned_malloc_t     p_aligned_malloc = nullptr;
-static aligned_free_t       p_aligned_free = nullptr;
-
 struct MallocMemoryAllocation
 {
     static void Init() {
@@ -173,6 +165,15 @@ struct MallocMemoryAllocation
     }
 
 };
+
+static malloc_t             p_malloc {&MallocMemoryAllocation::f_malloc};
+static realloc_t            p_realloc {&MallocMemoryAllocation::f_realloc};
+static calloc_t             p_calloc = {&MallocMemoryAllocation::f_calloc};
+static free_t               p_free = {&MallocMemoryAllocation::f_free};
+
+static aligned_malloc_t     p_aligned_malloc = {&MallocMemoryAllocation::f_aligned_malloc};
+static aligned_free_t       p_aligned_free = {&MallocMemoryAllocation::f_aligned_free};
+
 
 struct TbbMallocMemoryAllocation
 {
@@ -282,8 +283,6 @@ public:
     {
        if (TbbMallocMemoryAllocation::Init()) {
            AssociateMemoryPointers<TbbMallocMemoryAllocation>();
-       } else {
-           AssociateMemoryPointers<MallocMemoryAllocation>();
        }
     }
 };
