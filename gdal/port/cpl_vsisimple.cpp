@@ -113,7 +113,6 @@ typedef size_t(*malloc_overhead_t)();
 
 typedef void* (*aligned_malloc_t)(size_t, size_t);
 typedef void (*aligned_free_t)(void*);
-typedef size_t(*aligned_malloc_overhead_t)(size_t);
 
 #if !defined (DEBUG_VSIMALLOC)
 
@@ -156,10 +155,10 @@ struct MallocMemoryAllocation
             (nAlignment & (nAlignment - 1)) != 0)
             return nullptr;
         // Detect overflow.
-        if (nSize + nAlignment < nSize)
+        if (size + nAlignment < size)
             return nullptr;
         // TODO(schwehr): C++11 has std::aligned_storage, alignas, and related.
-        GByte* pabyData = static_cast<GByte*>(VSIMalloc(nSize + nAlignment));
+        GByte* pabyData = static_cast<GByte*>(VSIMalloc(size + nAlignment));
         if (pabyData == nullptr)
             return nullptr;
         size_t nShift =
@@ -178,9 +177,9 @@ struct MallocMemoryAllocation
 #elif defined(HAVE_POSIX_MEMALIGN)
         free(p);
 #else
-        if (ptr == nullptr)
+        if (p == nullptr)
             return;
-        GByte* pabyAligned = static_cast<GByte*>(ptr);
+        GByte* pabyAligned = static_cast<GByte*>(p);
         size_t nShift = pabyAligned[-1];
         VSIFree(pabyAligned - nShift);
 #endif
