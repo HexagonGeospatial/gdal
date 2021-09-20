@@ -150,6 +150,24 @@ struct MallocMemoryAllocation
             pRet = nullptr;
         }
         return pRet;
+#else
+        // Check constraints on alignment.
+        if (nAlignment < sizeof(void*) || nAlignment >= 256 ||
+            (nAlignment & (nAlignment - 1)) != 0)
+            return nullptr;
+        // Detect overflow.
+        if (nSize + nAlignment < nSize)
+            return nullptr;
+        // TODO(schwehr): C++11 has std::aligned_storage, alignas, and related.
+        GByte* pabyData = static_cast<GByte*>(VSIMalloc(nSize + nAlignment));
+        if (pabyData == nullptr)
+            return nullptr;
+        size_t nShift =
+            nAlignment - (reinterpret_cast<size_t>(pabyData) % nAlignment);
+        GByte* pabyAligned = pabyData + nShift;
+        // Guaranteed to fit on a byte since nAlignment < 256.
+        pabyAligned[-1] = static_cast<GByte>(nShift);
+        return pabyAligned;
 #endif
     }
 
@@ -159,6 +177,12 @@ struct MallocMemoryAllocation
         _aligned_free(p);
 #elif defined(HAVE_POSIX_MEMALIGN)
         free(p);
+#else
+        if (ptr == nullptr)
+            return;
+        GByte* pabyAligned = static_cast<GByte*>(ptr);
+        size_t nShift = pabyAligned[-1];
+        VSIFree(pabyAligned - nShift);
 #endif
     }
 
