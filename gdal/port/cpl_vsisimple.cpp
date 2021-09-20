@@ -119,10 +119,6 @@ typedef size_t(*aligned_malloc_overhead_t)(size_t);
 
 struct MallocMemoryAllocation
 {
-    static void Init() {
-
-    }
-
     static void* f_malloc(size_t size) 
     {
         return malloc(size);
@@ -183,10 +179,6 @@ static GIntBig nMaxPeakAllocSize = -1;
 static GIntBig nMaxCumulAllocSize = -1;
 
 struct DebugMemoryAllocation {
-
-    static void Init() {
-
-    }
 
     static void* f_malloc(size_t nSize) 
     {

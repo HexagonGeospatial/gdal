@@ -249,7 +249,8 @@ void CPL_DLL   *VSIMallocAligned( size_t nAlignment, size_t nSize ) CPL_WARN_UNU
 void CPL_DLL   *VSIMallocAlignedAuto( size_t nSize ) CPL_WARN_UNUSED_RESULT;
 void CPL_DLL    VSIFreeAligned( void* ptr );
 
-void VSIInit();
+/** VSIInit initializes memory management with TBB Malloc */
+void CPL_DLL VSIInit();
 
 void CPL_DLL   *VSIMallocAlignedAutoVerbose( size_t nSize, const char* pszFile, int nLine ) CPL_WARN_UNUSED_RESULT;
 /** VSIMallocAlignedAutoVerbose() with FILE and LINE reporting */
