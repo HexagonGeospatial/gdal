@@ -1064,6 +1064,7 @@ void *VSIMalloc( size_t nSize )
     return p_malloc( nSize );
 }
 
+#if DEBUG_VSIMALLOC
 static void VSICheckMarkerBegin(char* ptr)
 {
     if( memcmp(ptr, "VSIM", 4) != 0 )
@@ -1083,7 +1084,7 @@ static void VSICheckMarkerEnd(char* ptr, size_t nEnd)
                  "Memory has been written after the end of %p", ptr);
     }
 }
-
+#endif
 
 /************************************************************************/
 /*                             VSIRealloc()                             */
