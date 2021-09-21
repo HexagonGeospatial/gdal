@@ -600,10 +600,11 @@ struct TbbMallocMemoryAllocation
 {
     static bool Init()
     {
+        // Check that we haven't already initialised
+        if (!is_initialised()) {
+#ifdef WIN32
+            const char* tBBMallocName = "tbbmalloc.dll";
 
-        return false;
-//#ifdef WIN32
- /*           const char *tBBMallocName = "tbbmalloc.dll";
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
             if (m_xTBBMalloc) {
                 ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
@@ -614,8 +615,8 @@ struct TbbMallocMemoryAllocation
                 ptbb_aligned_free = reinterpret_cast<aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
             }
 #else
-            const char *tBBMallocName = "libtbbmalloc.so.2";
-            static void * m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
+            const char* tBBMallocName = "libtbbmalloc.so.2";
+            static void* m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
             if (m_xTBBMalloc) {
                 ptbb_malloc = reinterpret_cast<malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
                 ptbb_realloc = reinterpret_cast<realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
@@ -625,12 +626,17 @@ struct TbbMallocMemoryAllocation
                 ptbb_aligned_free = reinterpret_cast<aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
             }
 #endif
-        return ptbb_malloc != nullptr && 
+        }
+        return is_initialised();
+    }
+
+    static bool is_initialised() {
+       return  ptbb_malloc != nullptr && 
                ptbb_realloc != nullptr && 
                ptbb_calloc != nullptr &&
                ptbb_aligned_malloc != nullptr &&
                ptbb_free != nullptr &&
-               ptbb_aligned_free != nullptr;*/
+               ptbb_aligned_free != nullptr;
     }
 
     static void* f_malloc(size_t size)
@@ -678,13 +684,11 @@ template<typename T> void AssociateMemoryPointers()
 void VSIInit()
 {
     if (TbbMallocMemoryAllocation::Init()) {
-        CPLDebug("VSIInit", "We are using TBB");
         AssociateMemoryPointers<TbbMallocMemoryAllocation>();
     } else {
 #ifdef DEBUG_VSIMALLOC
         AssociateMemoryPointers<DebugMemoryAllocation>();
 #else
-        CPLDebug("VSIInit", "We are not using TBB");
         AssociateMemoryPointers<MallocMemoryAllocation>();
 #endif
     }
