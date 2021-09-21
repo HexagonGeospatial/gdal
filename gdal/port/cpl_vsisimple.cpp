@@ -602,8 +602,8 @@ struct TbbMallocMemoryAllocation
     {
 
         return false;
-#ifdef WIN32
-            const char *tBBMallocName = "tbbmalloc.dll";
+//#ifdef WIN32
+ /*           const char *tBBMallocName = "tbbmalloc.dll";
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
             if (m_xTBBMalloc) {
                 ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
@@ -630,7 +630,7 @@ struct TbbMallocMemoryAllocation
                ptbb_calloc != nullptr &&
                ptbb_aligned_malloc != nullptr &&
                ptbb_free != nullptr &&
-               ptbb_aligned_free != nullptr;
+               ptbb_aligned_free != nullptr;*/
     }
 
     static void* f_malloc(size_t size)
