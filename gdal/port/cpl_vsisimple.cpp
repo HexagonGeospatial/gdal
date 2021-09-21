@@ -673,26 +673,6 @@ template<typename T> void AssociateMemoryPointers()
     p_aligned_free = T::f_aligned_free;
 }
 
-class MemoryManager
-{
-public: 
-    static void Init()
-    {
-       if (TbbMallocMemoryAllocation::Init()) {
-           CPLDebug("MEMory", "USING TBB!!!!!!!!");
-           AssociateMemoryPointers<TbbMallocMemoryAllocation>();
-       } else {
-#ifdef DEBUG_VSIMALLOC
-           CPLDebug("MEMory", "USING DEBUG!!!!!!!");
-           AssociateMemoryPointers<DebugMemoryAllocation>();
-#else
-           CPLDebug("MEMory", "USING REGULAR MALLOC!!!!!!!!");
-           AssociateMemoryPointers<MallocMemoryAllocation>();
-#endif
-       }
-    }
-};
-
 void VSIInit()
 {
     if (TbbMallocMemoryAllocation::Init()) {
