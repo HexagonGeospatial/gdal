@@ -701,7 +701,7 @@ void VSIFini()
     FreeLibrary(m_xTBBMalloc);
 #else
     const char* tBBMallocName = "libtbbmalloc.so.2";
-    m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOLOAD);
+    void* m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOLOAD);
     if (m_xTBBMalloc) {
         dlclose(m_xTBBMalloc);
     }
