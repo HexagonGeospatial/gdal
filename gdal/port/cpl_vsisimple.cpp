@@ -600,32 +600,29 @@ struct TbbMallocMemoryAllocation
 {
     static bool Init()
     {
-        // Check that we haven't already initialised
-        if (!is_initialised()) {
 #ifdef WIN32
-            const char* tBBMallocName = "tbbmalloc.dll";
-            static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
-            if (m_xTBBMalloc) {
-                ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
-                ptbb_realloc = reinterpret_cast<realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
-                ptbb_calloc = reinterpret_cast<calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
-                ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
-                ptbb_free = reinterpret_cast<free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
-                ptbb_aligned_free = reinterpret_cast<aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
-            }
-#else
-            const char* tBBMallocName = "libtbbmalloc.so.2";
-            static void* m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
-            if (m_xTBBMalloc) {
-                ptbb_malloc = reinterpret_cast<malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
-                ptbb_realloc = reinterpret_cast<realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
-                ptbb_calloc = reinterpret_cast<calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
-                ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
-                ptbb_free = reinterpret_cast<free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
-                ptbb_aligned_free = reinterpret_cast<aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
-            }
-#endif
+        const char* tBBMallocName = "tbbmalloc.dll";
+        static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
+        if (m_xTBBMalloc) {
+            ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
+            ptbb_realloc = reinterpret_cast<realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
+            ptbb_calloc = reinterpret_cast<calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
+            ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
+            ptbb_free = reinterpret_cast<free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
+            ptbb_aligned_free = reinterpret_cast<aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
         }
+#else
+        const char* tBBMallocName = "libtbbmalloc.so.2";
+        static void* m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
+        if (m_xTBBMalloc) {
+            ptbb_malloc = reinterpret_cast<malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
+            ptbb_realloc = reinterpret_cast<realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
+            ptbb_calloc = reinterpret_cast<calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
+            ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
+            ptbb_free = reinterpret_cast<free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
+            ptbb_aligned_free = reinterpret_cast<aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
+        }
+#endif
         return is_initialised();
     }
 
@@ -691,21 +688,6 @@ void VSIInit()
         AssociateMemoryPointers<MallocMemoryAllocation>();
 #endif
     }
-}
-
-void VSIFini()
-{
-#ifdef WIN32
-    const char* tBBMallocName = "tbbmalloc.dll";
-    const HMODULE m_xTBBMalloc = GetModuleHandle(tBBMallocName);
-    FreeLibrary(m_xTBBMalloc);
-#else
-    const char* tBBMallocName = "libtbbmalloc.so.2";
-    void* m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOLOAD);
-    if (m_xTBBMalloc) {
-        dlclose(m_xTBBMalloc);
-    }
-#endif
 }
 
 /************************************************************************/
