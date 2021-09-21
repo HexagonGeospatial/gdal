@@ -593,8 +593,8 @@ static calloc_t     ptbb_calloc {nullptr};
 static realloc_t    ptbb_realloc {nullptr};
 static free_t       ptbb_free {nullptr};
 
-static aligned_malloc_t ptbb_aligned_malloc {nullptr};;
-static aligned_free_t   ptbb_aligned_free {nullptr};;
+static aligned_malloc_t ptbb_aligned_malloc {nullptr};
+static aligned_free_t   ptbb_aligned_free {nullptr};
 
 struct TbbMallocMemoryAllocation
 {
