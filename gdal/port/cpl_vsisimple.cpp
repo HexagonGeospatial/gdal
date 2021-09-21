@@ -165,11 +165,11 @@ struct MallocMemoryAllocation
 
 static malloc_t             p_malloc {&MallocMemoryAllocation::f_malloc};
 static realloc_t            p_realloc {&MallocMemoryAllocation::f_realloc};
-static calloc_t             p_calloc = {&MallocMemoryAllocation::f_calloc};
-static free_t               p_free = {&MallocMemoryAllocation::f_free};
+static calloc_t             p_calloc  {&MallocMemoryAllocation::f_calloc};
+static free_t               p_free  {&MallocMemoryAllocation::f_free};
 
-static aligned_malloc_t     p_aligned_malloc = {&MallocMemoryAllocation::f_aligned_malloc};
-static aligned_free_t       p_aligned_free = {&MallocMemoryAllocation::f_aligned_free};
+static aligned_malloc_t     p_aligned_malloc  {&MallocMemoryAllocation::f_aligned_malloc};
+static aligned_free_t       p_aligned_free  {&MallocMemoryAllocation::f_aligned_free};
 
 
 #else
@@ -588,16 +588,16 @@ static aligned_free_t       p_aligned_free = {&DebugMemoryAllocation::f_aligned_
 
 #endif
 
+static malloc_t     ptbb_malloc {nullptr};
+static calloc_t     ptbb_calloc {nullptr};
+static realloc_t    ptbb_realloc {nullptr};
+static free_t       ptbb_free {nullptr};
+
+static aligned_malloc_t ptbb_aligned_malloc {nullptr};;
+static aligned_free_t   ptbb_aligned_free {nullptr};;
+
 struct TbbMallocMemoryAllocation
 {
-    static malloc_t     ptbb_malloc;
-    static calloc_t     ptbb_calloc;
-    static realloc_t    ptbb_realloc;
-    static free_t       ptbb_free;
-
-    static aligned_malloc_t ptbb_aligned_malloc;
-    static aligned_free_t   ptbb_aligned_free;
-
     static bool Init()
     {
 #ifdef WIN32
