@@ -120,35 +120,29 @@ struct MallocMemoryAllocation
 {
     static void* f_malloc(size_t size) 
     {
-        CPLDebug("VSISIMPLE", "**Std Malloc**");
         return malloc(size);
     }
 
     static void* f_realloc(void *p, size_t size) 
     {
-        CPLDebug("VSISIMPLE", "**Std Realloc**");
         return realloc(p, size);
     }
 
     static void* f_calloc(size_t num, size_t size) 
     {
-        CPLDebug("VSISIMPLE", "**Std Calloc*");
         return calloc(num, size);
     }
 
     static void f_free(void *p) 
     {
-        CPLDebug("VSISIMPLE", "**Std Free*");
         free(p);
     }
 
     static void* f_aligned_malloc(size_t size, size_t nAlignment)
     {
 #if defined(_WIN32)
-        CPLDebug("VSISIMPLE", "**Std aligned malloc win32");
         return _aligned_malloc(size, nAlignment);
 #else 
-        CPLDebug("VSISIMPLE", "**Std aligned malloc");
         void* pRet = nullptr;
         if( posix_memalign( &pRet, nAlignment, size ) != 0 )
         {
@@ -161,10 +155,8 @@ struct MallocMemoryAllocation
     static void f_aligned_free(void *p)
     {
 #if defined(_WIN32)
-        CPLDebug("VSISIMPLE", "**Std aligned free win32");
         _aligned_free(p);
 #else
-        CPLDebug("VSISIMPLE", "**Std aligned free");
         free(p);
 #endif
     }
@@ -641,37 +633,31 @@ struct TbbMallocMemoryAllocation
 
     static void* f_malloc(size_t size)
     {
-        CPLDebug("VSISIMPLE", "**TBB Malloc**");
         return ptbb_malloc(size);
     }
 
     static void *f_calloc(size_t num, size_t size)
     {
-        CPLDebug("VSISIMPLE", "**TBB Calloc**");
         return ptbb_calloc(num, size);
     }
 
     static void* f_realloc(void *p, size_t size)
     {
-        CPLDebug("VSISIMPLE", "**TBB Realloc**");
         return ptbb_realloc(p, size);
     }
 
     static void f_free(void *p)
     {
-        CPLDebug("VSISIMPLE", "**TBB Free**");
         ptbb_free(p);
     }
 
     static void* f_aligned_malloc(size_t size, size_t nAlignment)
     {
-        CPLDebug("VSISIMPLE", "**TBB Aligned Malloc**");
         return ptbb_aligned_malloc(size, nAlignment);
     }
 
     static void f_aligned_free(void *p)
     {
-        CPLDebug("VSISIMPLE", "**TBB Aligned Free**");
         ptbb_aligned_free(p);
     }
 };
@@ -693,11 +679,14 @@ public:
     static void Init()
     {
        if (TbbMallocMemoryAllocation::Init()) {
+           CPLDebug("MEMory", "USING TBB!!!!!!!!");
            AssociateMemoryPointers<TbbMallocMemoryAllocation>();
        } else {
 #ifdef DEBUG_VSIMALLOC
+           CPLDebug("MEMory", "USING DEBUG!!!!!!!");
            AssociateMemoryPointers<DebugMemoryAllocation>();
 #else
+           CPLDebug("MEMory", "USING REGULAR MALLOC!!!!!!!!");
            AssociateMemoryPointers<MallocMemoryAllocation>();
 #endif
        }
@@ -706,7 +695,15 @@ public:
 
 void VSIInit()
 {
-    MemoryManager::Init();
+    if (TbbMallocMemoryAllocation::Init()) {
+        AssociateMemoryPointers<TbbMallocMemoryAllocation>();
+    } else {
+#ifdef DEBUG_VSIMALLOC
+        AssociateMemoryPointers<DebugMemoryAllocation>();
+#else
+        AssociateMemoryPointers<MallocMemoryAllocation>();
+#endif
+    }
 }
 
 /************************************************************************/
