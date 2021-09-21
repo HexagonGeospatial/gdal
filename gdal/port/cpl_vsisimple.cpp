@@ -600,6 +600,8 @@ struct TbbMallocMemoryAllocation
 {
     static bool Init()
     {
+
+        return false;
 #ifdef WIN32
             const char *tBBMallocName = "tbbmalloc.dll";
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
@@ -676,11 +678,13 @@ template<typename T> void AssociateMemoryPointers()
 void VSIInit()
 {
     if (TbbMallocMemoryAllocation::Init()) {
+        CPLDebug("VSIInit", "We are using TBB");
         AssociateMemoryPointers<TbbMallocMemoryAllocation>();
     } else {
 #ifdef DEBUG_VSIMALLOC
         AssociateMemoryPointers<DebugMemoryAllocation>();
 #else
+        CPLDebug("VSIInit", "We are not using TBB");
         AssociateMemoryPointers<MallocMemoryAllocation>();
 #endif
     }
