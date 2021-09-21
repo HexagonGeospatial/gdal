@@ -62,7 +62,7 @@ static char *szConfiguredFormats = "GDAL_FORMATS";
 void CPL_STDCALL GDALAllRegister()
 
 {
-    //VSIInit();
+    VSIInit();
     // AutoLoadDrivers is a no-op if compiled with GDAL_NO_AUTOLOAD defined.
     GetGDALDriverManager()->AutoLoadDrivers();
 

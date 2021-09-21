@@ -588,25 +588,15 @@ static aligned_free_t       p_aligned_free = {&DebugMemoryAllocation::f_aligned_
 
 #endif
 
-
-
 struct TbbMallocMemoryAllocation
 {
-    typedef void* (*tbb_malloc_t)(size_t);
-    typedef void* (*tbb_calloc_t)(size_t, size_t);
-    typedef void* (*tbb_realloc_t)(void*, size_t);
-    typedef void(*tbb_free_t)(void*);
+    static malloc_t     ptbb_malloc;
+    static calloc_t     ptbb_calloc;
+    static realloc_t    ptbb_realloc;
+    static free_t       ptbb_free;
 
-    typedef void* (*tbb_aligned_malloc_t)(size_t, size_t);
-    typedef void(*tbb_aligned_free_t)(void*);
-
-    static tbb_malloc_t     ptbb_malloc;
-    static tbb_calloc_t     ptbb_calloc;
-    static tbb_realloc_t    ptbb_realloc;
-    static tbb_free_t       ptbb_free;
-
-    static tbb_aligned_malloc_t ptbb_aligned_malloc;
-    static tbb_aligned_free_t   ptbb_aligned_free;
+    static aligned_malloc_t ptbb_aligned_malloc;
+    static aligned_free_t   ptbb_aligned_free;
 
     static bool Init()
     {
@@ -614,23 +604,23 @@ struct TbbMallocMemoryAllocation
             const char *tBBMallocName = "tbbmalloc.dll";
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
             if (m_xTBBMalloc) {
-                ptbb_malloc = reinterpret_cast<tbb_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
-                ptbb_realloc = reinterpret_cast<tbb_realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
-                ptbb_calloc = reinterpret_cast<tbb_calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
-                ptbb_aligned_malloc = reinterpret_cast<tbb_aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
-                ptbb_free = reinterpret_cast<tbb_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
-                ptbb_aligned_free = reinterpret_cast<tbb_aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
+                ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
+                ptbb_realloc = reinterpret_cast<realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
+                ptbb_calloc = reinterpret_cast<calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
+                ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
+                ptbb_free = reinterpret_cast<free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
+                ptbb_aligned_free = reinterpret_cast<aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
             }
 #else
             const char *tBBMallocName = "libtbbmalloc.so.2";
             static void * m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
             if (m_xTBBMalloc) {
-                ptbb_malloc = reinterpret_cast<tbb_malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
-                ptbb_realloc = reinterpret_cast<tbb_realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
-                ptbb_calloc = reinterpret_cast<tbb_calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
-                ptbb_aligned_malloc = reinterpret_cast<tbb_aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
-                ptbb_free = reinterpret_cast<tbb_free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
-                ptbb_aligned_free = reinterpret_cast<tbb_aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
+                ptbb_malloc = reinterpret_cast<malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
+                ptbb_realloc = reinterpret_cast<realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
+                ptbb_calloc = reinterpret_cast<calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
+                ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
+                ptbb_free = reinterpret_cast<free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
+                ptbb_aligned_free = reinterpret_cast<aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
             }
 #endif
         return ptbb_malloc != nullptr && 
@@ -671,14 +661,6 @@ struct TbbMallocMemoryAllocation
         ptbb_aligned_free(p);
     }
 };
-
-TbbMallocMemoryAllocation::tbb_malloc_t     TbbMallocMemoryAllocation::ptbb_malloc = nullptr;
-TbbMallocMemoryAllocation::tbb_calloc_t     TbbMallocMemoryAllocation::ptbb_calloc = nullptr;
-TbbMallocMemoryAllocation::tbb_realloc_t    TbbMallocMemoryAllocation::ptbb_realloc = nullptr;
-TbbMallocMemoryAllocation::tbb_free_t       TbbMallocMemoryAllocation::ptbb_free = nullptr;
-
-TbbMallocMemoryAllocation::tbb_aligned_malloc_t TbbMallocMemoryAllocation::ptbb_aligned_malloc = nullptr;
-TbbMallocMemoryAllocation::tbb_aligned_free_t TbbMallocMemoryAllocation::ptbb_aligned_free = nullptr;
 
 template<typename T> void AssociateMemoryPointers()
 {
