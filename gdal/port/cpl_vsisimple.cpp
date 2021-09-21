@@ -698,6 +698,12 @@ public:
     {
        if (TbbMallocMemoryAllocation::Init()) {
            AssociateMemoryPointers<TbbMallocMemoryAllocation>();
+       } else {
+#ifdef DEBUG_VSIMALLOC
+           AssociateMemoryPointers<DebugMemoryAllocation>();
+#else
+           AssociateMemoryPointers<MallocMemoryAllocation>();
+#endif
        }
     }
 };
