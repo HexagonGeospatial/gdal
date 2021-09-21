@@ -604,7 +604,6 @@ struct TbbMallocMemoryAllocation
         if (!is_initialised()) {
 #ifdef WIN32
             const char* tBBMallocName = "tbbmalloc.dll";
-
             static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
             if (m_xTBBMalloc) {
                 ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
@@ -692,6 +691,18 @@ void VSIInit()
         AssociateMemoryPointers<MallocMemoryAllocation>();
 #endif
     }
+}
+
+void VSIFini()
+{
+#ifdef WIN32
+    const char* tBBMallocName = "tbbmalloc.dll";
+    const HMODULE m_xTBBMalloc = GetModuleHandle(tBBMallocName);
+    FreeLibrary(m_xTBBMalloc);
+#else
+    const char* tBBMallocName = "libtbbmalloc.so.2";
+    static void* m_xTBBMalloc = dlclose(tBBMallocName);
+#endif
 }
 
 /************************************************************************/

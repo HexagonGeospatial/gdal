@@ -251,6 +251,8 @@ void CPL_DLL    VSIFreeAligned( void* ptr );
 
 /** VSIInit initializes memory management with TBB Malloc */
 void CPL_DLL VSIInit();
+/** VSIFini unloads the TBB libraries */
+void CPL_DLL VSIFini();
 
 void CPL_DLL   *VSIMallocAlignedAutoVerbose( size_t nSize, const char* pszFile, int nLine ) CPL_WARN_UNUSED_RESULT;
 /** VSIMallocAlignedAutoVerbose() with FILE and LINE reporting */

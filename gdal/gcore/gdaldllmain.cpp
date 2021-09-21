@@ -97,6 +97,8 @@ void GDALDestroy(void)
     CPLFinalizeTLS();
     CPLCleanupErrorMutex();
     CPLCleanupMasterMutex();
+    VSIFini();
+
 }
 
 /************************************************************************/
