@@ -72,17 +72,10 @@ void GDALMultiDomainMetadata::Clear()
     CSLDestroy( papszDomainList );
     papszDomainList = nullptr;
 
-    /*for( int i = 0; i <= nDomainCount; i++ )
+    for( int i = 0; i <= nDomainCount; i++ )
     {
         delete papoMetadataLists[i];
-    }*/
-
-    CPLStringList* listCopy = *papoMetadataLists;
-    while( listCopy != nullptr )
-    {
-       delete listCopy++;
     }
-
 
     CPLFree( papoMetadataLists );
     papoMetadataLists = nullptr;
