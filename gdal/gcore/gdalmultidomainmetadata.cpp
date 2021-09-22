@@ -68,7 +68,7 @@ GDALMultiDomainMetadata::~GDALMultiDomainMetadata()
 void GDALMultiDomainMetadata::Clear()
 
 {
-    //const int nDomainCount = CSLCount( papszDomainList );
+    const int nDomainCount = CSLCount( papszDomainList );
     CSLDestroy( papszDomainList );
     papszDomainList = nullptr;
 
