@@ -136,19 +136,12 @@ static void GDALInitialize()
 
 #include <windows.h>
 
-#ifdef IPPJ_HUFF
-#include "ipp.h"
-#endif
-
 extern "C" int WINAPI DllMain( HINSTANCE /* hInstance */,
                                DWORD dwReason,
                                LPVOID /* lpReserved */ )
 {
     if (dwReason == DLL_PROCESS_ATTACH)
     {
-#ifdef IPPJ_HUFF
-        ippInit();
-#endif
         VSIInit();
         // nothing to do
     }
