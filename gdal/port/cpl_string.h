@@ -443,14 +443,13 @@ class CPL_DLL CPLStringList
     char **papszList = nullptr;
     mutable int nCount = 0;
     mutable int nAllocation = 0;
-    bool   bOwnList = false;
     bool   bIsSorted = false;
-
     void   MakeOurOwnCopy();
     void   EnsureAllocation( int nMaxLength );
     int    FindSortedInsertionPoint( const char *pszLine );
 
   public:
+    bool   bOwnList = false;
     CPLStringList();
     explicit CPLStringList( char **papszList, int bTakeOwnership=TRUE );
     explicit CPLStringList( CSLConstList papszList );
