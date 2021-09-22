@@ -96,262 +96,600 @@ CPL_CVSID("$Id$")
 
 /* Unix or Windows NT/2000/XP */
 #if !defined(WIN32)
-#  include <unistd.h>
+#include <unistd.h>
+#include <dlfcn.h>
 #else
 #include <io.h>
 #include <fcntl.h>
 #include <direct.h>
-#endif
-
-#ifdef MULTIPLE_HEAPS
-
-typedef void*   (*custom_malloc_t)         (size_t);
-typedef void*   (*custom_realloc_t)        (void*, size_t);
-typedef void*   (*custom_calloc_t)         (size_t, size_t);
-typedef void*   (*custom_aligned_malloc_t) (size_t, size_t);
-typedef void    (*custom_free_t)           (void*);
-typedef void    (*custom_aligned_free_t)   (void*);
-
-static custom_malloc_t         custom_malloc         = nullptr;
-static custom_realloc_t        custom_realloc        = nullptr;
-static custom_calloc_t         custom_calloc         = nullptr;
-static custom_aligned_malloc_t custom_aligned_malloc = nullptr;
-static custom_free_t           custom_free           = nullptr;
-static custom_aligned_free_t   custom_aligned_free   = nullptr;
-
-typedef unsigned int HeapNumberType;
-#ifdef _WIN64
-#define MEMORY_ALIGNMENT 16
-#else
-#define MEMORY_ALIGNMENT 8
-#endif
-#define MIN_NUMBER_OF_HEAPS 1
-#define MAX_NUMBER_OF_HEAPS 40000
 #include <windows.h>
-#include <vector>
-#include <atomic>
-/* Pointer structure
-p <--pointer returned to client
-h <--heap number. 
-b <--pointer to pointer allocated by HeapAlloc. 
-a <-- alignment padding. 
-memory: 
-aaaahbxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-p points at first x after b. 
-b point at pointer allocated by HeapAlloc. 
-h is a heap number. 
-xxxxxxx is the contents of memory pointed to by p. 
-*/
-class CHeapsManager
+#endif
+
+typedef void* (*malloc_t)(size_t);
+typedef void* (*realloc_t)(void*, size_t);
+typedef void (*free_t)(void*);
+typedef void *(*calloc_t) (size_t, size_t);
+typedef size_t(*malloc_overhead_t)();
+
+typedef void* (*aligned_malloc_t)(size_t, size_t);
+typedef void (*aligned_free_t)(void*);
+
+#if !defined (DEBUG_VSIMALLOC)
+
+struct MallocMemoryAllocation
 {
-    //We only use environment because CPLGetConfigOption could try to alloc memory when we ask which allocation mechanism should be used. 
-    static bool IsTbbMallocDisabled() {
-        const char *pszDisableTbbMallocKey = "GDAL_DISABLE_TBB_MALLOC";
-        const char *pszResult = getenv(pszDisableTbbMallocKey);
-        if (pszResult == nullptr) return false;
-        return CSLTestBoolean(pszResult) == TRUE;
-    }
-#ifdef WIN32
-    static void DestroyHeap(HANDLE hHeap) {
-        HeapDestroy(hHeap);
-    }
-    static HANDLE CreateHeap() {
-        HANDLE result = HeapCreate(0, 0, 0);
-        ULONG nHeapInfo = 2;
-        HeapSetInformation(result, HeapCompatibilityInformation, &nHeapInfo, sizeof(nHeapInfo));
-        return result;
+    static void* f_malloc(size_t size) 
+    {
+        return malloc(size);
     }
 
-    static HeapNumberType& HeapsNum() {
-        static HeapNumberType heapsNum = 0;
-        return heapsNum;
+    static void* f_realloc(void *p, size_t size) 
+    {
+        return realloc(p, size);
     }
-    static std::vector<HANDLE>& Heaps(){
-        static std::vector<HANDLE> heaps = std::vector<HANDLE>();
-        return heaps;
+
+    static void* f_calloc(size_t num, size_t size) 
+    {
+        return calloc(num, size);
     }
-#endif
-public: 
-    static void UpdateFromConfiguration() {
-#ifdef WIN32
-        // Allocation can take place when we read values from config so we need to have at least one heap before we proceed. 
-        if (HeapsNum() == 0){
-            Init(1);
-        }
-        const char* pszNumberOfHeaps = CPLGetConfigOption("GDAL_NUMBER_OF_HEAPS", nullptr);
-        if (pszNumberOfHeaps != nullptr)
-        {
-            long nNumberOfHeaps = CPLScanLong(pszNumberOfHeaps, strlen(pszNumberOfHeaps));
-            if (nNumberOfHeaps > MAX_NUMBER_OF_HEAPS){
-                nNumberOfHeaps = MAX_NUMBER_OF_HEAPS;
-            }
-            if (nNumberOfHeaps < MIN_NUMBER_OF_HEAPS){
-                nNumberOfHeaps = MIN_NUMBER_OF_HEAPS;
-            }
-            Init(static_cast<HeapNumberType>(nNumberOfHeaps));
-        }
+
+    static void f_free(void *p) 
+    {
+        free(p);
+    }
+
+    static void* f_aligned_malloc(size_t size, size_t nAlignment)
+    {
+#if defined(_WIN32)
+        return _aligned_malloc(size, nAlignment);
 #else 
-        Init(1);
-#endif
-    }
-    static bool TryInitializeTbbMalloc() {  
-    
-#if (defined(WIN32) || defined(LINUX))
-        bool tbbMallocDisabled = IsTbbMallocDisabled();
-        if (tbbMallocDisabled){
-            return false;
-        }
-#ifdef WIN32
-            const char *tBBMallocName = "tbbmalloc.dll";
-            static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
-            if (m_xTBBMalloc) {
-                custom_malloc = reinterpret_cast<custom_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
-                custom_realloc = reinterpret_cast<custom_realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
-                custom_calloc = reinterpret_cast<custom_calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
-                custom_aligned_malloc = reinterpret_cast<custom_aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
-                custom_free = reinterpret_cast<custom_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
-                custom_aligned_free = reinterpret_cast<custom_aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
-            }
-#else
-            const char *tBBMallocName = "libtbbmalloc.so.2";
-            static void * m_xTBBMalloc = dlopen(tBBMallocName);
-            if (m_xTBBMalloc) {
-
-                custom_malloc = reinterpret_cast<custom_malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
-                custom_realloc = reinterpret_cast<custom_realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
-                custom_calloc = reinterpret_cast<custom_calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
-                custom_aligned_malloc = reinterpret_cast<custom_aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
-                custom_free = reinterpret_cast<custom_free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
-                custom_aligned_free = reinterpret_cast<custom_aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
-            }
-#endif
-        return custom_malloc != nullptr && 
-               custom_realloc != nullptr && 
-               custom_calloc != nullptr &&
-               custom_aligned_malloc != nullptr &&
-               custom_free != nullptr &&
-               custom_aligned_free != nullptr;
-#else 
-        return false;
-#endif
-
-    }
-
-#ifndef WIN32
-    static void *AlignedAllocToPosixMemAlignBridge(size_t size, size_t alignment) {
         void* pRet = nullptr;
-        if( posix_memalign( &pRet, nAlignment, nSize ) != 0 )
+        if( posix_memalign( &pRet, nAlignment, size ) != 0 )
         {
             pRet = nullptr;
         }
         return pRet;
-    }
-    return pRet;
 #endif
-    
-    static void Init(HeapNumberType nHeaps) {
-        if (!TryInitializeTbbMalloc()){
-#ifdef WIN32
-            if (nHeaps > 0){
-                custom_malloc = &CHeapsManager::MAlloc;
-                custom_realloc = &CHeapsManager::Realloc;
-                custom_calloc = &CHeapsManager::Calloc;
-                custom_aligned_malloc = &CHeapsManager::AlignedMAlloc;
-                custom_free = &CHeapsManager::Free;
-                custom_aligned_free = &CHeapsManager::AlignedFree;
-                // number of heaps can only increase because memory could be already allocated on heap nHeaps+1. 
-                if (nHeaps > Heaps().size()){
-                    for (int i = nHeaps - static_cast<HeapNumberType>(Heaps().size()); i >= 0; i--){
-                        Heaps().push_back(CreateHeap());
-                    }
-                    HeapsNum() = nHeaps;
-                }
-            }
-            else 
-#endif
-            {
-                custom_malloc = malloc;
-                custom_realloc = realloc;
-                custom_calloc = calloc;
-#ifdef WIN32
-                custom_aligned_malloc = _aligned_malloc;
-                custom_aligned_free = _aligned_free;
-#else
-                custom_aligned_malloc = AlignedAllocToPosixMemAlignBridge;
-                custom_aligned_free = free;
-#endif
-                custom_free = free;
-            }
-        }
-    }
-    static void Fini(){
-#ifdef WIN32
-        for (UINT32 i = 0; i < Heaps().size(); i++){
-            HeapDestroy(Heaps()[i]);
-        }
-#endif
-    }
-#ifdef WIN32
-    static void* Realloc(void *p, size_t nSize){
-        if (p == nullptr) return Alloc(nSize);
-        HeapNumberType *pHeapNumber;
-        pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(p) - sizeof(void *) - sizeof(HeapNumberType));
-        HeapNumberType nHeapNum = *pHeapNumber;
-        void *mem = HeapReAlloc(Heaps()[nHeapNum], 0, static_cast<void**>(p)[-1], nSize + sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1);
-        void *aligned = reinterpret_cast<void *>((reinterpret_cast<uintptr_t>(mem)+sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1) & ~(MEMORY_ALIGNMENT - 1));
-        void **ptr = reinterpret_cast<void **>(aligned);
-        ptr[-1] = mem;
-        pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(ptr)-sizeof(void *) - sizeof(HeapNumberType));
-        *pHeapNumber = nHeapNum;
-        return aligned;
-
-    }
-    static void* Calloc(size_t nCount, size_t nSize) {
-        return Alloc(nCount*nSize, HEAP_ZERO_MEMORY);
-    }
-    static void* MAlloc(size_t nSize) {
-        return CHeapsManager::Alloc(nSize, 0);
-    }
-    static void* Alloc(size_t nSize, DWORD  dwFlags=0) {
-        static std::atomic<HeapNumberType> nNext(0l);
-        HeapNumberType nHeapNum = nNext++ % HeapsNum();
-        void *mem = HeapAlloc(Heaps()[nHeapNum], dwFlags, nSize + sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1);
-        void *aligned = reinterpret_cast<void *>((reinterpret_cast<uintptr_t>(mem)+sizeof(HeapNumberType) + sizeof(void *) + MEMORY_ALIGNMENT - 1) & ~(MEMORY_ALIGNMENT - 1));
-        void **ptr = reinterpret_cast<void **>(aligned);
-        ptr[-1] = mem;
-        HeapNumberType *pHeapNumber;
-        pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(ptr)-sizeof(void *) - sizeof(HeapNumberType));
-        *pHeapNumber = nHeapNum;
-        return aligned;
-    }
-    static void Free(void *p) {
-        if (p){
-            HeapNumberType *pHeapNumber;
-            pHeapNumber = reinterpret_cast<HeapNumberType *>(reinterpret_cast<uintptr_t>(p)-sizeof(void *) - sizeof(HeapNumberType));
-            HeapFree(Heaps()[*pHeapNumber], 0, static_cast<void**>(p)[-1]);
-        }
     }
 
-    // Not using multiple heaps for alignedMalloc/alignedFree due to nowhere to store heap number, real pointer or alignment size
-    // We could just use an alignment much larger than expected (e.g. 256 bytes) to give the implementation enough room to store 
-    // and infer the information required on free, but since no drivers are using gdal's aligned allocator and we will use tbbmalloc
-    // in our software we have decided not to solve this problem for now.
-    static void* AlignedMAlloc(size_t size, size_t alignment) {
-        return _aligned_malloc(size, alignment);
-    }
-    static void AlignedFree(void *p) {
+    static void f_aligned_free(void *p)
+    {
+#if defined(_WIN32)
         _aligned_free(p);
-    }
+#else
+        free(p);
 #endif
+    }
+
 };
 
-void VSIInit(){
-    CHeapsManager::UpdateFromConfiguration();
-}
-void VSIFini(){
-    CHeapsManager::Fini();
-}
+static malloc_t             p_malloc {&MallocMemoryAllocation::f_malloc};
+static realloc_t            p_realloc {&MallocMemoryAllocation::f_realloc};
+static calloc_t             p_calloc  {&MallocMemoryAllocation::f_calloc};
+static free_t               p_free  {&MallocMemoryAllocation::f_free};
+
+static aligned_malloc_t     p_aligned_malloc  {&MallocMemoryAllocation::f_aligned_malloc};
+static aligned_free_t       p_aligned_free  {&MallocMemoryAllocation::f_aligned_free};
+
+
+#else
+
+static GIntBig nMaxPeakAllocSize = -1;
+static GIntBig nMaxCumulAllocSize = -1;
+
+struct DebugMemoryAllocation {
+
+    static void* f_malloc(size_t nSize) 
+    {
+        if( nMaxPeakAllocSize < 0 )
+        {
+            char* pszMaxPeakAllocSize = getenv("CPL_MAX_PEAK_ALLOC_SIZE");
+            nMaxPeakAllocSize = pszMaxPeakAllocSize ? atoi(pszMaxPeakAllocSize) : 0;
+            char* pszMaxCumulAllocSize = getenv("CPL_MAX_CUMUL_ALLOC_SIZE");
+            nMaxCumulAllocSize =
+                pszMaxCumulAllocSize ? atoi(pszMaxCumulAllocSize) : 0;
+        }
+        if( nMaxPeakAllocSize > 0 &&
+            static_cast<GIntBig>(nSize) > nMaxPeakAllocSize )
+            return nullptr;
+#ifdef DEBUG_VSIMALLOC_STATS
+        if( nMaxCumulAllocSize > 0 &&
+            static_cast<GIntBig>(nCurrentTotalAllocs) +
+            static_cast<GIntBig>(nSize) > nMaxCumulAllocSize )
+            return nullptr;
+#endif  // DEBUG_VSIMALLOC_STATS
+
+#ifdef DEBUG_VSIMALLOC_MPROTECT
+        char* ptr = nullptr;
+        const size_t nPageSize = getpagesize();
+        const size_t nRequestedSize =
+            (3 * sizeof(void*) + nSize + nPageSize - 1) & ~(nPageSize - 1);
+        if( nRequestedSize < nSize )
+            return nullptr;
+        posix_memalign((void**)&ptr, nPageSize, nRequestedSize );
+#else
+        const size_t nRequestedSize = 3 * sizeof(void*) + nSize;
+        if( nRequestedSize < nSize )
+            return nullptr;
+        char* ptr = static_cast<char *>(malloc(nRequestedSize));
+#endif  // DEBUG_VSIMALLOC_MPROTECT
+        if( ptr == nullptr )
+            return nullptr;
+        ptr[0] = 'V';
+        ptr[1] = 'S';
+        ptr[2] = 'I';
+        ptr[3] = 'M';
+        // cppcheck-suppress pointerSize
+        memcpy(ptr + sizeof(void*), &nSize, sizeof(void*));
+        ptr[2 * sizeof(void*) + nSize + 0] = 'E';
+        ptr[2 * sizeof(void*) + nSize + 1] = 'V';
+        ptr[2 * sizeof(void*) + nSize + 2] = 'S';
+        ptr[2 * sizeof(void*) + nSize + 3] = 'I';
+#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
+        {
+            CPLMutexHolderD(&hMemStatMutex);
+#ifdef DEBUG_VSIMALLOC_VERBOSE
+            if( nSize > THRESHOLD_PRINT )
+            {
+                fprintf(stderr, "Thread[%p] VSIMalloc(%d) = %p"/*ok*/
+#ifdef DEBUG_VSIMALLOC_STATS
+                        ", current_cumul = " CPL_FRMT_GUIB
+#ifdef DEBUG_BLOCK_CACHE_USE
+                        ", block_cache_used = " CPL_FRMT_GIB
 #endif
+                        ", mal+cal-free = %d"
+#endif
+                        "\n",
+                        (void*)CPLGetPID(),
+                        static_cast<int>(nSize), ptr + 2 * sizeof(void*)
+#ifdef DEBUG_VSIMALLOC_STATS
+                        , static_cast<GUIntBig>(nCurrentTotalAllocs + nSize)
+#ifdef DEBUG_BLOCK_CACHE_USE
+                        , GDALGetCacheUsed64()
+#endif
+                        , static_cast<int>(nVSIMallocs + nVSICallocs - nVSIFrees)
+#endif
+                    );
+            }
+#endif  // DEBUG_VSIMALLOC_VERBOSE
+#ifdef DEBUG_VSIMALLOC_STATS
+            nVSIMallocs++;
+            if( nMaxTotalAllocs == 0 )
+                atexit(VSIShowMemStats);
+            nCurrentTotalAllocs += nSize;
+            if( nCurrentTotalAllocs > nMaxTotalAllocs )
+                nMaxTotalAllocs = nCurrentTotalAllocs;
+#endif  // DEBUG_VSIMALLOC_STATS
+        }
+#endif  // DEBUG_VSIMALLOC_STATS || DEBUG_VSIMALLOC_VERBOSE
+        // cppcheck-suppress memleak
+        return ptr + 2 * sizeof(void*);
+    }
+
+    static void* f_realloc(void *pData, size_t nNewSize) 
+    {
+        if (pData == nullptr)
+            return VSIMalloc(nNewSize);
+
+        char* ptr = ((char*)pData) - 2 * sizeof(void*);
+        VSICheckMarkerBegin(ptr);
+
+        size_t nOldSize = 0;
+        // cppcheck-suppress pointerSize
+        memcpy(&nOldSize, ptr + sizeof(void*), sizeof(void*));
+        VSICheckMarkerEnd(ptr, 2 * sizeof(void*) + nOldSize);
+
+        if (nMaxPeakAllocSize < 0)
+        {
+            char* pszMaxPeakAllocSize = getenv("CPL_MAX_PEAK_ALLOC_SIZE");
+            nMaxPeakAllocSize = pszMaxPeakAllocSize ? atoi(pszMaxPeakAllocSize) : 0;
+        }
+        if (nMaxPeakAllocSize > 0 &&
+            static_cast<GIntBig>(nNewSize) > nMaxPeakAllocSize)
+            return nullptr;
+#ifdef DEBUG_VSIMALLOC_STATS
+        if (nMaxCumulAllocSize > 0 &&
+            static_cast<GIntBig>(nCurrentTotalAllocs) +
+            static_cast<GIntBig>(nNewSize) -
+            static_cast<GIntBig>(nOldSize) > nMaxCumulAllocSize)
+            return nullptr;
+#endif
+
+        ptr[2 * sizeof(void*) + nOldSize + 0] = 'I';
+        ptr[2 * sizeof(void*) + nOldSize + 1] = 'S';
+        ptr[2 * sizeof(void*) + nOldSize + 2] = 'V';
+        ptr[2 * sizeof(void*) + nOldSize + 3] = 'E';
+
+#ifdef DEBUG_VSIMALLOC_MPROTECT
+        char* newptr = nullptr;
+        const size_t nPageSize = getpagesize();
+        const size_t nRequestedSize =
+            (nNewSize + 3 * sizeof(void*) + nPageSize - 1) & ~(nPageSize - 1);
+        if (nRequestedSize < nNewSize)
+        {
+            ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
+            ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
+            ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
+            ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
+            return nullptr;
+        }
+        posix_memalign((void**)&newptr, nPageSize, nRequestedSize);
+        if (newptr == nullptr)
+        {
+            ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
+            ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
+            ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
+            ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
+            return nullptr;
+        }
+        memcpy(newptr + 2 * sizeof(void*), pData, nOldSize);
+        ptr[0] = 'M';
+        ptr[1] = 'I';
+        ptr[2] = 'S';
+        ptr[3] = 'V';
+        free(ptr);
+        newptr[0] = 'V';
+        newptr[1] = 'S';
+        newptr[2] = 'I';
+        newptr[3] = 'M';
+#else
+        const size_t nRequestedSize = 3 * sizeof(void*) + nNewSize;
+        if (nRequestedSize < nNewSize)
+        {
+            ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
+            ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
+            ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
+            ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
+            return nullptr;
+        }
+        void* newptr = realloc(ptr, nRequestedSize);
+        if (newptr == nullptr)
+        {
+            ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
+            ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
+            ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
+            ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
+            return nullptr;
+        }
+#endif
+        ptr = static_cast<char*>(newptr);
+        // cppcheck-suppress pointerSize
+        memcpy(ptr + sizeof(void*), &nNewSize, sizeof(void*));
+        ptr[2 * sizeof(void*) + nNewSize + 0] = 'E';
+        ptr[2 * sizeof(void*) + nNewSize + 1] = 'V';
+        ptr[2 * sizeof(void*) + nNewSize + 2] = 'S';
+        ptr[2 * sizeof(void*) + nNewSize + 3] = 'I';
+
+#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
+        {
+            CPLMutexHolderD(&hMemStatMutex);
+#ifdef DEBUG_VSIMALLOC_VERBOSE
+            if (nNewSize > THRESHOLD_PRINT)
+            {
+                fprintf(stderr, "Thread[%p] VSIRealloc(%p, %d) = %p"/*ok*/
+#ifdef DEBUG_VSIMALLOC_STATS
+                    ", current_cumul = " CPL_FRMT_GUIB
+#ifdef DEBUG_BLOCK_CACHE_USE
+                    ", block_cache_used = " CPL_FRMT_GIB
+#endif
+                    ", mal+cal-free = %d"
+#endif
+                    "\n",
+                    (void*)CPLGetPID(),
+                    pData,
+                    static_cast<int>(nNewSize),
+                    ptr + 2 * sizeof(void*)
+#ifdef DEBUG_VSIMALLOC_STATS
+                    , static_cast<GUIntBig>(
+                        nCurrentTotalAllocs - nOldSize + nNewSize)
+#ifdef DEBUG_BLOCK_CACHE_USE
+                    , GDALGetCacheUsed64()
+#endif
+                    , static_cast<int>(nVSIMallocs + nVSICallocs - nVSIFrees)
+#endif
+                );
+            }
+#endif
+#ifdef DEBUG_VSIMALLOC_STATS
+            nVSIReallocs++;
+            nCurrentTotalAllocs -= nOldSize;
+            nCurrentTotalAllocs += nNewSize;
+            if (nCurrentTotalAllocs > nMaxTotalAllocs)
+                nMaxTotalAllocs = nCurrentTotalAllocs;
+#endif
+        }
+#endif
+        return ptr + 2 * sizeof(void*);
+
+    }
+
+    static void* f_calloc( size_t nSize, size_t nCount) 
+    {
+        size_t nMul = nCount * nSize;
+        if( nCount != 0 && nMul / nCount != nSize )
+        {
+            fprintf(stderr, "Overflow in VSICalloc(%d, %d)\n", /*ok*/
+                    static_cast<int>(nCount), static_cast<int>(nSize));
+            return nullptr;
+        }
+        if( nMaxPeakAllocSize < 0 )
+        {
+            char* pszMaxPeakAllocSize = getenv("CPL_MAX_PEAK_ALLOC_SIZE");
+            nMaxPeakAllocSize = pszMaxPeakAllocSize ? atoi(pszMaxPeakAllocSize) : 0;
+            char* pszMaxCumulAllocSize = getenv("CPL_MAX_CUMUL_ALLOC_SIZE");
+            nMaxCumulAllocSize =
+                pszMaxCumulAllocSize ? atoi(pszMaxCumulAllocSize) : 0;
+        }
+        if( nMaxPeakAllocSize > 0 &&
+            static_cast<GIntBig>(nMul) > nMaxPeakAllocSize )
+            return nullptr;
+    #ifdef DEBUG_VSIMALLOC_STATS
+        if( nMaxCumulAllocSize > 0 &&
+            static_cast<GIntBig>(nCurrentTotalAllocs) + static_cast<GIntBig>(nMul) >
+            nMaxCumulAllocSize )
+            return nullptr;
+    #endif
+
+    #ifdef DEBUG_VSIMALLOC_MPROTECT
+        char* ptr = nullptr;
+        const size_t nPageSize = getpagesize();
+        const size_t nRequestedSize =
+            (3 * sizeof(void*) + nMul + nPageSize - 1) & ~(nPageSize - 1);
+        if( nRequestedSize < nMul )
+            return nullptr;
+        posix_memalign((void**)&ptr, nPageSize, nRequestedSize);
+        if( ptr == nullptr )
+            return nullptr;
+        memset(ptr + 2 * sizeof(void*), 0, nMul);
+    #else
+        const size_t nRequestedSize = 3 * sizeof(void*) + nMul;
+        if( nRequestedSize < nMul )
+            return nullptr;
+        char* ptr = static_cast<char *>(calloc(1, nRequestedSize));
+        if( ptr == nullptr )
+            return nullptr;
+    #endif
+
+        ptr[0] = 'V';
+        ptr[1] = 'S';
+        ptr[2] = 'I';
+        ptr[3] = 'M';
+        // cppcheck-suppress pointerSize
+        memcpy(ptr + sizeof(void*), &nMul, sizeof(void*));
+        ptr[2 * sizeof(void*) + nMul + 0] = 'E';
+        ptr[2 * sizeof(void*) + nMul + 1] = 'V';
+        ptr[2 * sizeof(void*) + nMul + 2] = 'S';
+        ptr[2 * sizeof(void*) + nMul + 3] = 'I';
+    #if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
+        {
+            CPLMutexHolderD(&hMemStatMutex);
+    #ifdef DEBUG_VSIMALLOC_VERBOSE
+            if( nMul > THRESHOLD_PRINT )
+            {
+                fprintf(stderr, "Thread[%p] VSICalloc(%d,%d) = %p" /*ok*/
+    #ifdef DEBUG_VSIMALLOC_STATS
+                             ", current_cumul = " CPL_FRMT_GUIB
+    #ifdef DEBUG_BLOCK_CACHE_USE
+                             ", block_cache_used = " CPL_FRMT_GIB
+    #endif
+                             ", mal+cal-free = %d"
+    #endif
+                             "\n",
+                        (void*)CPLGetPID(),
+                        static_cast<int>(nCount),
+                        static_cast<int>(nSize), ptr + 2 * sizeof(void*)
+    #ifdef DEBUG_VSIMALLOC_STATS
+                        , static_cast<GUIntBig>(nCurrentTotalAllocs + nMul)
+    #ifdef DEBUG_BLOCK_CACHE_USE
+                        , GDALGetCacheUsed64()
+    #endif
+                        , static_cast<int>(nVSIMallocs + nVSICallocs - nVSIFrees)
+    #endif
+                    );
+            }
+    #endif
+    #ifdef DEBUG_VSIMALLOC_STATS
+            nVSICallocs++;
+            if( nMaxTotalAllocs == 0 )
+                atexit(VSIShowMemStats);
+            nCurrentTotalAllocs += nMul;
+            if( nCurrentTotalAllocs > nMaxTotalAllocs )
+                nMaxTotalAllocs = nCurrentTotalAllocs;
+    #endif
+        }
+    #endif
+        // cppcheck-suppress memleak
+        return ptr + 2 * sizeof(void*);
+    }
+
+    static void f_free(void *pData) 
+    {
+        if (pData == nullptr)
+            return;
+
+        char* ptr = ((char*)pData) - 2 * sizeof(void*);
+        VSICheckMarkerBegin(ptr);
+        size_t nOldSize = 0;
+        // cppcheck-suppress pointerSize
+        memcpy(&nOldSize, ptr + sizeof(void*), sizeof(void*));
+        VSICheckMarkerEnd(ptr, 2 * sizeof(void*) + nOldSize);
+        ptr[0] = 'M';
+        ptr[1] = 'I';
+        ptr[2] = 'S';
+        ptr[3] = 'V';
+        ptr[2 * sizeof(void*) + nOldSize + 0] = 'I';
+        ptr[2 * sizeof(void*) + nOldSize + 1] = 'S';
+        ptr[2 * sizeof(void*) + nOldSize + 2] = 'V';
+        ptr[2 * sizeof(void*) + nOldSize + 3] = 'E';
+#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
+        {
+            CPLMutexHolderD(&hMemStatMutex);
+#ifdef DEBUG_VSIMALLOC_VERBOSE
+            if (nOldSize > THRESHOLD_PRINT)
+            {
+                fprintf(stderr, "Thread[%p] VSIFree(%p, (%d bytes))\n", /*ok*/
+                    (void*)CPLGetPID(), pData, static_cast<int>(nOldSize));
+            }
+#endif
+#ifdef DEBUG_VSIMALLOC_STATS
+            nVSIFrees++;
+            nCurrentTotalAllocs -= nOldSize;
+#endif
+        }
+#endif
+
+#ifdef DEBUG_VSIMALLOC_MPROTECT
+        mprotect(ptr, nOldSize + 2 * sizeof(void*), PROT_NONE);
+#else
+        free(ptr);
+#endif
+    }
+
+    static void* f_aligned_malloc(size_t nSize, size_t nAlignment)
+    {
+        // Check constraints on alignment.
+        if (nAlignment < sizeof(void*) || nAlignment >= 256 ||
+            (nAlignment & (nAlignment - 1)) != 0)
+            return nullptr;
+        // Detect overflow.
+        if (nSize + nAlignment < nSize)
+            return nullptr;
+        // TODO(schwehr): C++11 has std::aligned_storage, alignas, and related.
+        GByte* pabyData = static_cast<GByte*>(VSIMalloc(nSize + nAlignment));
+        if (pabyData == nullptr)
+            return nullptr;
+        size_t nShift =
+            nAlignment - (reinterpret_cast<size_t>(pabyData) % nAlignment);
+        GByte* pabyAligned = pabyData + nShift;
+        // Guaranteed to fit on a byte since nAlignment < 256.
+        pabyAligned[-1] = static_cast<GByte>(nShift);
+        return pabyAligned;
+    }
+
+    static void f_aligned_free(void *ptr)
+    {
+        if (ptr == nullptr)
+            return;
+        GByte* pabyAligned = static_cast<GByte*>(ptr);
+        size_t nShift = pabyAligned[-1];
+        VSIFree(pabyAligned - nShift);
+    }
+
+};
+
+static malloc_t             p_malloc {&DebugMemoryAllocation::f_malloc};
+static realloc_t            p_realloc {&DebugMemoryAllocation::f_realloc};
+static calloc_t             p_calloc = {&DebugMemoryAllocation::f_calloc};
+static free_t               p_free = {&DebugMemoryAllocation::f_free};
+
+static aligned_malloc_t     p_aligned_malloc = {&DebugMemoryAllocation::f_aligned_malloc};
+static aligned_free_t       p_aligned_free = {&DebugMemoryAllocation::f_aligned_free};
+
+
+#endif
+
+static malloc_t     ptbb_malloc {nullptr};
+static calloc_t     ptbb_calloc {nullptr};
+static realloc_t    ptbb_realloc {nullptr};
+static free_t       ptbb_free {nullptr};
+
+static aligned_malloc_t ptbb_aligned_malloc {nullptr};
+static aligned_free_t   ptbb_aligned_free {nullptr};
+
+struct TbbMallocMemoryAllocation
+{
+    static bool Init()
+    {
+#ifdef WIN32
+        const char* tBBMallocName = "tbbmalloc.dll";
+        static HMODULE m_xTBBMalloc = LoadLibraryA(tBBMallocName);
+        if (m_xTBBMalloc) {
+            ptbb_malloc = reinterpret_cast<malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_malloc"));
+            ptbb_realloc = reinterpret_cast<realloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_realloc"));
+            ptbb_calloc = reinterpret_cast<calloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_calloc"));
+            ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_malloc"));
+            ptbb_free = reinterpret_cast<free_t>(GetProcAddress(m_xTBBMalloc, "scalable_free"));
+            ptbb_aligned_free = reinterpret_cast<aligned_free_t>(GetProcAddress(m_xTBBMalloc, "scalable_aligned_free"));
+        }
+#else
+        const char* tBBMallocName = "libtbbmalloc.so.2";
+        static void* m_xTBBMalloc = dlopen(tBBMallocName, RTLD_NOW);
+        if (m_xTBBMalloc) {
+            ptbb_malloc = reinterpret_cast<malloc_t>(dlsym(m_xTBBMalloc, "scalable_malloc"));
+            ptbb_realloc = reinterpret_cast<realloc_t>(dlsym(m_xTBBMalloc, "scalable_realloc"));
+            ptbb_calloc = reinterpret_cast<calloc_t>(dlsym(m_xTBBMalloc, "scalable_calloc"));
+            ptbb_aligned_malloc = reinterpret_cast<aligned_malloc_t>(dlsym(m_xTBBMalloc, "scalable_aligned_malloc"));
+            ptbb_free = reinterpret_cast<free_t>(dlsym(m_xTBBMalloc, "scalable_free"));
+            ptbb_aligned_free = reinterpret_cast<aligned_free_t>(dlsym(m_xTBBMalloc, "scalable_aligned_free"));
+        }
+#endif
+        return is_initialised();
+    }
+
+    static bool is_initialised() {
+       return  ptbb_malloc != nullptr && 
+               ptbb_realloc != nullptr && 
+               ptbb_calloc != nullptr &&
+               ptbb_aligned_malloc != nullptr &&
+               ptbb_free != nullptr &&
+               ptbb_aligned_free != nullptr;
+    }
+
+    static void* f_malloc(size_t size)
+    {
+        return ptbb_malloc(size);
+    }
+
+    static void *f_calloc(size_t num, size_t size)
+    {
+        return ptbb_calloc(num, size);
+    }
+
+    static void* f_realloc(void *p, size_t size)
+    {
+        return ptbb_realloc(p, size);
+    }
+
+    static void f_free(void *p)
+    {
+        ptbb_free(p);
+    }
+
+    static void* f_aligned_malloc(size_t size, size_t nAlignment)
+    {
+        return ptbb_aligned_malloc(size, nAlignment);
+    }
+
+    static void f_aligned_free(void *p)
+    {
+        ptbb_aligned_free(p);
+    }
+};
+
+template<typename T> void AssociateMemoryPointers()
+{
+    p_malloc = T::f_malloc;
+    p_realloc = T::f_realloc;
+    p_calloc = T::f_calloc;
+    p_free = T::f_free;
+
+    p_aligned_malloc = T::f_aligned_malloc;
+    p_aligned_free = T::f_aligned_free;
+}
+
+void VSIInit()
+{
+    if (TbbMallocMemoryAllocation::Init()) {
+        AssociateMemoryPointers<TbbMallocMemoryAllocation>();
+    } else {
+#ifdef DEBUG_VSIMALLOC
+        AssociateMemoryPointers<DebugMemoryAllocation>();
+#else
+        AssociateMemoryPointers<MallocMemoryAllocation>();
+#endif
+    }
+}
+
 /************************************************************************/
 /*                              VSIFOpen()                              */
 /************************************************************************/
@@ -678,236 +1016,29 @@ void VSIShowMemStats()
 }
 #endif
 
-#ifdef DEBUG_VSIMALLOC
-static GIntBig nMaxPeakAllocSize = -1;
-static GIntBig nMaxCumulAllocSize = -1;
-#endif
 
 /************************************************************************/
 /*                             VSICalloc()                              */
 /************************************************************************/
 
-#ifndef DEBUG_VSIMALLOC
-
 /** Analog of calloc(). Use VSIFree() to free */
 void *VSICalloc( size_t nCount, size_t nSize )
 {
-#ifdef MULTIPLE_HEAPS
-    return custom_calloc(nCount, nSize);
-#else
     // cppcheck-suppress invalidFunctionArg
-    return calloc( nCount, nSize );
-#endif
+    return p_calloc( nCount, nSize );
 }
-
-#else  // DEBUG_VSIMALLOC
-
-void *VSICalloc( size_t nCount, size_t nSize )
-{
-    size_t nMul = nCount * nSize;
-    if( nCount != 0 && nMul / nCount != nSize )
-    {
-        fprintf(stderr, "Overflow in VSICalloc(%d, %d)\n", /*ok*/
-                static_cast<int>(nCount), static_cast<int>(nSize));
-        return nullptr;
-    }
-    if( nMaxPeakAllocSize < 0 )
-    {
-        char* pszMaxPeakAllocSize = getenv("CPL_MAX_PEAK_ALLOC_SIZE");
-        nMaxPeakAllocSize = pszMaxPeakAllocSize ? atoi(pszMaxPeakAllocSize) : 0;
-        char* pszMaxCumulAllocSize = getenv("CPL_MAX_CUMUL_ALLOC_SIZE");
-        nMaxCumulAllocSize =
-            pszMaxCumulAllocSize ? atoi(pszMaxCumulAllocSize) : 0;
-    }
-    if( nMaxPeakAllocSize > 0 &&
-        static_cast<GIntBig>(nMul) > nMaxPeakAllocSize )
-        return nullptr;
-#ifdef DEBUG_VSIMALLOC_STATS
-    if( nMaxCumulAllocSize > 0 &&
-        static_cast<GIntBig>(nCurrentTotalAllocs) + static_cast<GIntBig>(nMul) >
-        nMaxCumulAllocSize )
-        return nullptr;
-#endif
-
-#ifdef DEBUG_VSIMALLOC_MPROTECT
-    char* ptr = nullptr;
-    const size_t nPageSize = getpagesize();
-    const size_t nRequestedSize =
-        (3 * sizeof(void*) + nMul + nPageSize - 1) & ~(nPageSize - 1);
-    if( nRequestedSize < nMul )
-        return nullptr;
-    posix_memalign((void**)&ptr, nPageSize, nRequestedSize);
-    if( ptr == nullptr )
-        return nullptr;
-    memset(ptr + 2 * sizeof(void*), 0, nMul);
-#else
-    const size_t nRequestedSize = 3 * sizeof(void*) + nMul;
-    if( nRequestedSize < nMul )
-        return nullptr;
-    char* ptr = static_cast<char *>(calloc(1, nRequestedSize));
-    if( ptr == nullptr )
-        return nullptr;
-#endif
-
-    ptr[0] = 'V';
-    ptr[1] = 'S';
-    ptr[2] = 'I';
-    ptr[3] = 'M';
-    // cppcheck-suppress pointerSize
-    memcpy(ptr + sizeof(void*), &nMul, sizeof(void*));
-    ptr[2 * sizeof(void*) + nMul + 0] = 'E';
-    ptr[2 * sizeof(void*) + nMul + 1] = 'V';
-    ptr[2 * sizeof(void*) + nMul + 2] = 'S';
-    ptr[2 * sizeof(void*) + nMul + 3] = 'I';
-#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
-    {
-        CPLMutexHolderD(&hMemStatMutex);
-#ifdef DEBUG_VSIMALLOC_VERBOSE
-        if( nMul > THRESHOLD_PRINT )
-        {
-            fprintf(stderr, "Thread[%p] VSICalloc(%d,%d) = %p" /*ok*/
-#ifdef DEBUG_VSIMALLOC_STATS
-                         ", current_cumul = " CPL_FRMT_GUIB
-#ifdef DEBUG_BLOCK_CACHE_USE
-                         ", block_cache_used = " CPL_FRMT_GIB
-#endif
-                         ", mal+cal-free = %d"
-#endif
-                         "\n",
-                    (void*)CPLGetPID(),
-                    static_cast<int>(nCount),
-                    static_cast<int>(nSize), ptr + 2 * sizeof(void*)
-#ifdef DEBUG_VSIMALLOC_STATS
-                    , static_cast<GUIntBig>(nCurrentTotalAllocs + nMul)
-#ifdef DEBUG_BLOCK_CACHE_USE
-                    , GDALGetCacheUsed64()
-#endif
-                    , static_cast<int>(nVSIMallocs + nVSICallocs - nVSIFrees)
-#endif
-                );
-        }
-#endif
-#ifdef DEBUG_VSIMALLOC_STATS
-        nVSICallocs++;
-        if( nMaxTotalAllocs == 0 )
-            atexit(VSIShowMemStats);
-        nCurrentTotalAllocs += nMul;
-        if( nCurrentTotalAllocs > nMaxTotalAllocs )
-            nMaxTotalAllocs = nCurrentTotalAllocs;
-#endif
-    }
-#endif
-    // cppcheck-suppress memleak
-    return ptr + 2 * sizeof(void*);
-}
-#endif   // DEBUG_VSIMALLOC
 
 /************************************************************************/
 /*                             VSIMalloc()                              */
 /************************************************************************/
 
-#ifndef DEBUG_VSIMALLOC
 /** Analog of malloc(). Use VSIFree() to free */
 void *VSIMalloc( size_t nSize )
-
 {
-#ifdef MULTIPLE_HEAPS
-    return custom_malloc( nSize );
-#else
-    return malloc( nSize );
-#endif
+    return p_malloc( nSize );
 }
 
-#else  // DEBUG_VSIMALLOC
-
-void *VSIMalloc( size_t nSize )
-
-{
-    if( nMaxPeakAllocSize < 0 )
-    {
-        char* pszMaxPeakAllocSize = getenv("CPL_MAX_PEAK_ALLOC_SIZE");
-        nMaxPeakAllocSize = pszMaxPeakAllocSize ? atoi(pszMaxPeakAllocSize) : 0;
-        char* pszMaxCumulAllocSize = getenv("CPL_MAX_CUMUL_ALLOC_SIZE");
-        nMaxCumulAllocSize =
-            pszMaxCumulAllocSize ? atoi(pszMaxCumulAllocSize) : 0;
-    }
-    if( nMaxPeakAllocSize > 0 &&
-        static_cast<GIntBig>(nSize) > nMaxPeakAllocSize )
-        return nullptr;
-#ifdef DEBUG_VSIMALLOC_STATS
-    if( nMaxCumulAllocSize > 0 &&
-        static_cast<GIntBig>(nCurrentTotalAllocs) +
-        static_cast<GIntBig>(nSize) > nMaxCumulAllocSize )
-        return nullptr;
-#endif  // DEBUG_VSIMALLOC_STATS
-
-#ifdef DEBUG_VSIMALLOC_MPROTECT
-    char* ptr = nullptr;
-    const size_t nPageSize = getpagesize();
-    const size_t nRequestedSize =
-        (3 * sizeof(void*) + nSize + nPageSize - 1) & ~(nPageSize - 1);
-    if( nRequestedSize < nSize )
-        return nullptr;
-    posix_memalign((void**)&ptr, nPageSize, nRequestedSize );
-#else
-    const size_t nRequestedSize = 3 * sizeof(void*) + nSize;
-    if( nRequestedSize < nSize )
-        return nullptr;
-    char* ptr = static_cast<char *>(malloc(nRequestedSize));
-#endif  // DEBUG_VSIMALLOC_MPROTECT
-    if( ptr == nullptr )
-        return nullptr;
-    ptr[0] = 'V';
-    ptr[1] = 'S';
-    ptr[2] = 'I';
-    ptr[3] = 'M';
-    // cppcheck-suppress pointerSize
-    memcpy(ptr + sizeof(void*), &nSize, sizeof(void*));
-    ptr[2 * sizeof(void*) + nSize + 0] = 'E';
-    ptr[2 * sizeof(void*) + nSize + 1] = 'V';
-    ptr[2 * sizeof(void*) + nSize + 2] = 'S';
-    ptr[2 * sizeof(void*) + nSize + 3] = 'I';
-#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
-    {
-        CPLMutexHolderD(&hMemStatMutex);
-#ifdef DEBUG_VSIMALLOC_VERBOSE
-        if( nSize > THRESHOLD_PRINT )
-        {
-            fprintf(stderr, "Thread[%p] VSIMalloc(%d) = %p"/*ok*/
-#ifdef DEBUG_VSIMALLOC_STATS
-                    ", current_cumul = " CPL_FRMT_GUIB
-#ifdef DEBUG_BLOCK_CACHE_USE
-                    ", block_cache_used = " CPL_FRMT_GIB
-#endif
-                    ", mal+cal-free = %d"
-#endif
-                    "\n",
-                    (void*)CPLGetPID(),
-                    static_cast<int>(nSize), ptr + 2 * sizeof(void*)
-#ifdef DEBUG_VSIMALLOC_STATS
-                    , static_cast<GUIntBig>(nCurrentTotalAllocs + nSize)
-#ifdef DEBUG_BLOCK_CACHE_USE
-                    , GDALGetCacheUsed64()
-#endif
-                    , static_cast<int>(nVSIMallocs + nVSICallocs - nVSIFrees)
-#endif
-                );
-        }
-#endif  // DEBUG_VSIMALLOC_VERBOSE
-#ifdef DEBUG_VSIMALLOC_STATS
-        nVSIMallocs++;
-        if( nMaxTotalAllocs == 0 )
-            atexit(VSIShowMemStats);
-        nCurrentTotalAllocs += nSize;
-        if( nCurrentTotalAllocs > nMaxTotalAllocs )
-            nMaxTotalAllocs = nCurrentTotalAllocs;
-#endif  // DEBUG_VSIMALLOC_STATS
-    }
-#endif  // DEBUG_VSIMALLOC_STATS || DEBUG_VSIMALLOC_VERBOSE
-    // cppcheck-suppress memleak
-    return ptr + 2 * sizeof(void*);
-}
-
+#if DEBUG_VSIMALLOC
 static void VSICheckMarkerBegin(char* ptr)
 {
     if( memcmp(ptr, "VSIM", 4) != 0 )
@@ -927,8 +1058,7 @@ static void VSICheckMarkerEnd(char* ptr, size_t nEnd)
                  "Memory has been written after the end of %p", ptr);
     }
 }
-
-#endif  // DEBUG_VSIMALLOC
+#endif
 
 /************************************************************************/
 /*                             VSIRealloc()                             */
@@ -936,150 +1066,8 @@ static void VSICheckMarkerEnd(char* ptr, size_t nEnd)
 
 /** Analog of realloc(). Use VSIFree() to free */
 void * VSIRealloc( void * pData, size_t nNewSize )
-
 {
-#ifdef DEBUG_VSIMALLOC
-    if( pData == nullptr )
-        return VSIMalloc(nNewSize);
-
-    char* ptr = ((char*)pData) - 2 * sizeof(void*);
-    VSICheckMarkerBegin(ptr);
-
-    size_t nOldSize = 0;
-    // cppcheck-suppress pointerSize
-    memcpy(&nOldSize, ptr + sizeof(void*), sizeof(void*));
-    VSICheckMarkerEnd(ptr, 2 * sizeof(void*) + nOldSize);
-
-    if( nMaxPeakAllocSize < 0 )
-    {
-        char* pszMaxPeakAllocSize = getenv("CPL_MAX_PEAK_ALLOC_SIZE");
-        nMaxPeakAllocSize = pszMaxPeakAllocSize ? atoi(pszMaxPeakAllocSize) : 0;
-    }
-    if( nMaxPeakAllocSize > 0 &&
-        static_cast<GIntBig>(nNewSize) > nMaxPeakAllocSize )
-        return nullptr;
-#ifdef DEBUG_VSIMALLOC_STATS
-    if( nMaxCumulAllocSize > 0 &&
-        static_cast<GIntBig>(nCurrentTotalAllocs) +
-        static_cast<GIntBig>(nNewSize) -
-        static_cast<GIntBig>(nOldSize) > nMaxCumulAllocSize )
-        return nullptr;
-#endif
-
-    ptr[2 * sizeof(void*) + nOldSize + 0] = 'I';
-    ptr[2 * sizeof(void*) + nOldSize + 1] = 'S';
-    ptr[2 * sizeof(void*) + nOldSize + 2] = 'V';
-    ptr[2 * sizeof(void*) + nOldSize + 3] = 'E';
-
-#ifdef DEBUG_VSIMALLOC_MPROTECT
-    char* newptr = nullptr;
-    const size_t nPageSize = getpagesize();
-    const size_t nRequestedSize =
-        (nNewSize + 3 * sizeof(void*) + nPageSize - 1) & ~(nPageSize - 1);
-    if( nRequestedSize < nNewSize )
-    {
-        ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
-        ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
-        ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
-        ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
-        return nullptr;
-    }
-    posix_memalign((void**)&newptr, nPageSize, nRequestedSize);
-    if( newptr == nullptr )
-    {
-        ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
-        ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
-        ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
-        ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
-        return nullptr;
-    }
-    memcpy(newptr + 2 * sizeof(void*), pData, nOldSize);
-    ptr[0] = 'M';
-    ptr[1] = 'I';
-    ptr[2] = 'S';
-    ptr[3] = 'V';
-    free(ptr);
-    newptr[0] = 'V';
-    newptr[1] = 'S';
-    newptr[2] = 'I';
-    newptr[3] = 'M';
-#else
-    const size_t nRequestedSize = 3 * sizeof(void*) + nNewSize;
-    if( nRequestedSize < nNewSize )
-    {
-        ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
-        ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
-        ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
-        ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
-        return nullptr;
-    }
-    void* newptr = realloc(ptr, nRequestedSize);
-    if( newptr == nullptr )
-    {
-        ptr[2 * sizeof(void*) + nOldSize + 0] = 'E';
-        ptr[2 * sizeof(void*) + nOldSize + 1] = 'V';
-        ptr[2 * sizeof(void*) + nOldSize + 2] = 'S';
-        ptr[2 * sizeof(void*) + nOldSize + 3] = 'I';
-        return nullptr;
-    }
-#endif
-    ptr = static_cast<char *>(newptr);
-    // cppcheck-suppress pointerSize
-    memcpy(ptr + sizeof(void*), &nNewSize, sizeof(void*));
-    ptr[2 * sizeof(void*) + nNewSize + 0] = 'E';
-    ptr[2 * sizeof(void*) + nNewSize + 1] = 'V';
-    ptr[2 * sizeof(void*) + nNewSize + 2] = 'S';
-    ptr[2 * sizeof(void*) + nNewSize + 3] = 'I';
-
-#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
-    {
-        CPLMutexHolderD(&hMemStatMutex);
-#ifdef DEBUG_VSIMALLOC_VERBOSE
-        if( nNewSize > THRESHOLD_PRINT )
-        {
-            fprintf(stderr, "Thread[%p] VSIRealloc(%p, %d) = %p"/*ok*/
-#ifdef DEBUG_VSIMALLOC_STATS
-                    ", current_cumul = " CPL_FRMT_GUIB
-#ifdef DEBUG_BLOCK_CACHE_USE
-                    ", block_cache_used = " CPL_FRMT_GIB
-#endif
-                    ", mal+cal-free = %d"
-#endif
-                    "\n",
-                    (void*)CPLGetPID(),
-                    pData,
-                    static_cast<int>(nNewSize),
-                    ptr + 2 * sizeof(void*)
-#ifdef DEBUG_VSIMALLOC_STATS
-                    , static_cast<GUIntBig>(
-                        nCurrentTotalAllocs - nOldSize + nNewSize)
-#ifdef DEBUG_BLOCK_CACHE_USE
-                    , GDALGetCacheUsed64()
-#endif
-                    , static_cast<int>(nVSIMallocs + nVSICallocs - nVSIFrees)
-#endif
-                    );
-        }
-#endif
-#ifdef DEBUG_VSIMALLOC_STATS
-        nVSIReallocs++;
-        nCurrentTotalAllocs -= nOldSize;
-        nCurrentTotalAllocs += nNewSize;
-        if( nCurrentTotalAllocs > nMaxTotalAllocs )
-            nMaxTotalAllocs = nCurrentTotalAllocs;
-#endif
-    }
-#endif
-    return ptr + 2 * sizeof(void*);
-#else
-    
-#ifdef MULTIPLE_HEAPS
-    return custom_realloc(pData, nNewSize);
-#else
-    return realloc( pData, nNewSize );
-#endif
-
-#endif
+    return p_realloc( pData, nNewSize );
 }
 
 /************************************************************************/
@@ -1088,57 +1076,9 @@ void * VSIRealloc( void * pData, size_t nNewSize )
 
 /** Analog of free() for data allocated with VSIMalloc(), VSICalloc(), VSIRealloc() */
 void VSIFree( void * pData )
-
 {
-#ifdef DEBUG_VSIMALLOC
-    if( pData == nullptr )
-        return;
-
-    char* ptr = ((char*)pData) - 2 * sizeof(void*);
-    VSICheckMarkerBegin(ptr);
-    size_t nOldSize = 0;
-    // cppcheck-suppress pointerSize
-    memcpy(&nOldSize, ptr + sizeof(void*), sizeof(void*));
-    VSICheckMarkerEnd(ptr, 2 * sizeof(void*) + nOldSize);
-    ptr[0] = 'M';
-    ptr[1] = 'I';
-    ptr[2] = 'S';
-    ptr[3] = 'V';
-    ptr[2 * sizeof(void*) + nOldSize + 0] = 'I';
-    ptr[2 * sizeof(void*) + nOldSize + 1] = 'S';
-    ptr[2 * sizeof(void*) + nOldSize + 2] = 'V';
-    ptr[2 * sizeof(void*) + nOldSize + 3] = 'E';
-#if defined(DEBUG_VSIMALLOC_STATS) || defined(DEBUG_VSIMALLOC_VERBOSE)
-    {
-        CPLMutexHolderD(&hMemStatMutex);
-#ifdef DEBUG_VSIMALLOC_VERBOSE
-        if( nOldSize > THRESHOLD_PRINT )
-        {
-            fprintf(stderr, "Thread[%p] VSIFree(%p, (%d bytes))\n", /*ok*/
-                    (void*)CPLGetPID(), pData, static_cast<int>(nOldSize));
-        }
-#endif
-#ifdef DEBUG_VSIMALLOC_STATS
-        nVSIFrees++;
-        nCurrentTotalAllocs -= nOldSize;
-#endif
-    }
-#endif
-
-#ifdef DEBUG_VSIMALLOC_MPROTECT
-    mprotect(ptr, nOldSize + 2 * sizeof(void*), PROT_NONE);
-#else
-    free(ptr);
-#endif
-
-#else
     if( pData != nullptr )
-#ifdef MULTIPLE_HEAPS
-        custom_free(pData);
-#else
-        free( pData );
-#endif
-#endif
+        p_free( pData );
 }
 
 /************************************************************************/
@@ -1158,36 +1098,7 @@ void VSIFree( void * pData )
 
 void* VSIMallocAligned( size_t nAlignment, size_t nSize )
 {
-#if defined(MULTIPLE_HEAPS)
-    return custom_aligned_malloc(nSize, nAlignment);
-#elif defined(HAVE_POSIX_MEMALIGN) && !defined(DEBUG_VSIMALLOC)
-    void* pRet = nullptr;
-    if( posix_memalign( &pRet, nAlignment, nSize ) != 0 )
-    {
-        pRet = nullptr;
-    }
-    return pRet;
-#elif defined(_WIN32) && !defined(DEBUG_VSIMALLOC)
-    return _aligned_malloc( nSize, nAlignment );
-#else
-    // Check constraints on alignment.
-    if( nAlignment < sizeof(void*) || nAlignment >= 256 ||
-        (nAlignment & (nAlignment - 1)) != 0 )
-        return nullptr;
-    // Detect overflow.
-    if( nSize + nAlignment < nSize )
-        return nullptr;
-    // TODO(schwehr): C++11 has std::aligned_storage, alignas, and related.
-    GByte* pabyData = static_cast<GByte*>(VSIMalloc( nSize + nAlignment ));
-    if( pabyData == nullptr )
-        return nullptr;
-    size_t nShift =
-        nAlignment - (reinterpret_cast<size_t>(pabyData) % nAlignment);
-    GByte* pabyAligned = pabyData + nShift;
-    // Guaranteed to fit on a byte since nAlignment < 256.
-    pabyAligned[-1] = static_cast<GByte>(nShift);
-    return pabyAligned;
-#endif
+    return p_aligned_malloc( nSize, nAlignment );
 }
 
 /************************************************************************/
@@ -1243,19 +1154,7 @@ void *VSIMallocAlignedAutoVerbose( size_t nSize, const char* pszFile,
 
 void VSIFreeAligned( void* ptr )
 {
-#if defined(MULTIPLE_HEAPS)
-    custom_aligned_free(ptr);
-#elif defined(HAVE_POSIX_MEMALIGN) && !defined(DEBUG_VSIMALLOC)
-    free(ptr);
-#elif defined(_WIN32) && !defined(DEBUG_VSIMALLOC)
-    _aligned_free(ptr);
-#else
-    if( ptr == nullptr )
-        return;
-    GByte* pabyAligned = static_cast<GByte*>(ptr);
-    size_t nShift = pabyAligned[-1];
-    VSIFree( pabyAligned - nShift );
-#endif
+    p_aligned_free(ptr);
 }
 
 /************************************************************************/
