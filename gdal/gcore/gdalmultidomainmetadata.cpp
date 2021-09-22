@@ -121,6 +121,7 @@ CPLErr GDALMultiDomainMetadata::SetMetadata( char **papszMetadata,
             CPLRealloc( papoMetadataLists, sizeof(void*)*(nDomainCount+1) ));
         papoMetadataLists[nDomainCount] = nullptr;
         papoMetadataLists[nDomainCount-1] = new CPLStringList();
+        papoMetadataLists[nDomainCount-1]->bOwnList=true;
         iDomain = nDomainCount-1;
     }
 
