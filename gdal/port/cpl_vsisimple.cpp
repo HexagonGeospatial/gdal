@@ -1079,6 +1079,8 @@ void VSIFree( void * pData )
 {
     if( pData != nullptr )
         p_free( pData );
+    else
+        throw std::exception("trying to delete NULL");
 }
 
 /************************************************************************/
