@@ -74,7 +74,6 @@ void GDALMultiDomainMetadata::Clear()
 
     for( int i = 0; i < nDomainCount; i++ )
     {
-        CSLDestroy(papoMetadataLists[i]->List());
         delete papoMetadataLists[i];
     }
 
@@ -125,7 +124,7 @@ CPLErr GDALMultiDomainMetadata::SetMetadata( char **papszMetadata,
         iDomain = nDomainCount-1;
     }
 
-    papoMetadataLists[iDomain]->Assign( CSLDuplicate( papszMetadata ) );
+    papoMetadataLists[iDomain]->Assign( CSLDuplicate( papszMetadata ), 1 );
 
     // we want to mark name/value pair domains as being sorted for fast
     // access.
