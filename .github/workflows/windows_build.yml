@@ -39,7 +39,7 @@ jobs:
         LIBZSTD_URL: "${{ matrix.LIBZSTD_URL }}"
         LIBDEFLATE_URL: "${{ matrix.LIBDEFLATE_URL }}"
         APPVEYOR: true # to skip some tests
-        PYTHON_VERSION: "3.7.9"
+        PYTHON_VERSION: "3.10.0"
 
     steps:
 
