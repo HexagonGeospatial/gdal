@@ -74,7 +74,8 @@ void GDALMultiDomainMetadata::Clear()
 
     for( int i = 0; i < nDomainCount; i++ )
     {
-         CSLDestroy(papoMetadataLists[i]->List());
+        CSLDestroy(papoMetadataLists[i]->List());
+        delete papoMetadataLists[i];
     }
 
     CPLFree( papoMetadataLists );
@@ -120,7 +121,7 @@ CPLErr GDALMultiDomainMetadata::SetMetadata( char **papszMetadata,
         papoMetadataLists = static_cast<CPLStringList **>(
             CPLRealloc( papoMetadataLists, sizeof(void*)*(nDomainCount+1) ));
         papoMetadataLists[nDomainCount] = nullptr;
-        //papoMetadataLists[nDomainCount-1] = new CPLStringList();
+        papoMetadataLists[nDomainCount-1] = new CPLStringList();
         iDomain = nDomainCount-1;
     }
 
