@@ -74,7 +74,7 @@ void GDALMultiDomainMetadata::Clear()
 
     for( int i = 0; i < nDomainCount; i++ )
     {
-         CSLDestroy(papoMetadataLists[i]);
+         CSLDestroy(*papoMetadataLists[i]);
     }
 
     CPLFree( papoMetadataLists );
