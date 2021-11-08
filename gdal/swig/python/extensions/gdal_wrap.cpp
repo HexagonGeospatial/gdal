@@ -5777,7 +5777,7 @@ SWIGINTERN CPLErr GDALMDArrayHS_Read(GDALMDArrayHS *self,int nDims1,GUIntBig *ar
             }
             nExpectedStride *= count_internal[i];
         }
-        char** ppszBuffer = (char**)VSI_CALLOC_VERBOSE(nProductCount, sizeof(char*));
+        char** ppszBuffer = (char**)VSICalloc(nProductCount, sizeof(char*));
         if( !ppszBuffer )
             return CE_Failure;
         GByte* pabyBuffer = (GByte*)ppszBuffer;
