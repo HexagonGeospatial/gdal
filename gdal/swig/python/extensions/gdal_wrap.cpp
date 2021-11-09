@@ -5810,7 +5810,6 @@ SWIGINTERN CPLErr GDALMDArrayHS_Read(GDALMDArrayHS *self,int nDims1,GUIntBig *ar
             {
                 PyList_SetItem(obj, i, GDALPythonObjectFromCStr( ppszBuffer[i] ) );
             }
-            VSIFree(ppszBuffer[i]);
         }
         SWIG_PYTHON_THREAD_END_BLOCK;
         *buf = obj;
