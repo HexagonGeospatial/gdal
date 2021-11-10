@@ -272,6 +272,7 @@ static CPLString VSICurlGetURLFromFilename(const char* pszFilename,
                                            int* pnMaxRetry,
                                            double* pdfRetryDelay,
                                            bool* pbUseHead,
+                                           bool* pbUseRedirectURLIfNoQueryStringParams,
                                            bool* pbListDir,
                                            bool* pbEmptyDir,
                                            char*** ppapszHTTPOptions)
@@ -313,10 +314,16 @@ static CPLString VSICurlGetURLFromFilename(const char* pszFilename,
                     if( pdfRetryDelay )
                         *pdfRetryDelay = CPLAtof(pszValue);
                 }
-                    else if( EQUAL(pszKey, "use_head") )
+                else if( EQUAL(pszKey, "use_head") )
                 {
                     if( pbUseHead )
                         *pbUseHead = CPLTestBool(pszValue);
+                }
+                else if( EQUAL(pszKey, "use_redirect_url_if_no_query_string_params") )
+                {
+                    /* Undocumented. Used by PLScenes driver */
+                    if( pbUseRedirectURLIfNoQueryStringParams )
+                        *pbUseRedirectURLIfNoQueryStringParams = CPLTestBool(pszValue);
                 }
                 else if( EQUAL(pszKey, "list_dir") )
                 {
@@ -327,7 +334,7 @@ static CPLString VSICurlGetURLFromFilename(const char* pszFilename,
                 {
                     /* Undocumented. Used by PLScenes driver */
                     /* This more or less emulates the behavior of
-                        * GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR */
+                     * GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR */
                     if( pbEmptyDir )
                         *pbEmptyDir = CPLTestBool(pszValue);
                 }
@@ -408,6 +415,7 @@ VSICurlHandle::VSICurlHandle( VSICurlFilesystemHandler* poFSIn,
                                                        &m_nMaxRetry,
                                                        &m_dfRetryDelay,
                                                        &m_bUseHead,
+                                                       &m_bUseRedirectURLIfNoQueryStringParams,
                                                        nullptr, nullptr,
                                                        &m_papszHTTPOptions));
     }
@@ -557,7 +565,6 @@ void VSICURLInitWriteFuncStruct( WriteFuncStruct   *psStruct,
     psStruct->pBuffer = nullptr;
     psStruct->nSize = 0;
     psStruct->bIsHTTP = false;
-    psStruct->bIsInHeader = true;
     psStruct->bMultiRange = false;
     psStruct->nStartOffset = 0;
     psStruct->nEndOffset = 0;
@@ -565,7 +572,6 @@ void VSICURLInitWriteFuncStruct( WriteFuncStruct   *psStruct,
     psStruct->nContentLength = 0;
     psStruct->bFoundContentRange = false;
     psStruct->bError = false;
-    psStruct->bDownloadHeaderOnly = false;
     psStruct->bDetectRangeDownloadingError = true;
     psStruct->nTimestampDate = 0;
 
@@ -589,6 +595,11 @@ size_t VSICurlHandleWriteFunc( void *buffer, size_t count,
     WriteFuncStruct* psStruct = static_cast<WriteFuncStruct *>(req);
     const size_t nSize = count * nmemb;
 
+    if( psStruct->bInterrupted )
+    {
+        return 0;
+    }
+
     char* pNewBuffer = static_cast<char *>(
         VSIRealloc(psStruct->pBuffer, psStruct->nSize + nSize + 1));
     if( pNewBuffer )
@@ -596,7 +607,7 @@ size_t VSICurlHandleWriteFunc( void *buffer, size_t count,
         psStruct->pBuffer = pNewBuffer;
         memcpy(psStruct->pBuffer + psStruct->nSize, buffer, nSize);
         psStruct->pBuffer[psStruct->nSize + nSize] = '\0';
-        if( psStruct->bIsHTTP && psStruct->bIsInHeader )
+        if( psStruct->bIsHTTP )
         {
             char* pszLine = psStruct->pBuffer + psStruct->nSize;
             if( STARTS_WITH_CI(pszLine, "HTTP/") )
@@ -666,26 +677,16 @@ size_t VSICurlHandleWriteFunc( void *buffer, size_t count,
                 pszLine[nSize - 2] = '\r';
             }*/
 
-            if( pszLine[0] == '\r' || pszLine[0] == '\n' )
+            if( pszLine[0] == '\r' && pszLine[1] == '\n' )
             {
-                if( psStruct->bDownloadHeaderOnly )
-                {
-                    // If moved permanently/temporarily, go on.
-                    // Otherwise stop now,
-                    if( !(psStruct->nHTTPCode == 301 ||
-                          psStruct->nHTTPCode == 302) )
-                        return 0;
-                }
 #if !CURL_AT_LEAST_VERSION(7,54,0)
-                else if( psStruct->bIsProxyConnectHeader )
+                if( psStruct->bIsProxyConnectHeader )
                 {
                     psStruct->bIsProxyConnectHeader = false;
                 }
-#endif //!CURL_AT_LEAST_VERSION(7,54,0)
                 else
+#endif //!CURL_AT_LEAST_VERSION(7,54,0)
                 {
-                    psStruct->bIsInHeader = false;
-
                     // Detect servers that don't support range downloading.
                     if( psStruct->nHTTPCode == 200 &&
                         psStruct->bDetectRangeDownloadingError &&
@@ -735,7 +736,9 @@ static bool VSICurlIsS3LikeSignedURL( const char* pszURL )
         ((strstr(pszURL, ".s3.amazonaws.com/") != nullptr ||
           strstr(pszURL, ".s3.amazonaws.com:") != nullptr ||
           strstr(pszURL, ".storage.googleapis.com/") != nullptr ||
-          strstr(pszURL, ".storage.googleapis.com:") != nullptr) &&
+          strstr(pszURL, ".storage.googleapis.com:") != nullptr ||
+          strstr(pszURL, ".cloudfront.net/") != nullptr ||
+          strstr(pszURL, ".cloudfront.net:") != nullptr) &&
          (strstr(pszURL, "&Signature=") != nullptr ||
           strstr(pszURL, "?Signature=") != nullptr)) ||
         strstr(pszURL, "&X-Amz-Signature=") != nullptr ||
@@ -890,6 +893,11 @@ retry:
 
     WriteFuncStruct sWriteFuncHeaderData;
     VSICURLInitWriteFuncStruct(&sWriteFuncHeaderData, nullptr, nullptr, nullptr);
+    sWriteFuncHeaderData.bDetectRangeDownloadingError = false;
+    sWriteFuncHeaderData.bIsHTTP = STARTS_WITH(osURL, "http");
+
+    WriteFuncStruct sWriteFuncData;
+    VSICURLInitWriteFuncStruct(&sWriteFuncData, nullptr, nullptr, nullptr);
 
     CPLString osVerb;
     CPLString osRange; // leave in this scope !
@@ -906,7 +914,6 @@ retry:
         // so it gets included in Azure signature
         osRange.Printf("Range: bytes=0-%d", nRoundedBufSize-1);
         headers = curl_slist_append(headers, osRange.c_str());
-        sWriteFuncHeaderData.bDetectRangeDownloadingError = false;
     }
     // HACK for mbtiles driver: http://a.tiles.mapbox.com/v3/ doesn't accept
     // HEAD, as it is a redirect to AWS S3 signed URL, but those are only valid
@@ -917,12 +924,11 @@ retry:
              VSICurlIsS3LikeSignedURL(osURL) ||
              !m_bUseHead )
     {
-        sWriteFuncHeaderData.bDownloadHeaderOnly = true;
+        sWriteFuncData.bInterrupted = true;
         osVerb = "GET";
     }
     else
     {
-        sWriteFuncHeaderData.bDetectRangeDownloadingError = false;
         curl_easy_setopt(hCurlHandle, CURLOPT_NOBODY, 1);
         curl_easy_setopt(hCurlHandle, CURLOPT_HTTPGET, 0);
         curl_easy_setopt(hCurlHandle, CURLOPT_HEADER, 1);
@@ -935,12 +941,9 @@ retry:
     curl_easy_setopt(hCurlHandle, CURLOPT_HEADERDATA, &sWriteFuncHeaderData);
     curl_easy_setopt(hCurlHandle, CURLOPT_HEADERFUNCTION,
                      VSICurlHandleWriteFunc);
-    sWriteFuncHeaderData.bIsHTTP = STARTS_WITH(osURL, "http");
 
     // Bug with older curl versions (<=7.16.4) and FTP.
     // See http://curl.haxx.se/mail/lib-2007-08/0312.html
-    WriteFuncStruct sWriteFuncData;
-    VSICURLInitWriteFuncStruct(&sWriteFuncData, nullptr, nullptr, nullptr);
     curl_easy_setopt(hCurlHandle, CURLOPT_WRITEDATA, &sWriteFuncData);
     curl_easy_setopt(hCurlHandle, CURLOPT_WRITEFUNCTION,
                      VSICurlHandleWriteFunc);
@@ -991,14 +994,6 @@ retry:
         }
     }
 
-    if( ENABLE_DEBUG && szCurlErrBuf[0] != '\0' &&
-        sWriteFuncHeaderData.bDownloadHeaderOnly &&
-        EQUAL(szCurlErrBuf, "Failed writing header") )
-    {
-        // Not really an error since we voluntarily interrupted the download !
-        szCurlErrBuf[0] = 0;
-    }
-
     double dfSize = 0;
     if( oFileProp.eExists != EXIST_YES )
     {
@@ -1027,6 +1022,13 @@ retry:
         {
             CPLDebug(poFS->GetDebugKey(),
                      "Effective URL: %s", osEffectiveURL.c_str());
+
+            if( m_bUseRedirectURLIfNoQueryStringParams &&
+                osEffectiveURL.find('?') == std::string::npos )
+            {
+                oFileProp.osRedirectURL = osEffectiveURL;
+                poFS->SetCachedFileProp(m_pszURL, oFileProp);
+            }
 
             // Is this is a redirect to a S3 URL?
             if( VSICurlIsS3LikeSignedURL(osEffectiveURL) &&
@@ -1383,6 +1385,12 @@ CPLString VSICurlHandle::GetRedirectURLIfValid(bool& bHasExpired)
             bHasExpired = true;
         }
     }
+    else if( !oFileProp.osRedirectURL.empty() )
+    {
+        osURL = oFileProp.osRedirectURL;
+        bHasExpired = false;
+    }
+
     return osURL;
 }
 
@@ -1511,7 +1519,13 @@ retry:
         CPLDebug(poFS->GetDebugKey(),
                  "Got response_code=%ld", response_code);
 
-    if( response_code == 403 && bUsedRedirect )
+    if( bUsedRedirect &&
+        (response_code == 403 ||
+        // Below case is in particular for
+        // gdalinfo /vsicurl/https://lpdaac.earthdata.nasa.gov/lp-prod-protected/HLSS30.015/HLS.S30.T10TEK.2020273T190109.v1.5.B8A.tif --config GDAL_DISABLE_READDIR_ON_OPEN EMPTY_DIR --config GDAL_HTTP_COOKIEFILE /tmp/cookie.txt --config GDAL_HTTP_COOKIEJAR /tmp/cookie.txt
+        // We got the redirect URL from a HEAD request, but it is not valid for a GET.
+        // So retry with GET on original URL to get a redirect URL valid for it.
+        (response_code == 400 && osURL.find(".cloudfront.net") != std::string::npos)) )
     {
         CPLDebug(poFS->GetDebugKey(),
                  "Got an error with redirect URL. Retrying with original one");
@@ -3149,7 +3163,7 @@ VSIVirtualHandle* VSICurlFilesystemHandler::Open( const char *pszFilename,
     bool bEmptyDir = false;
     CPL_IGNORE_RET_VAL(
         VSICurlGetURLFromFilename(pszFilename, nullptr, nullptr, nullptr,
-                                  &bListDir, &bEmptyDir, nullptr));
+                                  nullptr, &bListDir, &bEmptyDir, nullptr));
 
     const char* pszOptionVal =
         CPLGetConfigOption( "GDAL_DISABLE_READDIR_ON_OPEN", "NO" );
@@ -3404,7 +3418,7 @@ char** VSICurlFilesystemHandler::ParseHTMLFileList( const char* pszFilename,
     *pbGotFileList = false;
 
     CPLString osURL(VSICurlGetURLFromFilename(pszFilename, nullptr, nullptr, nullptr,
-                                              nullptr, nullptr, nullptr));
+                                              nullptr, nullptr, nullptr, nullptr));
     const char* pszDir = nullptr;
     if( STARTS_WITH_CI(osURL, "http://") )
         pszDir = strchr(osURL.c_str() + strlen("http://"), '/');
@@ -3757,7 +3771,7 @@ static bool VSICurlParseFullFTPLine( char* pszLine,
 CPLString
 VSICurlFilesystemHandler::GetURLFromFilename( const CPLString& osFilename )
 {
-    return VSICurlGetURLFromFilename(osFilename, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    return VSICurlGetURLFromFilename(osFilename, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
 }
 
 /************************************************************************/
@@ -3788,7 +3802,7 @@ char** VSICurlFilesystemHandler::GetFileList(const char *pszDirname,
     bool bListDir = true;
     bool bEmptyDir = false;
     CPLString osURL(
-        VSICurlGetURLFromFilename(pszDirname, nullptr, nullptr, nullptr,
+        VSICurlGetURLFromFilename(pszDirname, nullptr, nullptr, nullptr, nullptr,
                                   &bListDir, &bEmptyDir, nullptr));
     if( bEmptyDir )
     {
@@ -4081,7 +4095,7 @@ int VSICurlFilesystemHandler::Stat( const char *pszFilename,
     bool bListDir = true;
     bool bEmptyDir = false;
     CPLString osURL(
-        VSICurlGetURLFromFilename(pszFilename, nullptr, nullptr, nullptr,
+        VSICurlGetURLFromFilename(pszFilename, nullptr, nullptr, nullptr, nullptr,
                                   &bListDir, &bEmptyDir, nullptr));
 
     const char* pszOptionVal =

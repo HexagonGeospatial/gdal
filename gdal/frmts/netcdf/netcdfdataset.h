@@ -204,8 +204,12 @@ static const int NCDF_DEFLATE_LEVEL    = 1;  /* best time/size ratio */
 #define CF_LATITUDE_VAR_NAME       "lat"
 #define CF_LATITUDE_STD_NAME       "latitude"
 #define CF_LATITUDE_LNG_NAME       "latitude"
-#define CF_DEGREES_NORTH           "degrees_north"
-#define CF_DEGREES_EAST            "degrees_east"
+#define CF_DEGREES_NORTH           "degrees_north" /* recommended */
+#define CF_DEGREE_NORTH            "degree_north"  /* acceptable */
+#define CF_DEGREES_N               "degrees_N"     /* acceptable */
+#define CF_DEGREES_EAST            "degrees_east"  /* recommended */
+#define CF_DEGREE_EAST             "degree_east"   /* acceptable */
+#define CF_DEGREES_E               "degrees_E"     /* acceptable */
 
 #define CF_AXIS            "axis"
 /* #define CF_BOUNDS          "bounds" */
@@ -287,11 +291,11 @@ static const int NCDF_DEFLATE_LEVEL    = 1;  /* best time/size ratio */
 /*         CF-1 Coordinate Type Naming (Chapter 4.  Coordinate Types )  */
 /* -------------------------------------------------------------------- */
 static const char* const papszCFLongitudeVarNames[] = { CF_LONGITUDE_VAR_NAME, "longitude", nullptr };
-static const char* const papszCFLongitudeAttribNames[] = { CF_UNITS, CF_STD_NAME, CF_AXIS, CF_LNG_NAME, nullptr };
-static const char* const papszCFLongitudeAttribValues[] = { CF_DEGREES_EAST, CF_LONGITUDE_STD_NAME, "X", CF_LONGITUDE_LNG_NAME, nullptr };
+static const char* const papszCFLongitudeAttribNames[] = { CF_UNITS, CF_UNITS, CF_UNITS, CF_STD_NAME, CF_AXIS, CF_LNG_NAME, nullptr };
+static const char* const papszCFLongitudeAttribValues[] = { CF_DEGREES_EAST, CF_DEGREE_EAST, CF_DEGREES_E, CF_LONGITUDE_STD_NAME, "X", CF_LONGITUDE_LNG_NAME, nullptr };
 static const char* const papszCFLatitudeVarNames[] = { CF_LATITUDE_VAR_NAME, "latitude", nullptr };
-static const char* const papszCFLatitudeAttribNames[] = { CF_UNITS, CF_STD_NAME, CF_AXIS, CF_LNG_NAME, nullptr };
-static const char* const papszCFLatitudeAttribValues[] = { CF_DEGREES_NORTH, CF_LATITUDE_STD_NAME, "Y", CF_LATITUDE_LNG_NAME, nullptr };
+static const char* const papszCFLatitudeAttribNames[] = { CF_UNITS, CF_UNITS, CF_UNITS, CF_STD_NAME, CF_AXIS, CF_LNG_NAME, nullptr };
+static const char* const papszCFLatitudeAttribValues[] = { CF_DEGREES_NORTH, CF_DEGREE_NORTH, CF_DEGREES_N, CF_LATITUDE_STD_NAME, "Y", CF_LATITUDE_LNG_NAME, nullptr };
 
 static const char* const papszCFProjectionXVarNames[] = { CF_PROJ_X_VAR_NAME, "xc", nullptr };
 static const char* const papszCFProjectionXAttribNames[] = { CF_STD_NAME, CF_AXIS, nullptr };
@@ -586,25 +590,8 @@ static const oNetcdfSRS_PP poOrthoMappings[] = {
 //    * false_easting
 //    * false_northing
 
-/*
-   (http://www.remotesensing.org/geotiff/proj_list/polar_stereographic.html)
-
-   Note: Projection parameters for this projection are quite different in CF-1 from
-     OGC WKT/GeoTiff (for the latter, see above).
-   From our best understanding, this projection requires more than a straight mapping:
-     - As defined below, 'latitude_of_origin' (WKT) -> 'standard_parallel' (CF-1)
-       and 'central_meridian' (WKT) -> 'straight_vertical_longitude_from_pole' (CF-1)
-     - Then the 'latitude_of_projection_origin' in CF-1 must be set to either +90 or -90,
-       depending on the sign of 'latitude_of_origin' in WKT.
-   CF allows the use of standard_parallel (lat_ts in proj4) OR scale_factor (k0 in proj4).
-   This is analogous to the B and A variants (resp.) in EPSG guidelines.
-   When importing a CF file with scale_factor, we compute standard_parallel using
-     Snyder eq. 22-7 with k=1 and lat=standard_parallel.
-   Currently OGR does NOT relate the scale factor with the standard parallel, so we
-   use the default. It seems that proj4 uses lat_ts (standard_parallel) and not k0.
-*/
 static const oNetcdfSRS_PP poPSmappings[] = {
-    {CF_PP_STD_PARALLEL_1, SRS_PP_LATITUDE_OF_ORIGIN},
+    /* {CF_PP_STD_PARALLEL_1, SRS_PP_LATITUDE_OF_ORIGIN}, */
     /* {CF_PP_SCALE_FACTOR_ORIGIN, SRS_PP_SCALE_FACTOR},   */
     {CF_PP_VERT_LONG_FROM_POLE, SRS_PP_CENTRAL_MERIDIAN},
     {CF_PP_FALSE_EASTING, SRS_PP_FALSE_EASTING },
@@ -931,7 +918,7 @@ class netCDFDataset final: public GDALPamDataset
                                 const char *pszParam, double dfDefault,
                                 bool *pbFound=nullptr );
 
-    char **      FetchStandardParallels( const char *pszGridMappingValue );
+    std::vector<std::string> FetchStandardParallels( const char *pszGridMappingValue );
 
     const char *FetchAttr( const char *pszVarFullName, const char *pszAttr );
     const char *FetchAttr( int nGroupId, int nVarId, const char *pszAttr );

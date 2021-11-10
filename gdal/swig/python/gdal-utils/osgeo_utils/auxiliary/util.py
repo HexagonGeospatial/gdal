@@ -70,7 +70,7 @@ def GetOutputDriversFor(filename: PathLikeOrStr, is_raster=True) -> List[str]:
 
     # GMT is registered before netCDF for opening reasons, but we want
     # netCDF to be used by default for output.
-    if ext.lower() == 'nc' and not drv_list and \
+    if ext.lower() == 'nc' and len(drv_list) >= 2 and \
         drv_list[0].upper() == 'GMT' and drv_list[1].upper() == 'NETCDF':
         drv_list = ['NETCDF', 'GMT']
 
@@ -309,13 +309,11 @@ def get_raster_minimum(filename_or_ds: PathOrDS, bnd_index: Optional[int] = 1):
             return get_band_minimum(bnd)
 
 
-def get_raster_min_max(filename_or_ds: PathOrDS, bnd_index: int = 1):
+def get_raster_min_max(filename_or_ds: PathOrDS, bnd_index: int = 1, approx_ok: Union[bool, int] = False):
     with OpenDS(filename_or_ds) as ds:
         bnd = ds.GetRasterBand(bnd_index)
-        bnd.ComputeStatistics(0)
-        min_val = bnd.GetMinimum()
-        max_val = bnd.GetMaximum()
-        return min_val, max_val
+        min_max = bnd.ComputeRasterMinMax(int(approx_ok))
+        return min_max
 
 
 def get_nodatavalue(filename_or_ds: PathOrDS):

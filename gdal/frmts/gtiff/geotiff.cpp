@@ -463,7 +463,7 @@ private:
 
     void        WriteGeoTIFFInfo();
     bool        SetDirectory();
-    void        ReloadDirectory();
+    void        ReloadDirectory(bool bReopenHandle = false);
 
     int         GetJPEGOverviewCount();
 
@@ -5948,7 +5948,7 @@ void GTiffRasterBand::NullBlock( void *pData )
     const int nChunkSize = std::max(1, GDALGetDataTypeSizeBytes(eDataType));
 
     int bNoDataSetIn = FALSE;
-    const double dfNoData = GetNoDataValue( &bNoDataSetIn );
+    double dfNoData = GetNoDataValue( &bNoDataSetIn );
     if( !bNoDataSetIn )
     {
 #ifdef ESRI_BUILD
@@ -5962,6 +5962,17 @@ void GTiffRasterBand::NullBlock( void *pData )
     }
     else
     {
+        // Hack for Signed Int8 case. As the data type is GDT_Byte (unsigned),
+        // we have to convert a negative nodata value in the range [-128,-1] in
+        // [128, 255]
+        if( m_poGDS->m_nBitsPerSample == 8 &&
+            m_poGDS->m_nSampleFormat == SAMPLEFORMAT_INT &&
+            dfNoData < 0 && dfNoData >= -128 &&
+            static_cast<int>(dfNoData) == dfNoData )
+        {
+            dfNoData = 256 + dfNoData;
+        }
+
         // Will convert nodata value to the right type and copy efficiently.
         GDALCopyWords64( &dfNoData, GDT_Float64, 0,
                        pData, eDataType, nChunkSize, nWords);
@@ -8128,7 +8139,20 @@ void GTiffDataset::FillEmptyTiles()
         if( nDataTypeSize &&
             nDataTypeSize * 8 == static_cast<int>(m_nBitsPerSample) )
         {
-            GDALCopyWords64( &m_dfNoDataValue, GDT_Float64, 0,
+            double dfNoData = m_dfNoDataValue;
+
+            // Hack for Signed Int8 case. As the data type is GDT_Byte (unsigned),
+            // we have to convert a negative nodata value in the range [-128,-1] in
+            // [128, 255]
+            if( m_nBitsPerSample == 8 &&
+                m_nSampleFormat == SAMPLEFORMAT_INT &&
+                dfNoData < 0 && dfNoData >= -128 &&
+                static_cast<int>(dfNoData) == dfNoData )
+            {
+                dfNoData = 256 + dfNoData;
+            }
+
+            GDALCopyWords64( &dfNoData, GDT_Float64, 0,
                            pabyData, eDataType,
                            nDataTypeSize,
                            nBlockBytes / nDataTypeSize );
@@ -9921,6 +9945,39 @@ void GTiffDataset::FlushCacheInternal( bool bFlushDirectory )
 void GTiffDataset::FlushDirectory()
 
 {
+    const auto ReloadAllOtherDirectories = [this]()
+    {
+        const auto poBaseDS = m_poBaseDS ? m_poBaseDS : this;
+        if( poBaseDS->m_papoOverviewDS )
+        {
+            for( int i = 0; i < poBaseDS->m_nOverviewCount; ++i )
+            {
+                if( poBaseDS->m_papoOverviewDS[i]->m_bCrystalized &&
+                    poBaseDS->m_papoOverviewDS[i] != this )
+                {
+                    poBaseDS->m_papoOverviewDS[i]->ReloadDirectory(true);
+                }
+
+                if( poBaseDS->m_papoOverviewDS[i]->m_poMaskDS &&
+                    poBaseDS->m_papoOverviewDS[i]->m_poMaskDS != this &&
+                    poBaseDS->m_papoOverviewDS[i]->m_poMaskDS->m_bCrystalized )
+                {
+                    poBaseDS->m_papoOverviewDS[i]->m_poMaskDS->ReloadDirectory(true);
+                }
+            }
+        }
+        if( poBaseDS->m_poMaskDS &&
+            poBaseDS->m_poMaskDS != this &&
+            poBaseDS->m_poMaskDS->m_bCrystalized )
+        {
+            poBaseDS->m_poMaskDS->ReloadDirectory(true);
+        }
+        if( poBaseDS->m_bCrystalized && poBaseDS != this )
+        {
+            poBaseDS->ReloadDirectory(true);
+        }
+    };
+
     if( GetAccess() == GA_Update )
     {
         if( m_bMetadataChanged )
@@ -9985,6 +10042,8 @@ void GTiffDataset::FlushDirectory()
 
                 TIFFSetSubDirectory( m_hTIFF, m_nDirOffset );
 
+                ReloadAllOtherDirectories();
+
                 if( m_bLayoutIFDSBeforeData &&
                     m_bBlockOrderRowMajor &&
                     m_bLeaderSizeAsUInt4 &&
@@ -9999,6 +10058,7 @@ void GTiffDataset::FlushDirectory()
                     m_bWriteKnownIncompatibleEdition = true;
                 }
             }
+
             m_bNeedsRewrite = false;
         }
     }
@@ -10019,6 +10079,7 @@ void GTiffDataset::FlushDirectory()
         if( m_nDirOffset != TIFFCurrentDirOffset( m_hTIFF ) )
         {
             m_nDirOffset = nNewDirOffset;
+            ReloadAllOtherDirectories();
             CPLDebug( "GTiff",
                       "directory moved during flush in FlushDirectory()" );
         }
@@ -10132,6 +10193,15 @@ CPLErr GTiffDataset::RegisterNewOverviewDataset(toff_t nOverviewOffset,
     {
         delete poODS;
         return CE_Failure;
+    }
+
+    // Assign color interpretation from main dataset
+    const int l_nBands = GetRasterCount();
+    for(int i = 1; i <= l_nBands; i++ )
+    {
+        auto poBand = dynamic_cast<GTiffRasterBand*>(poODS->GetRasterBand(i));
+        if( poBand )
+            poBand->m_eBandInterp = GetRasterBand(i)->GetColorInterpretation();
     }
 
     // Do that now that m_nCompression is set
@@ -10394,9 +10464,33 @@ CPLErr GTiffDataset::CreateOverviewsFromSrcOverviews(GDALDataset* poSrcDS,
 /*                           ReloadDirectory()                          */
 /************************************************************************/
 
-void GTiffDataset::ReloadDirectory()
+void GTiffDataset::ReloadDirectory(bool bReopenHandle)
 {
-    TIFFSetSubDirectory( m_hTIFF, 0 );
+    bool bNeedSetInvalidDir = true;
+    if( bReopenHandle )
+    {
+        // When issuing a TIFFRewriteDirectory() or when a TIFFFlush() has
+        // caused a move of the directory, we would need to invalidate the
+        // tif_lastdiroff member, but it is not possible to do so without
+        // re-opening the TIFF handle.
+        auto hTIFFNew = VSI_TIFFReOpen(m_hTIFF);
+        if( hTIFFNew != nullptr )
+        {
+            m_hTIFF = hTIFFNew;
+            bNeedSetInvalidDir = false; // we could do it, but not needed
+        }
+        else
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Cannot re-open TIFF handle for file %s. "
+                     "Directory chaining may be corrupted !",
+                     m_pszFilename);
+        }
+    }
+    if( bNeedSetInvalidDir )
+    {
+        TIFFSetSubDirectory( m_hTIFF, 0 );
+    }
     CPL_IGNORE_RET_VAL( SetDirectory() );
 }
 
@@ -11226,12 +11320,16 @@ void GTiffDataset::WriteGeoTIFFInfo()
         if( bHasProjection )
         {
             char* pszProjection = nullptr;
+            OGRErr eErr;
             {
                 CPLErrorStateBackuper oErrorStateBackuper;
                 CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
-                m_oSRS.exportToWkt(&pszProjection);
+                if( m_oSRS.IsDerivedGeographic() )
+                    eErr = OGRERR_FAILURE;
+                else
+                    eErr = m_oSRS.exportToWkt(&pszProjection);
             }
-            if( pszProjection && pszProjection[0] &&
+            if( eErr == OGRERR_NONE && pszProjection && pszProjection[0] &&
                 strstr(pszProjection, "custom_proj4") == nullptr )
             {
                 GTIFSetFromOGISDefnEx( psGTIF, pszProjection,
@@ -11545,13 +11643,14 @@ void GTiffDataset::WriteRPC( GDALDataset *poSrcDS, TIFF *l_hTIFF,
 }
 
 /************************************************************************/
-/*                  IsStandardColorInterpretation()                     */
+/*                 GTIFFIsStandardColorInterpretation()                 */
 /************************************************************************/
 
-static bool IsStandardColorInterpretation(GDALDataset* poSrcDS,
+bool GTIFFIsStandardColorInterpretation(GDALDatasetH hSrcDS,
                                           uint16_t nPhotometric,
-                                          char** papszCreationOptions)
+                                          CSLConstList papszCreationOptions)
 {
+    GDALDataset* poSrcDS = GDALDataset::FromHandle(hSrcDS);
     bool bStandardColorInterp = true;
     if( nPhotometric == PHOTOMETRIC_MINISBLACK )
     {
@@ -11675,8 +11774,8 @@ bool GTiffDataset::WriteMetadata( GDALDataset *poSrcDS, TIFF *l_hTIFF,
         nPhotometric = PHOTOMETRIC_MINISBLACK;
 
     const bool bStandardColorInterp =
-        IsStandardColorInterpretation(poSrcDS, nPhotometric,
-                                      l_papszCreationOptions);
+        GTIFFIsStandardColorInterpretation(
+            GDALDataset::ToHandle(poSrcDS), nPhotometric, l_papszCreationOptions);
 
 /* -------------------------------------------------------------------- */
 /*      We also need to address band specific metadata, and special     */
@@ -11891,7 +11990,8 @@ void GTiffDataset::PushMetadataToPam()
         return;
 
     const bool bStandardColorInterp =
-        IsStandardColorInterpretation(this, m_nPhotometric, m_papszCreationOptions);
+        GTIFFIsStandardColorInterpretation(GDALDataset::ToHandle(this),
+                                           m_nPhotometric, m_papszCreationOptions);
 
     for( int nBand = 0; nBand <= GetRasterCount(); ++nBand )
     {
@@ -15419,6 +15519,19 @@ void GTiffDataset::ScanDirectories()
         }
     }
 
+    // Assign color interpretation from main dataset
+    const int l_nBands = GetRasterCount();
+    for( int iOvr = 0; iOvr < m_nOverviewCount; ++iOvr )
+    {
+        for(int i = 1; i <= l_nBands; i++ )
+        {
+            auto poBand = dynamic_cast<GTiffRasterBand*>(
+                                    m_papoOverviewDS[iOvr]->GetRasterBand(i));
+            if( poBand )
+                poBand->m_eBandInterp = GetRasterBand(i)->GetColorInterpretation();
+        }
+    }
+
 /* -------------------------------------------------------------------- */
 /*      Only keep track of subdatasets if we have more than one         */
 /*      subdataset (pair).                                              */
@@ -17918,9 +18031,13 @@ GTiffDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             {
                 CPLErrorStateBackuper oErrorStateBackuper;
                 CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
-                eErr = l_poSRS->exportToWkt(&pszWKT);
+                if( l_poSRS->IsDerivedGeographic() )
+                    eErr = OGRERR_FAILURE;
+                else
+                    eErr = l_poSRS->exportToWkt(&pszWKT);
             }
-            if( eErr == OGRERR_NONE && strstr(pszWKT, "custom_proj4") == nullptr )
+            if( eErr == OGRERR_NONE && pszWKT != nullptr &&
+                strstr(pszWKT, "custom_proj4") == nullptr )
             {
                 GTIFSetFromOGISDefnEx( psGTIF, pszWKT,
                                     GetGTIFFKeysFlavor(papszOptions),

@@ -199,6 +199,11 @@ namespace tut
 
         ENSURE_EQUALS(GDALFindDataType(64, false /* signed */, true /* floating */, false /* complex */), GDT_Float64);
         ENSURE_EQUALS(GDALFindDataType(64, false /* signed */, true /* floating */, true /* complex */), GDT_CFloat64);
+
+        ENSURE_EQUALS(GDALDataTypeUnionWithValue(GDT_Byte, -32768, 0), GDT_Int16);
+        ENSURE_EQUALS(GDALDataTypeUnionWithValue(GDT_Byte, -32769, 0), GDT_Int32);
+        ENSURE_EQUALS(GDALDataTypeUnionWithValue(GDT_Float32, -99999, 0), GDT_Float32);
+        ENSURE_EQUALS(GDALDataTypeUnionWithValue(GDT_Float32, -99999.9876, 0), GDT_Float64);
     }
 
 #undef ENSURE
@@ -1675,5 +1680,90 @@ namespace tut
 
         poDS.reset();
         VSIUnlink("/vsimem/tmp.pix");
+    }
+
+    // Test GDALRasterBand::GetIndexColorTranslationTo()
+    template<> template<> void object::test<23>()
+    {
+        GDALDatasetUniquePtr poSrcDS(
+            GDALDriver::FromHandle(
+                GDALGetDriverByName("MEM"))->Create("", 1, 1, 1, GDT_Byte, nullptr));
+        {
+            GDALColorTable oCT;
+            {
+                GDALColorEntry e;
+                e.c1 = 0;
+                e.c2 = 0;
+                e.c3 = 0;
+                e.c4 = 255;
+                oCT.SetColorEntry(0, &e);
+            }
+            {
+                GDALColorEntry e;
+                e.c1 = 1;
+                e.c2 = 0;
+                e.c3 = 0;
+                e.c4 = 255;
+                oCT.SetColorEntry(1, &e);
+            }
+            {
+                GDALColorEntry e;
+                e.c1 = 255;
+                e.c2 = 255;
+                e.c3 = 255;
+                e.c4 = 255;
+                oCT.SetColorEntry(2, &e);
+            }
+            {
+                GDALColorEntry e;
+                e.c1 = 125;
+                e.c2 = 126;
+                e.c3 = 127;
+                e.c4 = 0;
+                oCT.SetColorEntry(3, &e);
+                poSrcDS->GetRasterBand(1)->SetNoDataValue(3);
+            }
+            poSrcDS->GetRasterBand(1)->SetColorTable(&oCT);
+        }
+
+        GDALDatasetUniquePtr poDstDS(
+            GDALDriver::FromHandle(
+                GDALGetDriverByName("MEM"))->Create("", 1, 1, 1, GDT_Byte, nullptr));
+        {
+            GDALColorTable oCT;
+            {
+                GDALColorEntry e;
+                e.c1 = 255;
+                e.c2 = 255;
+                e.c3 = 255;
+                e.c4 = 255;
+                oCT.SetColorEntry(0, &e);
+            }
+            {
+                GDALColorEntry e;
+                e.c1 = 0;
+                e.c2 = 0;
+                e.c3 = 1;
+                e.c4 = 255;
+                oCT.SetColorEntry(1, &e);
+            }
+            {
+                GDALColorEntry e;
+                e.c1 = 12;
+                e.c2 = 13;
+                e.c3 = 14;
+                e.c4 = 0;
+                oCT.SetColorEntry(2, &e);
+                poSrcDS->GetRasterBand(1)->SetNoDataValue(2);
+            }
+            poDstDS->GetRasterBand(1)->SetColorTable(&oCT);
+        }
+
+        unsigned char* panTranslationTable = poSrcDS->GetRasterBand(1)->GetIndexColorTranslationTo(poDstDS->GetRasterBand(1));
+        ensure_equals(static_cast<int>(panTranslationTable[0]), 1);
+        ensure_equals(static_cast<int>(panTranslationTable[1]), 1);
+        ensure_equals(static_cast<int>(panTranslationTable[2]), 0);
+        ensure_equals(static_cast<int>(panTranslationTable[3]), 2); // special nodata mapping
+        CPLFree(panTranslationTable);
     }
 } // namespace tut

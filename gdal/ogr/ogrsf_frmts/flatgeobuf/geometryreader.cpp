@@ -294,7 +294,12 @@ OGRCompoundCurve *GeometryReader::readCompoundCurve()
         auto g = std::unique_ptr<OGRGeometry>(reader.read());
         if (dynamic_cast<OGRCurve *>(g.get()) == nullptr)
             return nullptr;
-        cc->addCurveDirectly(g.release()->toCurve());
+        auto poCurve = g.release()->toCurve();
+        if( cc->addCurveDirectly(poCurve) != OGRERR_NONE )
+        {
+            delete poCurve;
+            return nullptr;
+        }
     }
     return cc.release();
 }
@@ -310,7 +315,12 @@ OGRCurvePolygon *GeometryReader::readCurvePolygon()
         auto g = std::unique_ptr<OGRGeometry>(reader.read());
         if (dynamic_cast<OGRCurve *>(g.get()) == nullptr)
             return nullptr;
-        cp->addRingDirectly(g.release()->toCurve());
+        auto poCurve = g.release()->toCurve();
+        if( cp->addRingDirectly(poCurve) != OGRERR_NONE )
+        {
+            delete poCurve;
+            return nullptr;
+        }
     }
     return cp.release();
 }
@@ -342,7 +352,12 @@ OGRMultiSurface *GeometryReader::readMultiSurface()
         auto g = std::unique_ptr<OGRGeometry>(reader.read());
         if (dynamic_cast<OGRSurface *>(g.get()) == nullptr)
             return nullptr;
-        ms->addGeometryDirectly(g.release());
+        auto poSubGeom = g.release();
+        if( ms->addGeometryDirectly(poSubGeom) != OGRERR_NONE )
+        {
+            delete poSubGeom;
+            return nullptr;
+        }
     }
     return ms.release();
 }
@@ -356,9 +371,14 @@ OGRPolyhedralSurface *GeometryReader::readPolyhedralSurface()
     for (uoffset_t i = 0; i < parts->size(); i++) {
         GeometryReader reader { parts->Get(i), m_hasZ, m_hasM };
         auto g = std::unique_ptr<OGRGeometry>(reader.read());
-        if (dynamic_cast<OGRSurface *>(g.get()) == nullptr)
+        if (g == nullptr )
             return nullptr;
-        ps->addGeometryDirectly(g.release());
+        auto poSubGeom = g.release();
+        if( ps->addGeometryDirectly(poSubGeom) != OGRERR_NONE )
+        {
+            delete poSubGeom;
+            return nullptr;
+        }
     }
     return ps.release();
 }

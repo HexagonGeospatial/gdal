@@ -1250,7 +1250,8 @@ int OGRProjCT::Initialize( const OGRSpatialReference * poSourceIn,
                 OGRSpatialReference oTmpSRS;
                 oTmpSRS.SetFromUserInput(osAuthCode);
                 oTmpSRS.SetDataAxisToSRSAxisMapping(poSRS->GetDataAxisToSRSAxisMapping());
-                if( oTmpSRS.IsSame(poSRS) )
+                const char* const apszOptionsIsSame[] = { "CRITERION=EQUIVALENT", nullptr };
+                if( oTmpSRS.IsSame(poSRS, apszOptionsIsSame) )
                 {
                     if( CanUseAuthorityDef(poSRS, &oTmpSRS, pszAuth) )
                     {
@@ -1353,8 +1354,9 @@ int OGRProjCT::Initialize( const OGRSpatialReference * poSourceIn,
     if( options.d->osCoordOperation.empty() && poSRSSource && poSRSTarget )
     {
         // Determine if we can skip the transformation completely.
+        const char* const apszOptionsIsSame[] = { "CRITERION=EQUIVALENT", nullptr };
         bNoTransform = !bSourceWrap && !bTargetWrap &&
-                       CPL_TO_BOOL(poSRSSource->IsSame(poSRSTarget));
+                       CPL_TO_BOOL(poSRSSource->IsSame(poSRSTarget, apszOptionsIsSame));
     }
 
     return TRUE;
@@ -1442,7 +1444,12 @@ bool OGRProjCT::ListCoordinateOperations(const char* pszSrcSRS,
     proj_operation_factory_context_set_spatial_criterion(
         ctx, operation_ctx, PROJ_SPATIAL_CRITERION_PARTIAL_INTERSECTION);
     proj_operation_factory_context_set_grid_availability_use(
-        ctx, operation_ctx, PROJ_GRID_AVAILABILITY_DISCARD_OPERATION_IF_MISSING_GRID);
+        ctx, operation_ctx,
+#if PROJ_VERSION_MAJOR >= 7
+        proj_context_is_network_enabled(ctx) ?
+            PROJ_GRID_AVAILABILITY_KNOWN_AVAILABLE:
+#endif
+            PROJ_GRID_AVAILABILITY_DISCARD_OPERATION_IF_MISSING_GRID);
 
     if( options.d->bHasAreaOfInterest )
     {
@@ -1532,16 +1539,27 @@ bool OGRProjCT::ListCoordinateOperations(const char* pszSrcSRS,
 #if PROJ_VERSION_MAJOR > 7 || (PROJ_VERSION_MAJOR == 7 && PROJ_VERSION_MINOR >= 2)
         if( datum == nullptr )
         {
-            datum = proj_crs_get_datum_ensemble(ctx, geodetic_crs);
+            datum = proj_crs_get_datum_forced(ctx, geodetic_crs);
         }
 #endif
         if( datum )
         {
+            auto ellps = proj_get_ellipsoid(ctx, datum);
+            proj_destroy(datum);
+            double semi_major_metre = 0;
+            double inv_flattening = 0;
+            proj_ellipsoid_get_parameters(ctx, ellps, &semi_major_metre,
+                                          nullptr, nullptr, &inv_flattening);
             auto cs = proj_create_ellipsoidal_2D_cs(
                 ctx, PJ_ELLPS2D_LONGITUDE_LATITUDE, nullptr, 0);
-            auto temp = proj_create_geographic_crs_from_datum(
-                ctx,"unnamed", datum, cs);
-            proj_destroy(datum);
+            // It is critical to set the prime meridian to 0
+            auto temp = proj_create_geographic_crs(
+                ctx, "unnamed crs", "unnamed datum",
+                proj_get_name(ellps),
+                semi_major_metre, inv_flattening,
+                "Reference prime meridian", 0, nullptr, 0,
+                cs);
+            proj_destroy(ellps);
             proj_destroy(cs);
             proj_destroy(geodetic_crs);
             geodetic_crs = temp;
@@ -1589,7 +1607,7 @@ bool OGRProjCT::ListCoordinateOperations(const char* pszSrcSRS,
         return false;
     }
 
-    const auto addTransformation = [=](PJ* op,
+    const auto addTransformation = [this, &pjGeogToSrc, &ctx](PJ* op,
                                        double west_lon, double south_lat,
                                        double east_lon, double north_lat) {
         double minx = -std::numeric_limits<double>::max();
@@ -2238,7 +2256,28 @@ int OGRProjCT::TransformWithErrorCodes(
             if( t )
                 t[i] = coord.xyzt.t;
             int err = 0;
-            if( coord.xyzt.x == HUGE_VAL )
+            if( std::isnan(coord.xyzt.x) )
+            {
+                // This shouldn't normally happen if PROJ projections behave
+                // correctly, but e.g inverse laea before PROJ 8.1.1 could
+                // do that for points out of domain.
+                // See https://github.com/OSGeo/PROJ/pull/2800
+                x[i] = HUGE_VAL;
+                y[i] = HUGE_VAL;
+                err = PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN;
+                static bool bHasWarned = false;
+                if( !bHasWarned )
+                {
+#ifdef DEBUG
+                    CPLError(CE_Warning, CPLE_AppDefined,
+                             "PROJ returned a NaN value. It should be fixed");
+#else
+                    CPLDebug("OGR_CT", "PROJ returned a NaN value. It should be fixed");
+#endif
+                    bHasWarned = true;
+                }
+            }
+            else if( coord.xyzt.x == HUGE_VAL )
             {
                 err = proj_errno(pj);
                 // PROJ should normally emit an error, but in case it does not
