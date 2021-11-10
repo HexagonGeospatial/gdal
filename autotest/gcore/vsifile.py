@@ -73,6 +73,8 @@ def vsifile_generic(filename):
     assert start_time == pytest.approx(statBuf.mtime, abs=2)
 
     fp = gdal.VSIFOpenL(filename, 'rb')
+    assert gdal.VSIFReadL(1, 0, fp) is None
+    assert gdal.VSIFReadL(0, 1, fp) is None
     buf = gdal.VSIFReadL(1, 7, fp)
     assert gdal.VSIFWriteL('a', 1, 1, fp) == 0
     assert gdal.VSIFTruncateL(fp, 0) != 0
@@ -108,21 +110,14 @@ def vsifile_generic(filename):
 
 
 def test_vsifile_1():
-    return vsifile_generic('/vsimem/vsifile_1.bin')
+    vsifile_generic('/vsimem/vsifile_1.bin')
 
 ###############################################################################
 # Test regular file system
 
 
 def test_vsifile_2():
-
-    ret = vsifile_generic('tmp/vsifile_2.bin')
-    if ret != 'success' and gdaltest.skip_on_travis():
-        # FIXME
-        # Fails on Travis with 17592186044423 (which is 0x10 00 00 00 00 07 instead of 7) at line 63
-        # Looks like a 32/64bit issue with Python bindings of VSIStatL()
-        pytest.skip()
-    return ret
+    vsifile_generic('tmp/vsifile_2.bin')
 
 ###############################################################################
 # Test ftruncate >= 32 bit
@@ -239,6 +234,53 @@ def test_vsifile_5():
     gdal.SetConfigOption('VSI_CACHE_SIZE', None)
     gdal.SetConfigOption('VSI_CACHE', None)
     gdal.Unlink('tmp/vsifile_5.bin')
+
+###############################################################################
+# Test vsicache an read errors (https://github.com/qgis/QGIS/issues/45293)
+
+
+def test_vsifile_vsicache_read_error():
+
+    tmpfilename = 'tmp/test_vsifile_vsicache_read_error.bin'
+    f = gdal.VSIFOpenL(tmpfilename, 'wb')
+    assert f
+    try:
+        gdal.VSIFTruncateL(f, 1000 * 1000)
+
+        with gdaltest.config_option('VSI_CACHE', 'YES'):
+            f2 = gdal.VSIFOpenL(tmpfilename, 'rb')
+        assert f2
+        try:
+            gdal.VSIFSeekL(f2, 500 * 1000, 0)
+
+            # Truncate the file to simulate a read error
+            gdal.VSIFTruncateL(f, 0)
+
+            assert len(gdal.VSIFReadL(1, 5000 * 1000, f2)) == 0
+
+            # Extend the file again
+            gdal.VSIFTruncateL(f, 1000 * 1000)
+
+            # Read again
+            gdal.VSIFSeekL(f2, 500 * 1000, 0)
+            assert len(gdal.VSIFReadL(1, 50 * 1000, f2)) == 50 * 1000
+
+            # Truncate the file to simulate a read error
+            gdal.VSIFTruncateL(f, 10)
+
+            CHUNK_SIZE=32768
+
+            gdal.VSIFSeekL(f2, 0, 0)
+            assert len(gdal.VSIFReadL(1, CHUNK_SIZE, f2)) == 10
+
+            gdal.VSIFSeekL(f2, 100, 0)
+            assert len(gdal.VSIFReadL(1, CHUNK_SIZE, f2)) == 0
+
+        finally:
+            gdal.VSIFCloseL(f2)
+    finally:
+        gdal.VSIFCloseL(f)
+        gdal.Unlink(tmpfilename)
 
 ###############################################################################
 # Test vsicache above 2 GB
@@ -843,13 +885,21 @@ def test_vsifile_opendir():
 # Test bugfix for https://github.com/OSGeo/gdal/issues/1559
 
 
-def test_vsitar_verylongfilename():
+def test_vsitar_verylongfilename_posix():
 
     f = gdal.VSIFOpenL('/vsitar/data/verylongfilename.tar/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/ccccccccccccccccccccccccccccccccccc/ddddddddddddddddddddddddddddddddddddddd/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/fffffffffffffffffffffffffffffffffffffffffffffff/foo', 'rb')
     assert f
     data = gdal.VSIFReadL(1, 3, f).decode('ascii')
     gdal.VSIFCloseL(f)
     assert data == 'bar'
+
+###############################################################################
+# Test bugfix for https://github.com/OSGeo/gdal/issues/4625
+
+
+def test_vsitar_longfilename_ustar():
+
+    assert gdal.VSIStatL('/vsitar/data/longfilename_ustar.tar/zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz/bbbbbbbbbbbbbbbbbbbbbbb/ccccccccccccccccccccccccc/dddddddddd/e/byte.tif') is not None
 
 
 def test_unlink_batch():
@@ -881,3 +931,16 @@ def test_vsifile_rmdirrecursive():
     open('tmp/rmdirrecursive/subdir/bar.bin', 'wb').close()
     assert gdal.RmdirRecursive('tmp/rmdirrecursive') == 0
     assert not os.path.exists('tmp/rmdirrecursive')
+
+###############################################################################
+
+def test_vsifile_vsizip_error():
+
+    for i in range(128):
+        filename = '/vsimem/tmp||maxlength=%d.zip' % i
+        with gdaltest.error_handler():
+            f = gdal.VSIFOpenL('/vsizip/%s/out.bin' % filename, 'wb')
+            if f is not None:
+                assert gdal.VSIFCloseL(f) < 0
+        gdal.Unlink(filename)
+

@@ -178,7 +178,7 @@ def test_gdalwarp_lib_9():
 
 def test_gdalwarp_lib_10():
 
-    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRIORA_NearestNeighbour)
+    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRA_NearestNeighbour)
 
     assert ds.GetRasterBand(1).Checksum() == 18784, 'Bad checksum'
 
@@ -190,7 +190,7 @@ def test_gdalwarp_lib_10():
 
 def test_gdalwarp_lib_11():
 
-    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRIORA_Bilinear)
+    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRA_Bilinear)
 
     ref_ds = gdal.Open('ref_data/testgdalwarp11.tif')
     maxdiff = gdaltest.compare_ds(ds, ref_ds, verbose=0)
@@ -208,7 +208,7 @@ def test_gdalwarp_lib_11():
 
 def test_gdalwarp_lib_12():
 
-    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRIORA_Cubic)
+    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRA_Cubic)
 
     ref_ds = gdal.Open('ref_data/testgdalwarp12.tif')
     maxdiff = gdaltest.compare_ds(ds, ref_ds, verbose=0)
@@ -226,7 +226,7 @@ def test_gdalwarp_lib_12():
 
 def test_gdalwarp_lib_13():
 
-    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRIORA_CubicSpline)
+    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRA_CubicSpline)
 
     ref_ds = gdal.Open('ref_data/testgdalwarp13.tif')
     maxdiff = gdaltest.compare_ds(ds, ref_ds, verbose=0)
@@ -244,7 +244,7 @@ def test_gdalwarp_lib_13():
 
 def test_gdalwarp_lib_14():
 
-    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRIORA_Lanczos)
+    ds = gdal.Warp('', '../gcore/data/byte.tif', format='MEM', width=40, height=40, resampleAlg=gdal.GRA_Lanczos)
 
     ref_ds = gdal.Open('ref_data/testgdalwarp14.tif')
     maxdiff = gdaltest.compare_ds(ds, ref_ds, verbose=0)
@@ -257,6 +257,31 @@ def test_gdalwarp_lib_14():
     ds = None
 
 ###############################################################################
+# Test parsing all resampling methods
+
+@pytest.mark.parametrize("resampleAlg,resampleAlgStr",
+                         [ (gdal.GRA_NearestNeighbour, "near"),
+                           (gdal.GRA_Cubic, "cubic"),
+                           (gdal.GRA_CubicSpline, "cubicspline"),
+                           (gdal.GRA_Lanczos, "lanczos"),
+                           (gdal.GRA_Average, "average"),
+                           (gdal.GRA_RMS, "rms"),
+                           (gdal.GRA_Mode, "mode"),
+                           (gdal.GRA_Max, "max"),
+                           (gdal.GRA_Min, "min"),
+                           (gdal.GRA_Med, "med"),
+                           (gdal.GRA_Q1, "q1"),
+                           (gdal.GRA_Q3, "q3"),
+                           (gdal.GRA_Sum, "sum") ])
+def test_gdalwarp_lib_resampling_methods(resampleAlg, resampleAlgStr):
+
+    option_list = gdal.WarpOptions(resampleAlg=resampleAlg, options='__RETURN_OPTION_LIST__')
+    assert option_list == ['-r', resampleAlgStr]
+    assert gdal.Warp('', '../gcore/data/byte.tif',
+                     format='MEM', width=2, height=2, resampleAlg=resampleAlg) is not None
+
+
+###############################################################################
 # Test -dstnodata
 
 
@@ -266,7 +291,7 @@ def test_gdalwarp_lib_15():
 
     assert ds.GetRasterBand(1).GetNoDataValue() == 1, 'Bad nodata value'
 
-    assert ds.GetRasterBand(1).Checksum() in (4523, 4547) # 4547 on Mac / Conda
+    assert ds.GetRasterBand(1).Checksum() in (4523, 4547) # 4547 with HPGN grids
 
     ds = None
 
@@ -1797,7 +1822,7 @@ def test_gdalwarp_lib_ct_wkt():
         BBOX[-90,-180,90,180]]]"""
 
     dstDS = gdal.Warp('', '../gcore/data/byte.tif',
-                      resampleAlg=gdal.GRIORA_Cubic, format='MEM',
+                      resampleAlg=gdal.GRA_Cubic, format='MEM',
                       dstSRS='EPSG:4326',
                       coordinateOperation=wkt)
 
@@ -2059,6 +2084,71 @@ def test_gdalwarp_lib_cutline_zero_width_sliver():
     src_ds.SetGeoTransform([690129,30,0,3723432,0,-30])
     ds = gdal.Warp('', src_ds, format='MEM', cutlineDSName='/vsimem/cutline.geojson')
     assert ds is not None
+
+###############################################################################
+# Test source nodata with destination alpha
+
+
+def test_gdalwarp_lib_src_nodata_with_dstalpha():
+
+    src_ds = gdal.GetDriverByName('MEM').Create('', 3, 1, 3)
+    src_ds.SetGeoTransform([2,1,0,49,0,-1])
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(32615)
+    src_ds.SetSpatialRef(srs)
+    src_ds.GetRasterBand(1).SetNoDataValue(1)
+    src_ds.GetRasterBand(1).WriteRaster(0, 0, 3, 1, struct.pack('B' * 3, 10, 1, 1))
+    src_ds.GetRasterBand(2).SetNoDataValue(2)
+    src_ds.GetRasterBand(2).WriteRaster(0, 0, 3, 1, struct.pack('B' * 3, 20, 2, 2))
+    src_ds.GetRasterBand(3).SetNoDataValue(3)
+    src_ds.GetRasterBand(3).WriteRaster(0, 0, 3, 1, struct.pack('B' * 3, 30, 3, 127))
+
+    # By default, a target pixel is invalid if all source pixels are invalid,
+    # but when warping each band, its individual nodata status is taken into
+    # account
+    ds = gdal.Warp('', src_ds, format='MEM', dstAlpha=True)
+    assert ds.GetRasterBand(1).GetNoDataValue() is None
+    assert struct.unpack('B' * 3, ds.GetRasterBand(1).ReadRaster()) == (10,  0, 0)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(2).ReadRaster()) == (20,  0, 0)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(3).ReadRaster()) == (30,  0, 127)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(4).ReadRaster()) == (255, 0, 255)
+
+    # Same as above
+    ds = gdal.Warp('', src_ds, format='MEM', dstAlpha=True,
+                   warpOptions=['UNIFIED_SRC_NODATA=PARTIAL'])
+    assert ds.GetRasterBand(1).GetNoDataValue() is None
+    assert struct.unpack('B' * 3, ds.GetRasterBand(1).ReadRaster()) == (10,  0, 0)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(2).ReadRaster()) == (20,  0, 0)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(3).ReadRaster()) == (30,  0, 127)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(4).ReadRaster()) == (255, 0, 255)
+
+    # In UNIFIED_SRC_NODATA=NO, target pixels will always be valid
+    ds = gdal.Warp('', src_ds, format='MEM', dstAlpha=True,
+                   warpOptions=['UNIFIED_SRC_NODATA=NO'])
+    assert ds.GetRasterBand(1).GetNoDataValue() is None
+    assert struct.unpack('B' * 3, ds.GetRasterBand(1).ReadRaster()) == (10,  0, 0)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(2).ReadRaster()) == (20,  0, 0)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(3).ReadRaster()) == (30,  0, 127)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(4).ReadRaster()) == (255, 255, 255)
+
+    # In UNIFIED_SRC_NODATA=YES, a target pixel is invalid if all source pixels are invalid,
+    # and the validty status of each band is determined by this unified validity
+    ds = gdal.Warp('', src_ds, format='MEM', dstAlpha=True,
+                   warpOptions=['UNIFIED_SRC_NODATA=YES'])
+    assert ds.GetRasterBand(1).GetNoDataValue() is None
+    assert struct.unpack('B' * 3, ds.GetRasterBand(1).ReadRaster()) == (10,  0, 1)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(2).ReadRaster()) == (20,  0, 2)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(3).ReadRaster()) == (30,  0, 127)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(4).ReadRaster()) == (255, 0, 255)
+
+    # Specifying srcNoData implies UNIFIED_SRC_NODATA=YES
+    ds = gdal.Warp('', src_ds, format='MEM', srcNodata="1 2 3", dstAlpha=True)
+    assert ds.GetRasterBand(1).GetNoDataValue() is None
+    assert struct.unpack('B' * 3, ds.GetRasterBand(1).ReadRaster()) == (10,  0, 1)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(2).ReadRaster()) == (20,  0, 2)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(3).ReadRaster()) == (30,  0, 127)
+    assert struct.unpack('B' * 3, ds.GetRasterBand(4).ReadRaster()) == (255, 0, 255)
+
 
 ###############################################################################
 # Cleanup

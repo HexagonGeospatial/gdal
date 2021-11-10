@@ -612,6 +612,30 @@ def test_tiff_write_18():
     gdaltest.tiff_drv.Delete('tmp/tw_18.tif')
 
 ###############################################################################
+# Test writing a IMD files with space in values
+
+
+def test_tiff_write_imd_with_space_in_values():
+
+    ds = gdal.GetDriverByName('GTiff').Create('/vsimem/out.tif', 1, 1)
+    ds.SetMetadataItem('foo.key', 'value with space', 'IMD')
+    ds.SetMetadataItem('foo.key2', 'value with " double quote', 'IMD')
+    ds.SetMetadataItem('foo.key3', "value with ' single quote", 'IMD')
+    ds.SetMetadataItem('foo.key4', """value with " double and ' single quote""", 'IMD')
+    ds.SetMetadataItem('foo.key5', 'value_with_;', 'IMD')
+    ds.SetMetadataItem('foo.key6', 'regular_value', 'IMD')
+    ds = None
+
+    f = gdal.VSIFOpenL('/vsimem/out.IMD', 'rb')
+    assert f
+    data = gdal.VSIFReadL(1, 1000, f)
+    gdal.VSIFCloseL(f)
+
+    gdal.GetDriverByName('GTiff').Delete('/vsimem/out.tif')
+
+    assert data == b'BEGIN_GROUP = foo\n\tkey = "value with space";\n\tkey2 = \'value with " double quote\';\n\tkey3 = "value with \' single quote";\n\tkey4 = "value with \'\' double and \' single quote";\n\tkey5 = "value_with_;";\n\tkey6 = regular_value;\nEND_GROUP = foo\nEND;\n'
+
+###############################################################################
 # Test that above test still work with the optimization in the GDAL_DISABLE_READDIR_ON_OPEN
 # case (#3996)
 
@@ -4152,6 +4176,45 @@ def test_tiff_write_117():
         'if GDAL is configured with external libtiff 4.x, it can fail if it is older than 4.0.3. With internal libtiff, should not fail'
 
 ###############################################################################
+# Test bugfix for ticket gh #4538 (rewriting of a deflate compressed tile, libtiff bug)
+
+
+def test_tiff_write_rewrite_in_place_issue_gh_4538():
+    # This fail with libtiff <= 4.3.0
+    md = gdaltest.tiff_drv.GetMetadata()
+    if md['LIBTIFF'] != 'INTERNAL':
+        pytest.skip()
+
+    # Defeats the logic that fixed test_tiff_write_117
+
+    import array
+    filename = '/vsimem/tmp.tif'
+    ds = gdal.GetDriverByName('GTiff').Create(filename, 144*2, 128, 1,
+                                              options = ['TILED=YES',
+                                                         'COMPRESS=PACKBITS',
+                                                         'BLOCKXSIZE=144',
+                                                         'BLOCKYSIZE=128'])
+    x = ((144*128)//2) - 645
+    ds.GetRasterBand(1).WriteRaster(0, 0, 144, 128,
+                                    b'\x00' * x  + array.array('B', [i % 255 for i in range(144*128-x)]))
+    block1_data = b'\x00' * (x + 8) + array.array('B', [i % 255 for i in range(144*128-(x+8))])
+    ds.GetRasterBand(1).WriteRaster(144, 0, 144, 128, block1_data)
+    ds = None
+
+    ds = gdal.Open(filename, gdal.GA_Update)
+    ds.GetRasterBand(1).ReadRaster(144, 0, 144, 128)
+    block0_data = array.array('B', [i % 255 for i in range(144*128)])
+    ds.GetRasterBand(1).WriteRaster(0, 0, 144, 128, block0_data)
+    ds = None
+
+    ds = gdal.Open(filename)
+    assert ds.GetRasterBand(1).ReadRaster(0, 0, 144, 128) == block0_data
+    assert ds.GetRasterBand(1).ReadRaster(144, 0, 144, 128) == block1_data
+    ds = None
+
+    gdal.Unlink(filename)
+
+###############################################################################
 # Test bugfix for ticket #4816
 
 
@@ -7462,6 +7525,38 @@ def test_tiff_write_overviews_nan_nodata():
     assert ds.GetRasterBand(1).GetOverviewCount() == 2
     ds = None
     gdal.Unlink(filename)
+
+
+###############################################################################
+# Test scenario with multiple IFDs and directory rewriting
+# https://github.com/OSGeo/gdal/issues/3746
+
+
+@pytest.mark.parametrize("reopen", [True, False])
+def test_tiff_write_muliple_ifds_directory_rewriting(reopen):
+
+    filename = '/vsimem/out.tif'
+    ds = gdal.GetDriverByName('GTiff').Create(filename, 32, 32, options=['TILED=YES', 'SPARSE_OK=YES'])
+    ds.BuildOverviews('NONE', [2])
+    if reopen:
+        ds = None
+        ds = gdal.Open(filename, gdal.GA_Update)
+
+    ds.GetRasterBand(1).GetOverview(0).Fill(2)
+
+    # Rewrite second IFD
+    ds.GetRasterBand(1).GetOverview(0).SetNoDataValue(0)
+    # Rewrite first IFD
+    ds.GetRasterBand(1).SetNoDataValue(3)
+
+    ds = None
+
+    ds = gdal.Open(filename)
+    mm = ds.GetRasterBand(1).GetOverview(0).ComputeRasterMinMax()
+    ds = None
+
+    gdal.Unlink(filename)
+    assert mm == (2, 2)
 
 
 def test_tiff_write_cleanup():

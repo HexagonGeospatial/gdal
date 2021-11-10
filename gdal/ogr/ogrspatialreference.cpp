@@ -44,6 +44,7 @@
 #include "cpl_conv.h"
 #include "cpl_csv.h"
 #include "cpl_error.h"
+#include "cpl_error_internal.h"
 #include "cpl_http.h"
 #include "cpl_multiproc.h"
 #include "cpl_string.h"
@@ -643,7 +644,7 @@ OGRErr OGRSpatialReference::Private::replaceConversionAndUnref(PJ* conv)
 /*                           ToPointer()                                */
 /************************************************************************/
 
-inline OGRSpatialReference* ToPointer(OGRSpatialReferenceH hSRS)
+static inline OGRSpatialReference* ToPointer(OGRSpatialReferenceH hSRS)
 {
     return OGRSpatialReference::FromHandle(hSRS);
 }
@@ -652,7 +653,7 @@ inline OGRSpatialReference* ToPointer(OGRSpatialReferenceH hSRS)
 /*                           ToHandle()                                 */
 /************************************************************************/
 
-inline OGRSpatialReferenceH ToHandle(OGRSpatialReference* poSRS)
+static inline OGRSpatialReferenceH ToHandle(OGRSpatialReference* poSRS)
 {
     return OGRSpatialReference::ToHandle(poSRS);
 }
@@ -1485,7 +1486,10 @@ OGRErr OGRSpatialReference::exportToWkt( char ** ppszResult,
     auto ctxt = d->getPROJContext();
     auto wktFormat = PJ_WKT1_GDAL;
     const char* pszFormat = CSLFetchNameValueDef(papszOptions, "FORMAT",
-                                    CPLGetConfigOption("OSR_WKT_FORMAT", ""));
+                                    CPLGetConfigOption("OSR_WKT_FORMAT", "DEFAULT"));
+    if( EQUAL(pszFormat, "DEFAULT") )
+        pszFormat = "";
+
     if( EQUAL(pszFormat, "WKT1_ESRI" ) || d->m_bMorphToESRI )
     {
         wktFormat = PJ_WKT1_ESRI;
@@ -1552,9 +1556,27 @@ OGRErr OGRSpatialReference::exportToWkt( char ** ppszResult,
             d->getPROJContext(), d->m_pj_crs, true, true);
     }
 
+    std::vector<CPLErrorHandlerAccumulatorStruct> aoErrors;
+    CPLInstallErrorHandlerAccumulator(aoErrors);
     const char* pszWKT = proj_as_wkt(
         ctxt, boundCRS ? boundCRS : d->m_pj_crs,
         wktFormat, aosOptions.List());
+    CPLUninstallErrorHandlerAccumulator();
+    for( const auto& oError: aoErrors )
+    {
+        if( pszFormat[0] == '\0' &&
+            (oError.msg.find("Unsupported conversion method") != std::string::npos ||
+             oError.msg.find("can only be exported to WKT2") != std::string::npos) )
+        {
+            CPLErrorReset();
+            // If we cannot export in the default mode (WKT1), retry with WKT2
+            pszWKT = proj_as_wkt(
+                ctxt, boundCRS ? boundCRS : d->m_pj_crs,
+                PJ_WKT2_2018, aosOptions.List());
+            break;
+        }
+        CPLError( oError.type, oError.no, "%s", oError.msg.c_str() );
+    }
 
     if( !pszWKT )
     {
@@ -2413,7 +2435,8 @@ OGRErr OSRSetLinearUnitsAndUpdateParameters( OGRSpatialReferenceH hSRS,
  * \brief Set the linear units for the projection.
  *
  * This method creates a UNIT subnode with the specified values as a
- * child of the PROJCS, GEOCCS or LOCAL_CS node.
+ * child of the PROJCS, GEOCCS, GEOGCS or LOCAL_CS node. When called on a
+ * Geographic 3D CRS the vertical axis units will be set.
  *
  * This method does the same as the C function OSRSetLinearUnits().
  *
@@ -2588,8 +2611,9 @@ OGRErr OSRSetTargetLinearUnits( OGRSpatialReferenceH hSRS,
  * \brief Fetch linear projection units.
  *
  * If no units are available, a value of "Meters" and 1.0 will be assumed.
- * This method only checks directly under the PROJCS, GEOCCS or LOCAL_CS node
- * for units.
+ * This method only checks directly under the PROJCS, GEOCCS, GEOGCS or
+ * LOCAL_CS node for units. When called on a Geographic 3D CRS the vertical
+ * axis units will be returned.
  *
  * This method does the same thing as the C function OSRGetLinearUnits()
  *
@@ -2664,7 +2688,7 @@ double OSRGetLinearUnits( OGRSpatialReferenceH hSRS, char ** ppszName )
  *
  * @param pszTargetKey the key to look on. i.e. "PROJCS" or "VERT_CS". Might be
  * NULL, in which case PROJCS will be implied (and if not found, LOCAL_CS,
- * GEOCCS and VERT_CS are looked up)
+ * GEOCCS, GEOGCS and VERT_CS are looked up)
  * @param ppszName a pointer to be updated with the pointer to the units name.
  * The returned value remains internal to the OGRSpatialReference and should not
  * be freed, or modified.  It may be invalidated on the next
@@ -2739,16 +2763,39 @@ double OGRSpatialReference::GetTargetLinearUnits( const char *pszTargetKey,
                 break;
             }
             auto csType = proj_cs_get_type(d->getPROJContext(), coordSys);
-            if(csType != PJ_CS_TYPE_CARTESIAN && csType != PJ_CS_TYPE_VERTICAL )
+
+            if( csType != PJ_CS_TYPE_CARTESIAN
+                && csType != PJ_CS_TYPE_VERTICAL
+                && csType != PJ_CS_TYPE_ELLIPSOIDAL
+                && csType != PJ_CS_TYPE_SPHERICAL )
             {
                 proj_destroy(coordSys);
                 break;
             }
 
+            int axis = 0;
+
+            if ( csType == PJ_CS_TYPE_ELLIPSOIDAL
+                 || csType == PJ_CS_TYPE_SPHERICAL )
+            {
+                const int axisCount = proj_cs_get_axis_count(
+                    d->getPROJContext(), coordSys);
+
+                if( axisCount == 3 )
+                {
+                    axis = 2;
+                }
+                else
+                {
+                    proj_destroy(coordSys);
+                    break;
+                }
+            }
+
             double dfConvFactor = 0.0;
             const char* pszUnitName = nullptr;
             if( !proj_cs_get_axis_info(
-                d->getPROJContext(), coordSys, 0, nullptr, nullptr, nullptr,
+                d->getPROJContext(), coordSys, axis, nullptr, nullptr, nullptr,
                 &dfConvFactor, &pszUnitName, nullptr, nullptr) )
             {
                 proj_destroy(coordSys);
@@ -5157,6 +5204,9 @@ double OGRSpatialReference::GetProjParm( const char * pszName,
                                          OGRErr *pnErr ) const
 
 {
+    d->refreshProjObj();
+    GetRoot(); // force update of d->m_bNodesWKT2
+
     if( pnErr != nullptr )
         *pnErr = OGRERR_NONE;
 
@@ -5174,6 +5224,17 @@ double OGRSpatialReference::GetProjParm( const char * pszName,
     const int iChild = FindProjParm( pszName, poPROJCS );
     if( iChild == -1 )
     {
+#if PROJ_VERSION_MAJOR > 6 || PROJ_VERSION_MINOR >= 3
+        if( IsProjected() && GetAxesCount() == 3 )
+        {
+            OGRSpatialReference* poSRSTmp = Clone();
+            poSRSTmp->DemoteTo2D(nullptr);
+            const double dfRet = poSRSTmp->GetProjParm(pszName, dfDefaultValue, pnErr);
+            delete poSRSTmp;
+            return dfRet;
+        }
+#endif
+
         if( pnErr != nullptr )
             *pnErr = OGRERR_FAILURE;
         return dfDefaultValue;
@@ -6971,6 +7032,15 @@ OGRErr OSRSetPolyconic( OGRSpatialReferenceH hSRS,
 /*                               SetPS()                                */
 /************************************************************************/
 
+/** Sets a Polar Stereographic projection.
+ *
+ * Two variants are possible:
+ * - Polar Stereographic Variant A: dfCenterLat must be +/- 90° and is
+ *   interpretated as the latitude of origin, combined with the scale factor
+ * - Polar Stereographic Variant B: dfCenterLat is different from +/- 90° and
+ *   is interpretated as the latitude of true scale. In that situation, dfScale
+ *   must be set to 1 (it is ignored in the projection parameters)
+ */
 OGRErr OGRSpatialReference::SetPS(
                                 double dfCenterLat, double dfCenterLong,
                                 double dfScale,
@@ -9566,17 +9636,27 @@ int OGRSpatialReference::GetAxesCount() const
         return 0;
     }
     d->demoteFromBoundCRS();
+    auto ctxt = d->getPROJContext();
     if( d->m_pjType == PJ_TYPE_COMPOUND_CRS )
     {
         for( int i = 0; ; i++ )
         {
-            auto subCRS = proj_crs_get_sub_crs(d->getPROJContext(), d->m_pj_crs, i);
+            auto subCRS = proj_crs_get_sub_crs(ctxt, d->m_pj_crs, i);
             if( !subCRS )
                 break;
-            auto cs = proj_crs_get_coordinate_system(d->getPROJContext(), subCRS);
+            if( proj_get_type(subCRS) == PJ_TYPE_BOUND_CRS )
+            {
+                auto baseCRS = proj_get_source_crs(ctxt, subCRS);
+                if( baseCRS )
+                {
+                    proj_destroy(subCRS);
+                    subCRS = baseCRS;
+                }
+            }
+            auto cs = proj_crs_get_coordinate_system(ctxt, subCRS);
             if( cs )
             {
-                axisCount += proj_cs_get_axis_count(d->getPROJContext(), cs);
+                axisCount += proj_cs_get_axis_count(ctxt, cs);
                 proj_destroy(cs);
             }
             proj_destroy(subCRS);
@@ -9584,10 +9664,10 @@ int OGRSpatialReference::GetAxesCount() const
     }
     else
     {
-        auto cs = proj_crs_get_coordinate_system(d->getPROJContext(), d->m_pj_crs);
+        auto cs = proj_crs_get_coordinate_system(ctxt, d->m_pj_crs);
         if( cs )
         {
-            axisCount = proj_cs_get_axis_count(d->getPROJContext(), cs);
+            axisCount = proj_cs_get_axis_count(ctxt, cs);
             proj_destroy(cs);
         }
     }
@@ -10841,25 +10921,54 @@ int OGRSpatialReference::EPSGTreatsAsLatLong() const
     }
 
     bool ret = false;
-    auto cs = proj_crs_get_coordinate_system(d->getPROJContext(),
-                                                d->m_pj_crs);
-    d->undoDemoteFromBoundCRS();
-
-    if( cs )
+    if ( d->m_pjType == PJ_TYPE_COMPOUND_CRS )
     {
-        const char* pszDirection = nullptr;
-        if( proj_cs_get_axis_info(
-            d->getPROJContext(), cs, 0, nullptr, nullptr, &pszDirection,
-            nullptr, nullptr, nullptr, nullptr) )
+        auto horizCRS = proj_crs_get_sub_crs(d->getPROJContext(),
+                                                d->m_pj_crs, 0);
+        if ( horizCRS )
         {
-            if( EQUAL(pszDirection, "north") )
+            auto cs = proj_crs_get_coordinate_system(d->getPROJContext(),
+                                                        horizCRS);
+            if ( cs )
             {
-                ret = true;
-            }
-        }
+                const char* pszDirection = nullptr;
+                if( proj_cs_get_axis_info(
+                    d->getPROJContext(), cs, 0, nullptr, nullptr,
+                    &pszDirection, nullptr, nullptr, nullptr, nullptr) )
+                {
+                    if( EQUAL(pszDirection, "north") )
+                    {
+                        ret = true;
+                    }
+                }
 
-        proj_destroy(cs);
+                proj_destroy(cs);
+            }
+
+            proj_destroy(horizCRS);
+        }
     }
+    else
+    {
+        auto cs = proj_crs_get_coordinate_system(d->getPROJContext(),
+                                                    d->m_pj_crs);
+        if ( cs )
+        {
+            const char* pszDirection = nullptr;
+            if( proj_cs_get_axis_info(
+                d->getPROJContext(), cs, 0, nullptr, nullptr, &pszDirection,
+                nullptr, nullptr, nullptr, nullptr) )
+            {
+                if( EQUAL(pszDirection, "north") )
+                {
+                    ret = true;
+                }
+            }
+
+            proj_destroy(cs);
+        }
+    }
+    d->undoDemoteFromBoundCRS();
 
     return ret;
 }
@@ -11667,11 +11776,40 @@ OGRErr OSRDemoteTo2D( OGRSpatialReferenceH hSRS, const char* pszName  )
 int OGRSpatialReference::GetEPSGGeogCS() const
 
 {
-    const char *pszAuthName = GetAuthorityName( "GEOGCS" );
+/* -------------------------------------------------------------------- */
+/*      Check axis order.                                               */
+/* -------------------------------------------------------------------- */
+    auto poGeogCRS = std::unique_ptr<OGRSpatialReference>(CloneGeogCS());
+    if( !poGeogCRS )
+        return -1;
+
+    bool ret = false;
+    poGeogCRS->d->demoteFromBoundCRS();
+    auto cs = proj_crs_get_coordinate_system(d->getPROJContext(),
+                                             poGeogCRS->d->m_pj_crs);
+    poGeogCRS->d->undoDemoteFromBoundCRS();
+    if( cs )
+    {
+        const char* pszDirection = nullptr;
+        if( proj_cs_get_axis_info(
+            d->getPROJContext(), cs, 0, nullptr, nullptr, &pszDirection,
+            nullptr, nullptr, nullptr, nullptr) )
+        {
+            if( EQUAL(pszDirection, "north") )
+            {
+                ret = true;
+            }
+        }
+
+        proj_destroy(cs);
+    }
+    if( !ret )
+        return -1;
 
 /* -------------------------------------------------------------------- */
 /*      Do we already have it?                                          */
 /* -------------------------------------------------------------------- */
+    const char *pszAuthName = GetAuthorityName( "GEOGCS" );
     if( pszAuthName != nullptr && EQUAL(pszAuthName, "epsg") )
         return atoi(GetAuthorityCode( "GEOGCS" ));
 

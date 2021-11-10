@@ -378,6 +378,9 @@ size_t VSIMemHandle::Read( void * pBuffer, size_t nSize, size_t nCount )
 
 {
     size_t nBytesToRead = nSize * nCount;
+    if( nBytesToRead == 0 )
+        return 0;
+
     if( nCount > 0 && nBytesToRead / nCount != nSize )
     {
         bEOF = true;
@@ -1034,8 +1037,11 @@ GByte *VSIGetMemFileBuffer( const char *pszFilename,
         CPLDebug("VSIMEM", "VSIGetMemFileBuffer() %s: ref_count=%d (before)",
                  poFile->osFilename.c_str(), poFile->nRefCount);
 #endif
-        CPLAtomicDec(&(poFile->nRefCount));
-        delete poFile;
+        poFile->pabyData = nullptr;
+        poFile->nLength = 0;
+        poFile->nAllocLength = 0;
+        if (CPLAtomicDec(&(poFile->nRefCount)) == 0)
+            delete poFile;
     }
 
     return pabyData;
