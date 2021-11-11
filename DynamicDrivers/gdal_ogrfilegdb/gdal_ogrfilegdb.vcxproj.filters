@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{dddd0393-7156-4975-acda-61219988481b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{1af37c64-1f49-4d1e-a36c-ad57f5d7dad9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{7722bdf3-76a9-4276-a5d5-97ea7f19d1b5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\FGdbDatasource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\FGdbDriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\FGdbLayer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\FGdbResultLayer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\FGdbUtils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\FGdbUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\filegdbsdk_headers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\ogr\ogrsf_frmts\filegdb\ogr_fgdb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\root\arch\$(Platform)$(Configuration)\obj\sdk\target\dependency\gcore\Version.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+</Project>

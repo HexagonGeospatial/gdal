@@ -92,10 +92,10 @@ Goto :EOF
 :SignAndVersionDllsInDir
 
 pushd %1
-for /f %%f in ('dir /b gdal_*.dll') do (
-call :VersionAFile %1\%%f
-call :SignAFile %1\%%f
-)
+
+call :VersionAFile %1\%DLL_NAME%
+call :SignAFile %1\%DLL_NAME%
+
 popd
 
 Goto :EOF

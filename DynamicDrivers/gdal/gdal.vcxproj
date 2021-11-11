@@ -187,10 +187,10 @@ if NOT DEFINED PLATFORM_ARCH (
 set PLATFORM_ARCH=msvc$(PlatformToolsetVersion)
 )
 if NOT DEFINED GDAL_VERSION (
-set GDAL_VERSION=2.1.2
+set GDAL_VERSION=3.3.0
 )
 if NOT DEFINED GDAL_SUFFIX (
-set GDAL_SUFFIX=1
+set GDAL_SUFFIX=36
 )
 %MVN_CMD% -B -f %(FullPath) -s %MVN_SETTINGS% clean package -P$(Platform),$(Configuration),%PLATFORM_ARCH%</Command>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(CROCKETT_LIB)\$(Platform)$(Configuration)\gdal_i.lib</Outputs>

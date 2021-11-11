@@ -1,0 +1,163 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>com.hexagon.thirdparty</groupId>
+		<artifactId>InsertCoinThirdPartyParent</artifactId>
+		<relativePath>../../../../../maven/ic_parent.xml</relativePath>
+		<version>1.0.0</version>
+	</parent>
+	<name>filegdb gdal driver Publish Pom</name>
+	<description>Publishes FileGDB gdal driver</description>
+	<url></url>
+	<groupId>org.gdal.drivers</groupId>
+	<artifactId>ogrfilegdb</artifactId>
+	<version>1.0.0</version>
+	<packaging>pom</packaging>
+	<properties>
+		<filegdbapi.version>${env.FILEGDB_VERSION}</filegdbapi.version>
+		<gdal.version>${env.GDAL_VERSION}</gdal.version>
+		<copyToDir>../root</copyToDir>
+		<build.command>build_windows.bat</build.command>
+		<so.ext>.dll</so.ext>
+		<pdb.ext>.pdb</pdb.ext>
+		<code.signing.dir>${copyToDir}/codesigning</code.signing.dir>
+	</properties>
+	<profiles>
+		<profile>
+			<id>Win32</id>
+			<properties>
+				<cpuArch>x86</cpuArch>
+			</properties>
+		</profile>
+		<profile>
+			<id>x64</id>
+			<properties>
+				<cpuArch>x64</cpuArch>
+			</properties>
+		</profile>
+		<profile>
+			<id>x64linux</id>
+			<properties>
+				<cpuArch>x64</cpuArch>
+			</properties>
+		</profile>
+		<profile>
+			<id>x86linux</id>
+			<properties>
+				<cpuArch>x86</cpuArch>
+			</properties>
+		</profile>
+		<profile>
+			<id>linux</id>
+			<activation>
+			<os>
+				<family>unix</family>
+				<name>linux</name>
+			</os>
+			</activation>
+			<properties>
+				<build.command>build_linux.sh</build.command>
+				<so.ext>.so</so.ext>
+				<pdb.ext>.so.debug</pdb.ext>
+			</properties>
+		 </profile>
+    </profiles>
+  <!-- This pom is launched by performing build action in a Visual Studio project/solution.
+         The solution sets the Java and maven environment and the platform, profile(s), and 
+         maven phase information required to build the software. -->
+  <!-- Use profiles passed in on the maven command line to set properties 
+         that effect how the build steps operate. You can also put build actions
+         in profiles if needed. -->
+  <!-- Build steps follow a pattern of compile, package, install, deploy (tied to phase) and are launched as
+           configurations in the Visual Studio project / solution for this build. -->
+    <build>
+		<directory>${project.basedir}/target</directory>
+		<plugins>
+			<plugin>
+			<groupId>org.apache.maven.plugins</groupId>
+			<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>windows-only-artefacts</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>unpack</goal>
+						</goals>
+						<configuration>
+							<artifactItems>
+								<artifactItem>
+									<groupId>com.hexagon.geospatial.build</groupId>
+									<artifactId>CodeSigningTools</artifactId>
+									<version>${code.signing.tools.version}</version>
+									<classifier />
+									<type>${default.platform.type}</type>
+									<outputDirectory>${code.signing.dir}</outputDirectory>
+									<includes>**/**</includes>
+									<overWrite>${overwriteFlag}</overWrite>
+								</artifactItem>
+							</artifactItems>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+	<!-- The maven ant plugin allows you to use ant tasks to execute a number of generic tasks
+         such as <exec> which can fire off build actions that 3rd party software typically require. 
+         Naturally, the ant tasks you need to write here will vary on the software you are working with. -->
+			<plugin>
+			<groupId>org.apache.maven.plugins</groupId>
+			<artifactId>maven-antrun-plugin</artifactId>
+			<version>3.0.0</version>
+				<executions>
+					<execution>
+						<id>main</id>
+						<phase>compile</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+							<!-- Pre-clean the webP debug libraries -->
+								<exec dir="${project.basedir}" executable="cmd" failonerror="true">
+									<env key="CODE_SIGNING_DIR" path="${code.signing.dir}" />
+									<env key="VERPATCH_DIR" path="${project.basedir}/../../../../../tools" />
+									<env key="SIGN_PROGRAM" value="&quot;FILEGDB GDAL Driver&quot;" />
+									<env key="CURRENT_BUILD_VERSION" value="${env.FILEGDB_VERSION}" />
+									<env key="RELEASE_BIN_DIR" path="${copyToDir}/bin/${platformName}Release" />
+									<env key="DEBUG_BIN_DIR" path="${copyToDir}/bin/${platformName}Debug" />
+									<env key="DLL_NAME" value="ogr_FileGDB.dll" />
+									<arg value="/c" />
+									<arg path="${project.basedir}/../tools/${build.command}" />
+									<arg value="${cpuArch}" />
+									<arg value="${compiler}" />
+									<arg value="gdal_ogrfilegdb" />
+									<arg value="&quot;${vcvarsPath}&quot;" />
+									<arg value="${vcvarsCpuArch}" />
+								</exec>
+							</target>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>package-dll-so</id>
+						<phase>package</phase>
+						<goals>
+						  <goal>single</goal>
+						</goals>
+						<configuration>
+							<finalName>${project.artifactId}-${gdal.version}-${filegdbapi.version}</finalName>
+							<outputDirectory>${project.basedir}</outputDirectory>
+							<descriptors>
+								<descriptor>./assembly.xml</descriptor>
+							</descriptors>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
+

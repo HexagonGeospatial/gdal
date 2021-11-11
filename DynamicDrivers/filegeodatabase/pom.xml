@@ -1,0 +1,140 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.erdas.gen3</groupId>
+    <artifactId>gen3-parent</artifactId>
+    <version>22</version>
+  </parent>
+
+  <name>ESRI File Geodatabase API</name>
+  <description>Unpacks the ESRI File Geodatabase API to the various needed directories.</description>
+  <url></url>
+
+  <groupId>com.esri</groupId>
+  <artifactId>FileGDBAPI</artifactId>
+  <version>1.5.1</version>
+  <packaging>pom</packaging>
+  
+  <properties>
+    <copyToDir>../root</copyToDir>
+    <filegeodatabaseapi.version>1.5.1</filegeodatabaseapi.version>
+    </properties>
+  <profiles>
+
+    <profile>
+      <!-- Windows 32-bit Release -->
+      <id>Win32</id>
+      <properties>
+        <sdkArch>Win32</sdkArch>
+        <libPostfix></libPostfix>
+      </properties>
+    </profile>
+
+    <profile>
+      <!-- Windows 32-bit Release -->
+      <id>x64</id>
+      <properties>
+        <sdkArch>x64</sdkArch>
+        <libPostfix>64</libPostfix>
+      </properties>
+    </profile>
+
+    <profile>
+      <!-- Linux 64-bit Release -->
+      <id>x64linux</id>
+      <properties>
+        <sdkArch>x64</sdkArch>
+      </properties>
+    </profile>
+
+    <profile>
+      <!-- Linux 32-bit Release -->
+      <id>x86linux</id>
+      <properties>
+        <sdkArch>x86</sdkArch>
+      </properties>
+    </profile>
+
+    <profile>
+      <!-- Windows 32-bit Release -->
+      <id>Release</id>
+      <properties>
+        <configurationPostfix></configurationPostfix>
+        <excludePostfix>_debug</excludePostfix>
+      </properties>
+    </profile>
+    <profile>
+      <!-- Windows 32-bit Debug -->
+      <id>Debug</id>
+      <properties>
+        <configurationPostfix>_debug</configurationPostfix>
+        <excludePostfix>ThisDoesNotMatter</excludePostfix>
+      </properties>
+    </profile>
+  </profiles>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>2.10</version>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>unpack</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>com.esri</groupId>
+                  <artifactId>FileGDBAPI</artifactId>
+                  <classifier>${osFamily}-${compiler}</classifier>
+                  <version>${filegeodatabaseapi.version}</version>
+                  <type>zip</type>
+                  <includes>**/**</includes>
+                  <overWrite>${overwriteFlag}</overWrite>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+
+        </executions>
+      </plugin>
+
+      <!-- Copy To Root -->
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>1.8</version>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <copy todir="${copyToDir}/usr/include/${archm}/filegeodatabase" overwrite="${overwriteFlag}">
+                  <fileset dir="${project.build.directory}/dependency/include">
+                    <include name="**/*"/>
+                  </fileset>
+                </copy>
+                <copy todir="${copyToDir}/usr/lib/${archm}" overwrite="${overwriteFlag}">
+                  <fileset dir="${project.build.directory}/dependency/lib${libPostfix}">
+                    <include name="**/*"/>
+                  </fileset>
+                </copy>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+
+</project>

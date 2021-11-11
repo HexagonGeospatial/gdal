@@ -86,6 +86,7 @@
 											<env key="LIB_NCSECW" value="${env.LIB_NCSECW}" />
 											<env key="RELEASE_BIN_DIR" path="${copyToDir}/bin/${platformName}Release" />
 											<env key="DEBUG_BIN_DIR" path="${copyToDir}/bin/${platformName}Debug" />
+											<env key="DLL_NAME" value="gdal_ECW_JP2ECW.dll" />
 											<arg value="/c" />
 											<arg path="${project.basedir}/../tools/${build.command}" />
 											<arg value="${cpuArch}" />

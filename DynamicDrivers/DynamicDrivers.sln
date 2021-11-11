@@ -11,6 +11,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ecwjp2sdk", "ecwjp2sdk\ecwj
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gdal_ecwjp2", "gdal_ecwjp2\gdal_ecwjp2.vcxproj", "{B33E7807-42B9-417F-85C4-F142CE195B79}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "filegeodatabase", "filegeodatabase\filegeodatabase.vcxproj", "{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gdal_ogrfilegdb", "gdal_ogrfilegdb\gdal_ogrfilegdb.vcxproj", "{2B07FDE9-710A-4CDD-9066-7C643B2ED045}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -43,6 +47,22 @@ Global
 		{B33E7807-42B9-417F-85C4-F142CE195B79}.Release|Win32.Build.0 = Release|Win32
 		{B33E7807-42B9-417F-85C4-F142CE195B79}.Release|x64.ActiveCfg = Release|x64
 		{B33E7807-42B9-417F-85C4-F142CE195B79}.Release|x64.Build.0 = Release|x64
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Debug|Win32.ActiveCfg = Debug|Win32
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Debug|Win32.Build.0 = Debug|Win32
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Debug|x64.ActiveCfg = Debug|x64
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Debug|x64.Build.0 = Debug|x64
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Release|Win32.ActiveCfg = Release|Win32
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Release|Win32.Build.0 = Release|Win32
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Release|x64.ActiveCfg = Release|x64
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8}.Release|x64.Build.0 = Release|x64
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Debug|Win32.ActiveCfg = Debug|Win32
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Debug|Win32.Build.0 = Debug|Win32
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Debug|x64.ActiveCfg = Debug|x64
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Debug|x64.Build.0 = Debug|x64
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Release|Win32.ActiveCfg = Release|Win32
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Release|Win32.Build.0 = Release|Win32
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Release|x64.ActiveCfg = Release|x64
+		{2B07FDE9-710A-4CDD-9066-7C643B2ED045}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,6 +70,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{FB4E8625-3204-4273-82CD-92E6808715AB} = {5A4CF951-41FB-40C1-8583-8580860A08F2}
 		{FB2E8645-1304-4563-87CD-92E6808715AB} = {5A4CF951-41FB-40C1-8583-8580860A08F2}
+		{CB769CCF-D582-44F5-8E34-8FDCBF0A09A8} = {5A4CF951-41FB-40C1-8583-8580860A08F2}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {537F3D85-AD12-4091-BA21-CFCBCFFA0C5B}
