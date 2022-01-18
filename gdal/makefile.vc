@@ -188,7 +188,7 @@ lib_dist:	default
 	copy .\port\*.h .\$(DISTDIR)
 	copy .\gcore\*.h .\$(DISTDIR)
 	copy .\ogr\*.h .\$(DISTDIR)
-	copy gdal.lib .\$(DISTDIR)
+	copy $(GDAL_LIB_NAME) .\$(DISTDIR)
 	copy $(GDAL_DLL) .\$(DISTDIR)
 	copy $(GDAL_PDB) .\$(DISTDIR)
 
