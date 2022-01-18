@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
                     }
 
                     default:
-                        CPLAssert(false);
+                        CPLAssert(FALSE);
                         break;
                 }
             }
