@@ -28,6 +28,7 @@
 			<id>Win32</id>
 			<properties>
 				<sdkArch>Win32</sdkArch>
+                <ecwsdk.compiler>msvc141</ecwsdk.compiler>
 			</properties>
 		</profile>
 
@@ -36,6 +37,7 @@
 			<id>x64</id>
 			<properties>
 				<sdkArch>x64</sdkArch>
+                <ecwsdk.compiler>msvc141</ecwsdk.compiler>
 			</properties>
 		</profile>
 
@@ -44,6 +46,7 @@
 			<id>x64linux</id>
 			<properties>
 				<sdkArch>x64</sdkArch>
+                <ecwsdk.compiler>gcc83</ecwsdk.compiler>
 			</properties>
 		</profile>
 
@@ -52,6 +55,7 @@
 			<id>x86linux</id>
 			<properties>
 				<sdkArch>x86</sdkArch>
+                <ecwsdk.compiler>gcc83</ecwsdk.compiler>
 			</properties>
 		</profile>
 
@@ -90,7 +94,7 @@
 								<artifactItem>
 									<groupId>com.erdas.gen3.ecwjp2</groupId>
 									<artifactId>sdk</artifactId>
-									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
+									<classifier>${osFamily}-${ecwsdk.compiler}-${cpuArch}</classifier>
 									<version>${ecwjp2sdk.version}</version>
 									<type>zip</type>
 									<includes>**/**</includes>
