@@ -18,7 +18,10 @@ if [%2] == [] (
 
 if "%2" == "msvc141" (
 	set MSBUILD_ARCH=v141
-) 
+) else if "%2" == "msvc143" (
+	set MSBUILD_ARCH=v143
+)
+
 
 if [%3] == [] (
 	@echo "Third parameter needs to be set to project name to be built"
