@@ -104,12 +104,8 @@
       </Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>if not defined CURRENT_BUILD_VERSION (
-set CURRENT_BUILD_VERSION=1.5.1.0
-)
-%RCEDIT_COMMAND% $(OutDir)$(TargetName)$(TargetExt) --set-file-version %CURRENT_BUILD_VERSION%
-%VERPATCH_COMMAND% $(OutDir)$(TargetName)$(TargetExt) %CURRENT_BUILD_VERSION% /pv %CURRENT_BUILD_VERSION%
-%SIGN_COMMAND% $(OutDir)$(TargetName)$(TargetExt) "GDAL OGR FileGDB Driver"</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -132,12 +128,8 @@ set CURRENT_BUILD_VERSION=1.5.1.0
       </Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>if not defined CURRENT_BUILD_VERSION (
-set CURRENT_BUILD_VERSION=1.5.1.0
-)
-%RCEDIT_COMMAND% $(OutDir)$(TargetName)$(TargetExt) --set-file-version %CURRENT_BUILD_VERSION%
-%VERPATCH_COMMAND% $(OutDir)$(TargetName)$(TargetExt) %CURRENT_BUILD_VERSION% /pv %CURRENT_BUILD_VERSION%
-%SIGN_COMMAND% $(OutDir)$(TargetName)$(TargetExt) "GDAL OGR FileGDB Driver"</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
