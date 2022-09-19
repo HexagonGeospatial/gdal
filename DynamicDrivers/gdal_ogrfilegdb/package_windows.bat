@@ -28,5 +28,6 @@ set FILEGDB_VERSION=1.5.1
 )
 
 call %MVN_CMD% -s %MVN_SETTINGS% clean package -Px64,%MSVC_VER%
+call %MVN_CMD% -s %MVN_SETTINGS% clean package -PWin32,%MSVC_VER%
 
 )
