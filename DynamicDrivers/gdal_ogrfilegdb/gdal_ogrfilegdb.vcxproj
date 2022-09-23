@@ -89,7 +89,7 @@
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\filegeodatabase;$(GDAL_INCLUDES);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\generic;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\openfilegdb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <PreprocessorDefinitions>DEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GDAL_COMPILATION;DEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -115,6 +115,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\filegeodatabase;$(GDAL_INCLUDES);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\generic;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\openfilegdb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>GDAL_COMPILATION;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -136,6 +137,7 @@
     <ClCompile />
     <ClCompile>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\filegeodatabase;$(GDAL_INCLUDES);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\generic;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\openfilegdb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>GDAL_COMPILATION;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(CROCKETT_LIB)\$(Platform)$(Configuration)</AdditionalLibraryDirectories>
@@ -157,7 +159,7 @@
     <ClCompile>
       <AdditionalIncludeDirectories>$(CROCKETT_INCLUDE)\$(Platform)$(Configuration);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\filegeodatabase;$(GDAL_INCLUDES);$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\generic;$(CROCKETT_INCLUDE)\$(Platform)$(Configuration)\ogr\ogrsf_frmts\openfilegdb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <PreprocessorDefinitions>DEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GDAL_COMPILATION;DEBUG;_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(CROCKETT_LIB)\$(Platform)$(Configuration)</AdditionalLibraryDirectories>
