@@ -119,7 +119,6 @@
 							<!-- Pre-clean the webP debug libraries -->
 								<exec dir="${project.basedir}" executable="cmd" failonerror="true">
 									<env key="CODE_SIGNING_DIR" path="${code.signing.dir}" />
-									<env key="VERPATCH_DIR" path="${project.basedir}/../../../../../tools" />
 									<env key="SIGN_PROGRAM" value="&quot;FILEGDB GDAL Driver&quot;" />
 									<env key="CURRENT_BUILD_VERSION" value="${env.FILEGDB_VERSION}" />
 									<env key="RELEASE_BIN_DIR" path="${copyToDir}/bin/${platformName}Release" />
