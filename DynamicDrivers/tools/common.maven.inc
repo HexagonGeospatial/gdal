@@ -1,7 +1,7 @@
 #!/bin/bash
 SCRIPT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-export SOURCES_ROOT=$( cd $SCRIPT_DIR/../../../../../../Mainline/Generation_3 && pwd )
+export SOURCES_ROOT=$( cd $SCRIPT_DIR/../../../../../.. && pwd )
 
 if [ -z "$JAVA_HOME" ] ; then 
 export JAVA_HOME=/usr
