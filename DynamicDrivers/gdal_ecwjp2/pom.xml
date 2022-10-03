@@ -3,7 +3,7 @@
 	<parent>
 		<groupId>com.hexagon.geospatial</groupId>
 		<artifactId>third-party-parent</artifactId>
-		<relativePath>../../../../third-party-parent.xml</relativePath>
+		<relativePath>../../../../../third-party-parent.xml</relativePath>
 		<version>1.0.0</version>
 	</parent>
 	<name>ecwjp2 gdal driver Publish Pom</name>
