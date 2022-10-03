@@ -2,9 +2,9 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>com.hexagon.thirdparty</groupId>
-		<artifactId>InsertCoinThirdPartyParent</artifactId>
-		<relativePath>../../../../../maven/ic_parent.xml</relativePath>
+		<groupId>com.hexagon.geospatial</groupId>
+		<artifactId>third-party-parent</artifactId>
+		<relativePath>../../../../third-party-parent.xml</relativePath>
 		<version>1.0.0</version>
 	</parent>
 

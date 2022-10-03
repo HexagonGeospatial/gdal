@@ -1,9 +1,9 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
-		<groupId>com.hexagon.thirdparty</groupId>
-		<artifactId>InsertCoinThirdPartyParent</artifactId>
-		<relativePath>../../../../../maven/ic_parent.xml</relativePath>
+		<groupId>com.hexagon.geospatial</groupId>
+		<artifactId>third-party-parent</artifactId>
+		<relativePath>../../../../third-party-parent.xml</relativePath>
 		<version>1.0.0</version>
 	</parent>
 	<name>gdal sdk</name>
@@ -86,52 +86,7 @@
 									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
 									<version>${gdal.version}</version>
 									<type>${gdal.package}</type>
-									<includes>${platformName}/${configurationName}/*</includes>
-									<overWrite>${overwriteFlag}</overWrite>
-								</artifactItem>
-								<artifactItem>
-									<groupId>org.gdal</groupId>
-									<artifactId>sdk</artifactId>
-									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
-									<version>${gdal.version}</version>
-									<type>${gdal.package}</type>
-									<includes>gcore/*.h</includes>
-									<overWrite>${overwriteFlag}</overWrite>
-								</artifactItem>
-								<artifactItem>
-									<groupId>org.gdal</groupId>
-									<artifactId>sdk</artifactId>
-									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
-									<version>${gdal.version}</version>
-									<type>${gdal.package}</type>
-									<includes>gcore/Version.rc</includes>
-									<overWrite>${overwriteFlag}</overWrite>
-								</artifactItem>
-								<artifactItem>
-									<groupId>org.gdal</groupId>
-									<artifactId>sdk</artifactId>
-									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
-									<version>${gdal.version}</version>
-									<type>${gdal.package}</type>
-									<includes>port/*.h</includes>
-									<overWrite>${overwriteFlag}</overWrite>
-								</artifactItem>
-								<artifactItem>
-									<groupId>org.gdal</groupId>
-									<artifactId>sdk</artifactId>
-									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
-									<version>${gdal.version}</version>
-									<type>${gdal.package}</type>
-									<includes>ogr/**</includes>
-									<overWrite>${overwriteFlag}</overWrite>
-								</artifactItem>
-								<artifactItem>
-									<groupId>org.gdal</groupId>
-									<artifactId>sdk</artifactId>
-									<classifier>${osFamily}-${compiler}-${cpuArch}</classifier>
-									<version>${gdal.version}</version>
-									<type>${gdal.package}</type>
-									<includes>frmts/**</includes>
+									<includes>${platformName}/${configurationName}/*,gcore/*.h,gcore/Version.rc,port/*.h,ogr/**,frmts/**</includes>
 									<overWrite>${overwriteFlag}</overWrite>
 								</artifactItem>
 							</artifactItems>
