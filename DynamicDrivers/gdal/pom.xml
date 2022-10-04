@@ -15,7 +15,7 @@
 	<packaging>pom</packaging>
 	<properties>
 		<copyToDir>../root</copyToDir>
-		<gdal.version>${env.GDAL_VERSION}.${env.GDAL_SUFFIX}</gdal.version>
+		<gdal.version>${env.GDAL_VERSION}-${env.GDAL_SUFFIX}</gdal.version>
 		<gdal.package>zip</gdal.package>
 	</properties>
 	<profiles>
