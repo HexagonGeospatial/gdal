@@ -107,7 +107,7 @@
 								<configuration>
 									<target>
 										<echo message="Generating Merge Module: ${platformName}Release" />
-										<exec dir="${project.basedir}\installers-msm" executable="${installShield.buildCommand}" failonerror="true">
+										<exec dir="${project.basedir}\installers-msm" executable="${installshield.cmd}" failonerror="true">
 											<arg value="-x" />
 											<arg value="-p" />
 											<arg value="gdal-ecw-${cpuArch}-release.ism" />
@@ -119,7 +119,7 @@
 											<arg value="${env.LIBRARY_VERSION}" />
 										</exec>
 										<echo message="Generating Merge Module: ${platformName}Debug" />
-										<exec dir="${project.basedir}\installers-msm" executable="${installShield.buildCommand}" failonerror="true">
+										<exec dir="${project.basedir}\installers-msm" executable="${installshield.cmd}" failonerror="true">
 											<arg value="-x" />
 											<arg value="-p" />
 											<arg value="gdal-ecw-${cpuArch}-debug.ism" />
