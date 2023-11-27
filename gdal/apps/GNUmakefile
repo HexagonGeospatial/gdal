@@ -96,7 +96,7 @@ gdalmdimtranslate$(EXE):	gdalmdimtranslate_bin.$(OBJ_EXT) $(DEP_LIBS)
 	$(LD) $(LNK_FLAGS) $< $(XTRAOBJ) $(CONFIG_LIBS) $(CONFIG_LIB_UTILS) -o $@
 
 gdal_translate$(EXE):	gdal_translate_bin.$(OBJ_EXT) $(DEP_LIBS)
-	$(LD) $(LNK_FLAGS) $< $(XTRAOBJ) $(CONFIG_LIBS) -o $@
+	$(LD) $(LNK_FLAGS) -L$(GDAL_ROOT)/../../root/$(CPU_ARCH)/libdeflate/lib -ldeflate $< $(XTRAOBJ) $(CONFIG_LIBS) -o $@
 
 gdaladdo$(EXE):	gdaladdo.$(OBJ_EXT)  $(DEP_LIBS)
 	$(LD) $(LNK_FLAGS) $< $(XTRAOBJ) $(CONFIG_LIBS) -o $@
