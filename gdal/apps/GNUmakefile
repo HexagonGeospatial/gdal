@@ -5,7 +5,7 @@
 include ../GDALmake.opt
 
 CPPFLAGS :=	-I$(GDAL_ROOT)/frmts/vrt $(CPPFLAGS) $(JSON_INCLUDE) $(PROJ_INCLUDE) -I$(GDAL_ROOT)/ogr/ogrsf_frmts/geojson -I$(GDAL_ROOT)/ogr/ogrsf_frmts/generic -g
-LNK_FLAGS :=	$(LDFLAGS)
+LNK_FLAGS :=	$(LDFLAGS)  -L$(GDAL_ROOT)/../../root/$(CPU_ARCH)/libdeflate/lib -ldeflate
 DEP_LIBS =	$(EXE_DEP_LIBS) $(XTRAOBJ)
 
 BIN_LIST =	gdalinfo$(EXE) gdal_translate$(EXE) \
@@ -96,7 +96,7 @@ gdalmdimtranslate$(EXE):	gdalmdimtranslate_bin.$(OBJ_EXT) $(DEP_LIBS)
 	$(LD) $(LNK_FLAGS) $< $(XTRAOBJ) $(CONFIG_LIBS) $(CONFIG_LIB_UTILS) -o $@
 
 gdal_translate$(EXE):	gdal_translate_bin.$(OBJ_EXT) $(DEP_LIBS)
-	$(LD) $(LNK_FLAGS) -L$(GDAL_ROOT)/../../root/$(CPU_ARCH)/libdeflate/lib -ldeflate $< $(XTRAOBJ) $(CONFIG_LIBS) -o $@
+	$(LD) $(LNK_FLAGS) $< $(XTRAOBJ) $(CONFIG_LIBS) -o $@
 
 gdaladdo$(EXE):	gdaladdo.$(OBJ_EXT)  $(DEP_LIBS)
 	$(LD) $(LNK_FLAGS) $< $(XTRAOBJ) $(CONFIG_LIBS) -o $@
