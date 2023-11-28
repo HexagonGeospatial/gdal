@@ -3,7 +3,10 @@
 # from anywhere in the filesystem.
 
 include ../GDALmake.opt
-
+# GNU Makefile
+CPUARCH := $(shell arch)
+# Replace x86_64 with x64 if CPUARCH is x86_64
+CPUARCH := $(if $(filter x86_64,$(CPUARCH)),x64,$(CPUARCH))
 CPPFLAGS :=	-I$(GDAL_ROOT)/frmts/vrt $(CPPFLAGS) $(JSON_INCLUDE) $(PROJ_INCLUDE) -I$(GDAL_ROOT)/ogr/ogrsf_frmts/geojson -I$(GDAL_ROOT)/ogr/ogrsf_frmts/generic -g
 LNK_FLAGS :=	$(LDFLAGS)  -L$(GDAL_ROOT)/../../root/$(CPU_ARCH)/libdeflate/lib -ldeflate
 DEP_LIBS =	$(EXE_DEP_LIBS) $(XTRAOBJ)
