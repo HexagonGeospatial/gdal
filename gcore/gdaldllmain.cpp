@@ -115,6 +115,7 @@ static void GDALInitialize() __attribute__((constructor));
 
 static void GDALInitialize()
 {
+	VSIInit();
     // nothing to do
     // CPLDebug("GDAL", "Library loaded");
 #ifdef DEBUG
@@ -140,6 +141,7 @@ extern "C" int WINAPI DllMain(HINSTANCE /* hInstance */, DWORD dwReason,
 {
     if (dwReason == DLL_PROCESS_ATTACH)
     {
+		VSIInit();
         // nothing to do
     }
     else if (dwReason == DLL_THREAD_ATTACH)
