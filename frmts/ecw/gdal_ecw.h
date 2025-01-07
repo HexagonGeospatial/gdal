@@ -662,8 +662,8 @@ class ECWRasterBand final : public GDALPamRasterBand
 
 #if ECWSDK_VERSION >= 50
 
-    int nStatsBandIndex = 0;
-    int nStatsBandCount = 0;
+    int nStatsBandIndex{};
+    int nStatsBandCount{};
 
 #endif
 
