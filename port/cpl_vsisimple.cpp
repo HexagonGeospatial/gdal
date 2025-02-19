@@ -1116,7 +1116,7 @@ void VSIFree(void *pData)
 
 {
     if (pData != nullptr)
-        free(pData);
+        p_free(pData);
 }
 
 /************************************************************************/
