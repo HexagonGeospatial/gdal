@@ -228,7 +228,7 @@ if(CURL_FOUND)
 
     if(CURL_USE_STATIC_LIBS AND MSVC)
        set_target_properties(CURL::libcurl PROPERTIES
-           INTERFACE_LINK_LIBRARIES "normaliz.lib;ws2_32.lib;wldap32.lib")
+           INTERFACE_LINK_LIBRARIES "crypt32.lib;normaliz.lib;ws2_32.lib;wsock32.lib;wldap32.lib;winmm.lib")
     endif()
 
   endif()
