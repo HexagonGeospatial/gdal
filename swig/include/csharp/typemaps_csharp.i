@@ -615,3 +615,8 @@ OPTIONAL_POD(int, int);
  * GDALGetLayerByName typemaps                                                *
  *****************************************************************************/
 %apply ( const char *utf8_path ) { const char* layer_name };
+
+/******************************************************************************
+ * ExecuteSQL typemaps                                                *
+ *****************************************************************************/
+%apply ( const char *utf8_path ) { const char* statement };
