@@ -1395,7 +1395,7 @@ OGRErr OGRSQLiteTableLayer::GetExtent(int iGeomField, OGREnvelope *psExtent,
 /*                  OGRSQLiteFieldDefnToSQliteFieldDefn()               */
 /************************************************************************/
 
-CPLString OGRSQLiteFieldDefnToSQliteFieldDefn(OGRFieldDefn *poFieldDefn,
+CPLString OGRSQLiteFieldDefnToSQliteFieldDefn(const OGRFieldDefn *poFieldDefn,
                                               bool bSQLiteDialectInternalUse,
                                               bool bStrict)
 {

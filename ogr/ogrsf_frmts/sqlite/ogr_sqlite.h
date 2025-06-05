@@ -922,7 +922,7 @@ class RL2RasterBand final : public GDALPamRasterBand
 };
 #endif  // HAVE_RASTERLITE2
 
-CPLString OGRSQLiteFieldDefnToSQliteFieldDefn(OGRFieldDefn *poFieldDefn,
+CPLString OGRSQLiteFieldDefnToSQliteFieldDefn(const OGRFieldDefn *poFieldDefn,
                                               bool bSQLiteDialectInternalUse,
                                               bool bStrict);
 
