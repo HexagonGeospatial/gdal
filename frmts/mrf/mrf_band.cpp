@@ -58,6 +58,7 @@
 #include "ogr_spatialref.h"
 
 #include <vector>
+#include <algorithm>
 #include <cassert>
 #include <zlib.h>
 #if defined(ZSTD_SUPPORT)
@@ -155,21 +156,21 @@ static void swab_buff(buf_mgr &src, const ILImage &img)
     {
         case 16:
         {
-            short int *b = (short int *)src.buffer;
+            short int *b = reinterpret_cast<short int *>(src.buffer);
             for (i = src.size / 2; i; b++, i--)
                 *b = swab16(*b);
             break;
         }
         case 32:
         {
-            int *b = (int *)src.buffer;
+            int *b = reinterpret_cast<int *>(src.buffer);
             for (i = src.size / 4; i; b++, i--)
                 *b = swab32(*b);
             break;
         }
         case 64:
         {
-            long long *b = (long long *)src.buffer;
+            long long *b = reinterpret_cast<long long *>(src.buffer);
             for (i = src.size / 8; i; b++, i--)
                 *b = swab64(*b);
             break;
@@ -185,16 +186,12 @@ static int ZPack(const buf_mgr &src, buf_mgr &dst, int flags)
     int err;
 
     memset(&stream, 0, sizeof(stream));
-    stream.next_in = (Bytef *)src.buffer;
+    stream.next_in = reinterpret_cast<Bytef *>(src.buffer);
     stream.avail_in = (uInt)src.size;
-    stream.next_out = (Bytef *)dst.buffer;
+    stream.next_out = reinterpret_cast<Bytef *>(dst.buffer);
     stream.avail_out = (uInt)dst.size;
 
-    int level = flags & ZFLAG_LMASK;
-    if (level > 9)
-        level = 9;
-    if (level < 1)
-        level = 1;
+    int level = std::clamp(flags & ZFLAG_LMASK, 1, 9);
     int wb = MAX_WBITS;
     // if gz flag is set, ignore raw request
     if (flags & ZFLAG_GZ)
@@ -208,7 +205,10 @@ static int ZPack(const buf_mgr &src, buf_mgr &dst, int flags)
 
     err = deflateInit2(&stream, level, Z_DEFLATED, wb, memlevel, strategy);
     if (err != Z_OK)
+    {
+        deflateEnd(&stream);
         return err;
+    }
 
     err = deflate(&stream, Z_FINISH);
     if (err != Z_STREAM_END)
@@ -230,9 +230,9 @@ static int ZUnPack(const buf_mgr &src, buf_mgr &dst, int flags)
     int err;
 
     memset(&stream, 0, sizeof(stream));
-    stream.next_in = (Bytef *)src.buffer;
+    stream.next_in = reinterpret_cast<Bytef *>(src.buffer);
     stream.avail_in = (uInt)src.size;
-    stream.next_out = (Bytef *)dst.buffer;
+    stream.next_out = reinterpret_cast<Bytef *>(dst.buffer);
     stream.avail_out = (uInt)dst.size;
 
     // 32 means autodetec gzip or zlib header, negative 15 is for raw
@@ -281,11 +281,12 @@ static void *DeflateBlock(buf_mgr &src, size_t extrasize, int flags)
         CPLFree(dbuff);  // Safe to call with NULL
         return nullptr;
     }
-    if (dst.size > src.size)
+
+    if (src.size + extrasize < dst.size)
     {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "DeflateBlock(): dst.size > src.size");
-        CPLFree(dbuff);  // Safe to call with NULL
+                 "DeflateBlock(): too small buffer");
+        CPLFree(dbuff);
         return nullptr;
     }
 
@@ -826,12 +827,16 @@ CPLErr MRFRasterBand::FetchBlock(int xblk, int yblk, void *buffer)
 
     buf_mgr filedst = {static_cast<char *>(outbuff), poMRFDS->pbsize};
     auto start_time = steady_clock::now();
-    Compress(filedst, filesrc);
+    if (Compress(filedst, filesrc) != CE_None)
+    {
+        return CE_Failure;
+    }
 
     // Where the output is, in case we deflate
     void *usebuff = outbuff;
     if (dodeflate)
     {
+        CPLAssert(poMRFDS->pbsize <= filedst.size);
         usebuff = DeflateBlock(filedst, poMRFDS->pbsize - filedst.size,
                                deflate_flags);
         if (!usebuff)
@@ -1279,10 +1284,13 @@ CPLErr MRFRasterBand::IWriteBlock(int xblk, int yblk, void *buffer)
 
         // Compress functions need to return the compressed size in
         // the bytes in buffer field
-        Compress(dst, src);
+        if (Compress(dst, src) != CE_None)
+            return CE_Failure;
+
         void *usebuff = dst.buffer;
         if (dodeflate)
         {
+            CPLAssert(dst.size <= poMRFDS->pbsize);
             usebuff =
                 DeflateBlock(dst, poMRFDS->pbsize - dst.size, deflate_flags);
             if (!usebuff)
@@ -1549,6 +1557,20 @@ GDALRasterBand *MRFRasterBand::GetOverview(int n)
     if (n >= 0 && n < (int)overviews.size())
         return overviews[n];
     return GDALPamRasterBand::GetOverview(n);
+}
+
+CPLErr Raw_Band::Decompress(buf_mgr &dst, buf_mgr &src)
+{
+    if (src.size > dst.size)
+        return CE_Failure;
+    memcpy(dst.buffer, src.buffer, src.size);
+    dst.size = src.size;
+    return CE_None;
+}
+
+CPLErr MRFLRasterBand::IReadBlock(int xblk, int yblk, void *buffer)
+{
+    return pBand->IReadBlock(xblk, yblk, buffer);
 }
 
 NAMESPACE_MRF_END

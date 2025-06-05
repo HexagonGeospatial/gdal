@@ -30,11 +30,14 @@
 
 #include "cpl_conv.h"
 #include "cpl_error.h"
+#include "cpl_float.h"
 #include "cpl_progress.h"
 #include "cpl_vsi.h"
 #include "gdal.h"
 #include "gdal_thread_pool.h"
 #include "gdalwarper.h"
+#include "gdal_vrt.h"
+#include "vrtdataset.h"
 
 #ifdef USE_NEON_OPTIMIZATIONS
 #include "include_sse2neon.h"
@@ -102,11 +105,10 @@ static CPLErr GDALResampleChunk_NearT(const GDALOverviewResampleArgs &args,
     T *const pDstBuffer = *ppDstBuffer;
 
     int *panSrcXOff =
-        static_cast<int *>(VSI_MALLOC_VERBOSE(nDstXWidth * sizeof(int)));
+        static_cast<int *>(VSI_MALLOC2_VERBOSE(nDstXWidth, sizeof(int)));
 
     if (panSrcXOff == nullptr)
     {
-        VSIFree(panSrcXOff);
         return CE_Failure;
     }
 
@@ -173,6 +175,7 @@ static CPLErr GDALResampleChunk_Near(const GDALOverviewResampleArgs &args,
 
         case GDT_Int16:
         case GDT_UInt16:
+        case GDT_Float16:
         {
             CPLAssert(GDALGetDataTypeSizeBytes(args.eWrkDataType) == 2);
             return GDALResampleChunk_NearT(
@@ -181,6 +184,7 @@ static CPLErr GDALResampleChunk_Near(const GDALOverviewResampleArgs &args,
         }
 
         case GDT_CInt16:
+        case GDT_CFloat16:
         case GDT_Int32:
         case GDT_UInt32:
         case GDT_Float32:
@@ -398,13 +402,21 @@ inline __m128i sse2_hadd_epi16(__m128i a, __m128i b)
 #define add_epi16 _mm256_add_epi16
 #define sub_epi16 _mm256_sub_epi16
 #define packus_epi16 _mm256_packus_epi16
+
 /* AVX2 operates on 2 separate 128-bit lanes, so we have to do shuffling */
 /* to get the lower 128-bit bits of what would be a true 256-bit vector register
  */
+
+inline __m256i FIXUP_LANES(__m256i x)
+{
+    return _mm256_permute4x64_epi64(x, _MM_SHUFFLE(3, 1, 2, 0));
+}
+
 #define store_lo(x, y)                                                         \
     _mm_storeu_si128(reinterpret_cast<__m128i *>(x),                           \
-                     _mm256_extracti128_si256(                                 \
-                         _mm256_permute4x64_epi64((y), 0 | (2 << 2)), 0))
+                     _mm256_extracti128_si256(FIXUP_LANES(y), 0))
+#define storeu_int(x, y)                                                       \
+    _mm256_storeu_si256(reinterpret_cast<__m256i *>(x), FIXUP_LANES(y))
 #define hadd_epi16 _mm256_hadd_epi16
 #define zeroupper() _mm256_zeroupper()
 #else
@@ -432,6 +444,7 @@ inline __m128i sse2_hadd_epi16(__m128i a, __m128i b)
 #define sub_epi16 _mm_sub_epi16
 #define packus_epi16 _mm_packus_epi16
 #define store_lo(x, y) _mm_storel_epi64(reinterpret_cast<__m128i *>(x), (y))
+#define storeu_int(x, y) _mm_storeu_si128(reinterpret_cast<__m128i *>(x), (y))
 #define hadd_epi16 sse2_hadd_epi16
 #define zeroupper() (void)0
 #endif
@@ -550,39 +563,71 @@ AverageByteSSE2OrAVX2(int nDstXWidth, int nChunkXSize,
                       T *CPL_RESTRICT pDstScanline)
 {
     // Optimized implementation for average on Byte by
-    // processing by group of 8 output pixels.
+    // processing by group of 16 output pixels for SSE2, or 32 for AVX2
 
     const auto zero = setzero();
     const auto two16 = set1_epi16(2);
     const T *CPL_RESTRICT pSrcScanlineShifted = pSrcScanlineShiftedInOut;
 
     int iDstPixel = 0;
-    for (; iDstPixel < nDstXWidth - (DEST_ELTS - 1); iDstPixel += DEST_ELTS)
+    for (; iDstPixel < nDstXWidth - (2 * DEST_ELTS - 1);
+         iDstPixel += 2 * DEST_ELTS)
     {
-        // Load 2 * DEST_ELTS bytes from each line
-        const auto firstLine = loadu_int(pSrcScanlineShifted);
-        const auto secondLine = loadu_int(pSrcScanlineShifted + nChunkXSize);
-        // Extend those Bytes as UInt16s
-        const auto firstLineLo = unpacklo_epi8(firstLine, zero);
-        const auto firstLineHi = unpackhi_epi8(firstLine, zero);
-        const auto secondLineLo = unpacklo_epi8(secondLine, zero);
-        const auto secondLineHi = unpackhi_epi8(secondLine, zero);
+        decltype(setzero()) average0;
+        {
+            // Load 2 * DEST_ELTS bytes from each line
+            const auto firstLine = loadu_int(pSrcScanlineShifted);
+            const auto secondLine =
+                loadu_int(pSrcScanlineShifted + nChunkXSize);
+            // Extend those Bytes as UInt16s
+            const auto firstLineLo = unpacklo_epi8(firstLine, zero);
+            const auto firstLineHi = unpackhi_epi8(firstLine, zero);
+            const auto secondLineLo = unpacklo_epi8(secondLine, zero);
+            const auto secondLineHi = unpackhi_epi8(secondLine, zero);
 
-        // Vertical addition
-        const auto sumLo = add_epi16(firstLineLo, secondLineLo);
-        const auto sumHi = add_epi16(firstLineHi, secondLineHi);
+            // Vertical addition
+            const auto sumLo = add_epi16(firstLineLo, secondLineLo);
+            const auto sumHi = add_epi16(firstLineHi, secondLineHi);
 
-        // Horizontal addition of adjacent pairs, and recombine low and high
-        // parts
-        const auto sum = hadd_epi16(sumLo, sumHi);
+            // Horizontal addition of adjacent pairs, and recombine low and high
+            // parts
+            const auto sum = hadd_epi16(sumLo, sumHi);
 
-        // average = (sum + 2) / 4
-        auto average = srli_epi16(add_epi16(sum, two16), 2);
+            // average = (sum + 2) / 4
+            average0 = srli_epi16(add_epi16(sum, two16), 2);
+
+            pSrcScanlineShifted += 2 * DEST_ELTS;
+        }
+
+        decltype(setzero()) average1;
+        {
+            // Load 2 * DEST_ELTS bytes from each line
+            const auto firstLine = loadu_int(pSrcScanlineShifted);
+            const auto secondLine =
+                loadu_int(pSrcScanlineShifted + nChunkXSize);
+            // Extend those Bytes as UInt16s
+            const auto firstLineLo = unpacklo_epi8(firstLine, zero);
+            const auto firstLineHi = unpackhi_epi8(firstLine, zero);
+            const auto secondLineLo = unpacklo_epi8(secondLine, zero);
+            const auto secondLineHi = unpackhi_epi8(secondLine, zero);
+
+            // Vertical addition
+            const auto sumLo = add_epi16(firstLineLo, secondLineLo);
+            const auto sumHi = add_epi16(firstLineHi, secondLineHi);
+
+            // Horizontal addition of adjacent pairs, and recombine low and high
+            // parts
+            const auto sum = hadd_epi16(sumLo, sumHi);
+
+            // average = (sum + 2) / 4
+            average1 = srli_epi16(add_epi16(sum, two16), 2);
+
+            pSrcScanlineShifted += 2 * DEST_ELTS;
+        }
 
         // Pack each 16 bit average value to 8 bits
-        average = packus_epi16(average, average /* could be anything */);
-        store_lo(&pDstScanline[iDstPixel], average);
-        pSrcScanlineShifted += 2 * DEST_ELTS;
+        const auto average = packus_epi16(average0, average1);
+        storeu_int(&pDstScanline[iDstPixel], average);
     }
     zeroupper();
 
@@ -607,14 +652,14 @@ inline __m128d sse2_hadd_pd(__m128d a, __m128d b)
 }
 #endif
 
-inline __m128d SQUARE(__m128d x)
+inline __m128d SQUARE_PD(__m128d x)
 {
     return _mm_mul_pd(x, x);
 }
 
 #ifdef __AVX2__
 
-inline __m256d SQUARE(__m256d x)
+inline __m256d SQUARE_PD(__m256d x)
 {
     return _mm256_mul_pd(x, x);
 }
@@ -732,10 +777,12 @@ QuadraticMeanUInt16SSE2(int nDstXWidth, int nChunkXSize,
 
 #ifdef __AVX2__
         // Multiplication of 32 bit values previously converted to 64 bit double
-        const auto firstLineLoDbl = SQUARE(_mm256_cvtepi32_pd(firstLineLo));
-        const auto firstLineHiDbl = SQUARE(_mm256_cvtepi32_pd(firstLineHi));
-        const auto secondLineLoDbl = SQUARE(_mm256_cvtepi32_pd(secondLineLo));
-        const auto secondLineHiDbl = SQUARE(_mm256_cvtepi32_pd(secondLineHi));
+        const auto firstLineLoDbl = SQUARE_PD(_mm256_cvtepi32_pd(firstLineLo));
+        const auto firstLineHiDbl = SQUARE_PD(_mm256_cvtepi32_pd(firstLineHi));
+        const auto secondLineLoDbl =
+            SQUARE_PD(_mm256_cvtepi32_pd(secondLineLo));
+        const auto secondLineHiDbl =
+            SQUARE_PD(_mm256_cvtepi32_pd(secondLineHi));
 
         // Vertical addition of squares
         const auto sumSquaresLo =
@@ -753,7 +800,7 @@ QuadraticMeanUInt16SSE2(int nDstXWidth, int nChunkXSize,
         auto rms = _mm256_cvttpd_epi32(_mm256_sqrt_pd(sumDivWeight));
         const auto rmsDouble = _mm256_cvtepi32_pd(rms);
         const auto right = _mm256_sub_pd(
-            sumDivWeight, _mm256_add_pd(SQUARE(rmsDouble), rmsDouble));
+            sumDivWeight, _mm256_add_pd(SQUARE_PD(rmsDouble), rmsDouble));
 
         auto mask =
             _mm256_castpd_ps(_mm256_cmp_pd(zeroDot5, right, _CMP_LT_OS));
@@ -770,19 +817,19 @@ QuadraticMeanUInt16SSE2(int nDstXWidth, int nChunkXSize,
         rms = _mm_packus_epi32(rms, rms /* could be anything */);
 #else
         // Multiplication of 32 bit values previously converted to 64 bit double
-        const auto firstLineLoLo = SQUARE(_mm_cvtepi32_pd(firstLineLo));
+        const auto firstLineLoLo = SQUARE_PD(_mm_cvtepi32_pd(firstLineLo));
         const auto firstLineLoHi =
-            SQUARE(_mm_cvtepi32_pd(_mm_srli_si128(firstLineLo, 8)));
-        const auto firstLineHiLo = SQUARE(_mm_cvtepi32_pd(firstLineHi));
+            SQUARE_PD(_mm_cvtepi32_pd(_mm_srli_si128(firstLineLo, 8)));
+        const auto firstLineHiLo = SQUARE_PD(_mm_cvtepi32_pd(firstLineHi));
         const auto firstLineHiHi =
-            SQUARE(_mm_cvtepi32_pd(_mm_srli_si128(firstLineHi, 8)));
+            SQUARE_PD(_mm_cvtepi32_pd(_mm_srli_si128(firstLineHi, 8)));
 
-        const auto secondLineLoLo = SQUARE(_mm_cvtepi32_pd(secondLineLo));
+        const auto secondLineLoLo = SQUARE_PD(_mm_cvtepi32_pd(secondLineLo));
         const auto secondLineLoHi =
-            SQUARE(_mm_cvtepi32_pd(_mm_srli_si128(secondLineLo, 8)));
-        const auto secondLineHiLo = SQUARE(_mm_cvtepi32_pd(secondLineHi));
+            SQUARE_PD(_mm_cvtepi32_pd(_mm_srli_si128(secondLineLo, 8)));
+        const auto secondLineHiLo = SQUARE_PD(_mm_cvtepi32_pd(secondLineHi));
         const auto secondLineHiHi =
-            SQUARE(_mm_cvtepi32_pd(_mm_srli_si128(secondLineHi, 8)));
+            SQUARE_PD(_mm_cvtepi32_pd(_mm_srli_si128(secondLineHi, 8)));
 
         // Vertical addition of squares
         const auto sumSquaresLoLo = _mm_add_pd(firstLineLoLo, secondLineLoLo);
@@ -806,9 +853,9 @@ QuadraticMeanUInt16SSE2(int nDstXWidth, int nChunkXSize,
         const auto rmsLoDouble = _mm_cvtepi32_pd(rmsLo);
         const auto rmsHiDouble = _mm_cvtepi32_pd(rmsHi);
         const auto rightLo = _mm_sub_pd(
-            sumDivWeightLo, _mm_add_pd(SQUARE(rmsLoDouble), rmsLoDouble));
+            sumDivWeightLo, _mm_add_pd(SQUARE_PD(rmsLoDouble), rmsLoDouble));
         const auto rightHi = _mm_sub_pd(
-            sumDivWeightHi, _mm_add_pd(SQUARE(rmsHiDouble), rmsHiDouble));
+            sumDivWeightHi, _mm_add_pd(SQUARE_PD(rmsHiDouble), rmsHiDouble));
 
         const auto maskLo = _mm_castpd_ps(_mm_cmplt_pd(zeroDot5, rightLo));
         const auto maskHi = _mm_castpd_ps(_mm_cmplt_pd(zeroDot5, rightHi));
@@ -916,6 +963,17 @@ static int AverageUInt16SSE2(int nDstXWidth, int nChunkXSize,
 /*                      QuadraticMeanFloatSSE2()                        */
 /************************************************************************/
 
+#ifdef __SSE3__
+#define sse2_hadd_ps _mm_hadd_ps
+#else
+inline __m128 sse2_hadd_ps(__m128 a, __m128 b)
+{
+    auto aEven_bEven = _mm_shuffle_ps(a, b, _MM_SHUFFLE(2, 0, 2, 0));
+    auto aOdd_bOdd = _mm_shuffle_ps(a, b, _MM_SHUFFLE(3, 1, 3, 1));
+    return _mm_add_ps(aEven_bEven, aOdd_bOdd);  // (aEven + aOdd, bEven + bOdd)
+}
+#endif
+
 #ifdef __AVX2__
 #define RMS_FLOAT_ELTS 8
 #define set1_ps _mm256_set1_ps
@@ -935,23 +993,12 @@ static int AverageUInt16SSE2(int nDstXWidth, int nChunkXSize,
 #define unpackhi_ps _mm256_unpackhi_ps
 #define storeu_ps _mm256_storeu_ps
 
-inline __m256 SQUARE(__m256 x)
+inline __m256 SQUARE_PS(__m256 x)
 {
     return _mm256_mul_ps(x, x);
 }
 
 #else
-
-#ifdef __SSE3__
-#define sse2_hadd_ps _mm_hadd_ps
-#else
-inline __m128 sse2_hadd_ps(__m128 a, __m128 b)
-{
-    auto aEven_bEven = _mm_shuffle_ps(a, b, _MM_SHUFFLE(2, 0, 2, 0));
-    auto aOdd_bOdd = _mm_shuffle_ps(a, b, _MM_SHUFFLE(3, 1, 3, 1));
-    return _mm_add_ps(aEven_bEven, aOdd_bOdd);  // (aEven + aOdd, bEven + bOdd)
-}
-#endif
 
 #define RMS_FLOAT_ELTS 4
 #define set1_ps _mm_set1_ps
@@ -971,7 +1018,7 @@ inline __m128 sse2_hadd_ps(__m128 a, __m128 b)
 #define unpackhi_ps _mm_unpackhi_ps
 #define storeu_ps _mm_storeu_ps
 
-inline __m128 SQUARE(__m128 x)
+inline __m128 SQUARE_PS(__m128 x)
 {
     return _mm_mul_ps(x, x);
 }
@@ -983,15 +1030,14 @@ inline __m128 FIXUP_LANES(__m128 x)
 
 #endif
 
-template <class T>
 static int NOINLINE
 QuadraticMeanFloatSSE2(int nDstXWidth, int nChunkXSize,
-                       const T *&CPL_RESTRICT pSrcScanlineShiftedInOut,
-                       T *CPL_RESTRICT pDstScanline)
+                       const float *&CPL_RESTRICT pSrcScanlineShiftedInOut,
+                       float *CPL_RESTRICT pDstScanline)
 {
     // Optimized implementation for RMS on Float32 by
     // processing by group of RMS_FLOAT_ELTS output pixels.
-    const T *CPL_RESTRICT pSrcScanlineShifted = pSrcScanlineShiftedInOut;
+    const float *CPL_RESTRICT pSrcScanlineShifted = pSrcScanlineShiftedInOut;
 
     int iDstPixel = 0;
     const auto minus_zero = set1_ps(-0.0f);
@@ -1003,14 +1049,11 @@ QuadraticMeanFloatSSE2(int nDstXWidth, int nChunkXSize,
          iDstPixel += RMS_FLOAT_ELTS)
     {
         // Load 2*RMS_FLOAT_ELTS Float32 from each line
-        auto firstLineLo =
-            loadu_ps(reinterpret_cast<float const *>(pSrcScanlineShifted));
-        auto firstLineHi = loadu_ps(reinterpret_cast<float const *>(
-            pSrcScanlineShifted + RMS_FLOAT_ELTS));
-        auto secondLineLo = loadu_ps(
-            reinterpret_cast<float const *>(pSrcScanlineShifted + nChunkXSize));
-        auto secondLineHi = loadu_ps(reinterpret_cast<float const *>(
-            pSrcScanlineShifted + RMS_FLOAT_ELTS + nChunkXSize));
+        auto firstLineLo = loadu_ps(pSrcScanlineShifted);
+        auto firstLineHi = loadu_ps(pSrcScanlineShifted + RMS_FLOAT_ELTS);
+        auto secondLineLo = loadu_ps(pSrcScanlineShifted + nChunkXSize);
+        auto secondLineHi =
+            loadu_ps(pSrcScanlineShifted + RMS_FLOAT_ELTS + nChunkXSize);
 
         // Take the absolute value
         firstLineLo = andnot_ps(minus_zero, firstLineLo);
@@ -1046,10 +1089,10 @@ QuadraticMeanFloatSSE2(int nDstXWidth, int nChunkXSize,
         secondLineOdd = mul_ps(secondLineOdd, invMax);
 
         // Compute squares
-        firstLineEven = SQUARE(firstLineEven);
-        firstLineOdd = SQUARE(firstLineOdd);
-        secondLineEven = SQUARE(secondLineEven);
-        secondLineOdd = SQUARE(secondLineOdd);
+        firstLineEven = SQUARE_PS(firstLineEven);
+        firstLineOdd = SQUARE_PS(firstLineOdd);
+        secondLineEven = SQUARE_PS(secondLineEven);
+        secondLineOdd = SQUARE_PS(secondLineOdd);
 
         const auto sumSquares = add_ps(add_ps(firstLineEven, firstLineOdd),
                                        add_ps(secondLineEven, secondLineOdd));
@@ -1062,8 +1105,7 @@ QuadraticMeanFloatSSE2(int nDstXWidth, int nChunkXSize,
 
         rms = FIXUP_LANES(rms);
 
-        // coverity[incompatible_cast]
-        storeu_ps(reinterpret_cast<float *>(&pDstScanline[iDstPixel]), rms);
+        storeu_ps(&pDstScanline[iDstPixel], rms);
         pSrcScanlineShifted += RMS_FLOAT_ELTS * 2;
     }
 
@@ -1077,14 +1119,13 @@ QuadraticMeanFloatSSE2(int nDstXWidth, int nChunkXSize,
 /*                        AverageFloatSSE2()                            */
 /************************************************************************/
 
-template <class T>
 static int AverageFloatSSE2(int nDstXWidth, int nChunkXSize,
-                            const T *&CPL_RESTRICT pSrcScanlineShiftedInOut,
-                            T *CPL_RESTRICT pDstScanline)
+                            const float *&CPL_RESTRICT pSrcScanlineShiftedInOut,
+                            float *CPL_RESTRICT pDstScanline)
 {
     // Optimized implementation for average on Float32 by
     // processing by group of 4 output pixels.
-    const T *CPL_RESTRICT pSrcScanlineShifted = pSrcScanlineShiftedInOut;
+    const float *CPL_RESTRICT pSrcScanlineShifted = pSrcScanlineShiftedInOut;
 
     int iDstPixel = 0;
     const auto zeroDot25 = _mm_set1_ps(0.25f);
@@ -1092,31 +1133,23 @@ static int AverageFloatSSE2(int nDstXWidth, int nChunkXSize,
     for (; iDstPixel < nDstXWidth - 3; iDstPixel += 4)
     {
         // Load 8 Float32 from each line
-        const auto firstLineLo =
-            _mm_loadu_ps(reinterpret_cast<float const *>(pSrcScanlineShifted));
-        const auto firstLineHi = _mm_loadu_ps(
-            reinterpret_cast<float const *>(pSrcScanlineShifted + 4));
-        const auto secondLineLo = _mm_loadu_ps(
-            reinterpret_cast<float const *>(pSrcScanlineShifted + nChunkXSize));
-        const auto secondLineHi = _mm_loadu_ps(reinterpret_cast<float const *>(
-            pSrcScanlineShifted + 4 + nChunkXSize));
+        const auto firstLineLo = _mm_loadu_ps(pSrcScanlineShifted);
+        const auto firstLineHi = _mm_loadu_ps(pSrcScanlineShifted + 4);
+        const auto secondLineLo =
+            _mm_loadu_ps(pSrcScanlineShifted + nChunkXSize);
+        const auto secondLineHi =
+            _mm_loadu_ps(pSrcScanlineShifted + 4 + nChunkXSize);
 
         // Vertical addition
         const auto sumLo = _mm_add_ps(firstLineLo, secondLineLo);
         const auto sumHi = _mm_add_ps(firstLineHi, secondLineHi);
 
         // Horizontal addition
-        const auto A =
-            _mm_shuffle_ps(sumLo, sumHi, 0 | (2 << 2) | (0 << 4) | (2 << 6));
-        const auto B =
-            _mm_shuffle_ps(sumLo, sumHi, 1 | (3 << 2) | (1 << 4) | (3 << 6));
-        const auto sum = _mm_add_ps(A, B);
+        const auto sum = sse2_hadd_ps(sumLo, sumHi);
 
         const auto average = _mm_mul_ps(sum, zeroDot25);
 
-        // coverity[incompatible_cast]
-        _mm_storeu_ps(reinterpret_cast<float *>(&pDstScanline[iDstPixel]),
-                      average);
+        _mm_storeu_ps(&pDstScanline[iDstPixel], average);
         pSrcScanlineShifted += 8;
     }
 
@@ -1197,11 +1230,10 @@ GDALResampleChunk_AverageOrRMS_T(const GDALOverviewResampleArgs &args,
     };
 
     PrecomputedXValue *pasSrcX = static_cast<PrecomputedXValue *>(
-        VSI_MALLOC_VERBOSE(nDstXWidth * sizeof(PrecomputedXValue)));
+        VSI_MALLOC2_VERBOSE(nDstXWidth, sizeof(PrecomputedXValue)));
 
     if (pasSrcX == nullptr)
     {
-        VSIFree(pasSrcX);
         return CE_Failure;
     }
 
@@ -1298,7 +1330,8 @@ GDALResampleChunk_AverageOrRMS_T(const GDALOverviewResampleArgs &args,
             if (bSrcXSpacingIsTwo && nSrcYOff2 == nSrcYOff + 2 &&
                 pabyChunkNodataMask == nullptr)
             {
-                if (eWrkDataType == GDT_Byte || eWrkDataType == GDT_UInt16)
+                if constexpr (eWrkDataType == GDT_Byte ||
+                              eWrkDataType == GDT_UInt16)
                 {
                     // Optimized case : no nodata, overview by a factor of 2 and
                     // regular x and y src spacing.
@@ -1308,30 +1341,36 @@ GDALResampleChunk_AverageOrRMS_T(const GDALOverviewResampleArgs &args,
                             nChunkXSize;
                     int iDstPixel = 0;
 #ifdef USE_SSE2
-                    if (bQuadraticMean && eWrkDataType == GDT_Byte)
+                    if constexpr (eWrkDataType == GDT_Byte)
                     {
-                        iDstPixel = QuadraticMeanByteSSE2OrAVX2(
-                            nDstXWidth, nChunkXSize, pSrcScanlineShifted,
-                            pDstScanline);
+                        if (bQuadraticMean)
+                        {
+                            iDstPixel = QuadraticMeanByteSSE2OrAVX2(
+                                nDstXWidth, nChunkXSize, pSrcScanlineShifted,
+                                pDstScanline);
+                        }
+                        else
+                        {
+                            iDstPixel = AverageByteSSE2OrAVX2(
+                                nDstXWidth, nChunkXSize, pSrcScanlineShifted,
+                                pDstScanline);
+                        }
                     }
-                    else if (bQuadraticMean /* && eWrkDataType == GDT_UInt16 */)
+                    else
                     {
-                        iDstPixel = QuadraticMeanUInt16SSE2(
-                            nDstXWidth, nChunkXSize, pSrcScanlineShifted,
-                            pDstScanline);
-                    }
-                    else if (/* !bQuadraticMean && */ eWrkDataType == GDT_Byte)
-                    {
-                        iDstPixel = AverageByteSSE2OrAVX2(
-                            nDstXWidth, nChunkXSize, pSrcScanlineShifted,
-                            pDstScanline);
-                    }
-                    else /* if( !bQuadraticMean && eWrkDataType == GDT_UInt16 )
-                          */
-                    {
-                        iDstPixel = AverageUInt16SSE2(nDstXWidth, nChunkXSize,
-                                                      pSrcScanlineShifted,
-                                                      pDstScanline);
+                        static_assert(eWrkDataType == GDT_UInt16);
+                        if (bQuadraticMean)
+                        {
+                            iDstPixel = QuadraticMeanUInt16SSE2(
+                                nDstXWidth, nChunkXSize, pSrcScanlineShifted,
+                                pDstScanline);
+                        }
+                        else
+                        {
+                            iDstPixel = AverageUInt16SSE2(
+                                nDstXWidth, nChunkXSize, pSrcScanlineShifted,
+                                pDstScanline);
+                        }
                     }
 #endif
                     for (; iDstPixel < nDstXWidth; ++iDstPixel)
@@ -1367,16 +1406,17 @@ GDALResampleChunk_AverageOrRMS_T(const GDALOverviewResampleArgs &args,
                 }
                 else
                 {
-                    CPLAssert(eWrkDataType == GDT_Float32 ||
-                              eWrkDataType == GDT_Float64);
+                    static_assert(eWrkDataType == GDT_Float32 ||
+                                  eWrkDataType == GDT_Float64);
                     const T *pSrcScanlineShifted =
                         pChunk + pasSrcX[0].nLeftXOffShifted +
                         static_cast<GPtrDiff_t>(nSrcYOff - nChunkYOff) *
                             nChunkXSize;
                     int iDstPixel = 0;
 #ifdef USE_SSE2
-                    if (eWrkDataType == GDT_Float32)
+                    if constexpr (eWrkDataType == GDT_Float32)
                     {
+                        static_assert(std::is_same_v<T, float>);
                         if (bQuadraticMean)
                         {
                             iDstPixel = QuadraticMeanFloatSSE2(
@@ -1616,7 +1656,7 @@ GDALResampleChunk_AverageOrRMS_T(const GDALOverviewResampleArgs &args,
                             continue;
                         }
                     }
-                    if (eWrkDataType == GDT_Byte)
+                    if constexpr (eWrkDataType == GDT_Byte)
                     {
                         T nVal;
                         if (bQuadraticMean)
@@ -1629,7 +1669,7 @@ GDALResampleChunk_AverageOrRMS_T(const GDALOverviewResampleArgs &args,
                             nVal = tReplacementVal;
                         pDstScanline[iDstPixel] = nVal;
                     }
-                    else if (eWrkDataType == GDT_UInt16)
+                    else if constexpr (eWrkDataType == GDT_UInt16)
                     {
                         T nVal;
                         if (bQuadraticMean)
@@ -2422,6 +2462,7 @@ static CPLErr GDALResampleChunk_Mode(const GDALOverviewResampleArgs &args,
 
         case GDT_Int16:
         case GDT_UInt16:
+        case GDT_Float16:
         {
             CPLAssert(GDALGetDataTypeSizeBytes(args.eWrkDataType) == 2);
             return GDALResampleChunk_ModeT(
@@ -2430,6 +2471,7 @@ static CPLErr GDALResampleChunk_Mode(const GDALOverviewResampleArgs &args,
         }
 
         case GDT_CInt16:
+        case GDT_CFloat16:
         case GDT_Int32:
         case GDT_UInt32:
         {
@@ -3137,12 +3179,15 @@ static CPLErr GDALResampleChunk_ConvolutionT(
                    : dfNoDataValue;
     // cppcheck-suppress unreadVariable
     const int isIntegerDT = GDALDataTypeIsInteger(dstDataType);
-    const auto nNodataValueInt64 = static_cast<GInt64>(dfNoDataValue);
+    const bool bNoDataValueInt64Valid =
+        isIntegerDT && GDALIsValueExactAs<GInt64>(dfNoDataValue);
+    const auto nNodataValueInt64 =
+        bNoDataValueInt64Valid ? static_cast<GInt64>(dfNoDataValue) : 0;
     constexpr int nWrkDataTypeSize = static_cast<int>(sizeof(Twork));
 
     // TODO: we should have some generic function to do this.
-    Twork fDstMin = -std::numeric_limits<Twork>::max();
-    Twork fDstMax = std::numeric_limits<Twork>::max();
+    Twork fDstMin = cpl::NumericLimits<Twork>::lowest();
+    Twork fDstMax = cpl::NumericLimits<Twork>::max();
     if (dstDataType == GDT_Byte)
     {
         fDstMin = std::numeric_limits<GByte>::min();
@@ -3180,19 +3225,21 @@ static CPLErr GDALResampleChunk_ConvolutionT(
         // cppcheck-suppress unreadVariable
         fDstMin = static_cast<Twork>(std::numeric_limits<uint64_t>::min());
         // cppcheck-suppress unreadVariable
-        fDstMax = static_cast<Twork>(std::numeric_limits<uint64_t>::max());
+        // (1 << 64) - 2048: largest uint64 value a double can hold
+        fDstMax = static_cast<Twork>(18446744073709549568ULL);
     }
     else if (dstDataType == GDT_Int64)
     {
         // cppcheck-suppress unreadVariable
         fDstMin = static_cast<Twork>(std::numeric_limits<int64_t>::min());
         // cppcheck-suppress unreadVariable
-        fDstMax = static_cast<Twork>(std::numeric_limits<int64_t>::max());
+        // (1 << 63) - 1024: largest int64 that a double can hold
+        fDstMax = static_cast<Twork>(9223372036854774784LL);
     }
 
     auto replaceValIfNodata = [bHasNoData, isIntegerDT, fDstMin, fDstMax,
-                               nNodataValueInt64, dfNoDataValue,
-                               dfReplacementVal](Twork fVal)
+                               bNoDataValueInt64Valid, nNodataValueInt64,
+                               dfNoDataValue, dfReplacementVal](Twork fVal)
     {
         if (!bHasNoData)
             return fVal;
@@ -3206,7 +3253,8 @@ static CPLErr GDALResampleChunk_ConvolutionT(
             fClamped = fDstMax;
         if (isIntegerDT)
         {
-            if (nNodataValueInt64 == static_cast<GInt64>(std::round(fClamped)))
+            if (bNoDataValueInt64Valid &&
+                nNodataValueInt64 == static_cast<GInt64>(std::round(fClamped)))
             {
                 // Do not use the nodata value
                 return static_cast<Twork>(dfReplacementVal);
@@ -4328,6 +4376,8 @@ CPLErr GDALRegenerateOverviews(GDALRasterBandH hSrcBand, int nOverviewCount,
 /*                     GDALRegenerateOverviewsEx()                      */
 /************************************************************************/
 
+constexpr int RADIUS_TO_DIAMETER = 2;
+
 /**
  * \brief Generate downsampled overviews.
  *
@@ -4519,9 +4569,27 @@ CPLErr GDALRegenerateOverviewsEx(GDALRasterBandH hSrcBand, int nOverviewCount,
     {
         // Make sure that round(nChunkYOff / nMaxOvrFactor) < round((nChunkYOff
         // + nFullResYChunk) / nMaxOvrFactor)
-        nFullResYChunk = std::max(nFullResYChunk, 2 * nMaxOvrFactor);
+        if (nMaxOvrFactor > INT_MAX / RADIUS_TO_DIAMETER)
+        {
+            return GINTBIG_MAX;
+        }
+        nFullResYChunk =
+            std::max(nFullResYChunk, RADIUS_TO_DIAMETER * nMaxOvrFactor);
+        if ((nKernelRadius > 0 &&
+             nMaxOvrFactor > INT_MAX / (RADIUS_TO_DIAMETER * nKernelRadius)) ||
+            nFullResYChunk >
+                INT_MAX - RADIUS_TO_DIAMETER * nKernelRadius * nMaxOvrFactor)
+        {
+            return GINTBIG_MAX;
+        }
         nMaxChunkYSizeQueried =
-            nFullResYChunk + 2 * nKernelRadius * nMaxOvrFactor;
+            nFullResYChunk + RADIUS_TO_DIAMETER * nKernelRadius * nMaxOvrFactor;
+        if (GDALGetDataTypeSizeBytes(eWrkDataType) >
+            std::numeric_limits<int64_t>::max() /
+                (static_cast<int64_t>(nMaxChunkYSizeQueried) * nWidth))
+        {
+            return GINTBIG_MAX;
+        }
         return static_cast<GIntBig>(GDALGetDataTypeSizeBytes(eWrkDataType)) *
                nMaxChunkYSizeQueried * nWidth;
     };
@@ -4564,7 +4632,7 @@ CPLErr GDALRegenerateOverviewsEx(GDALRasterBandH hSrcBand, int nOverviewCount,
     else if (pszChunkYSize == nullptr)
     {
         // Try to get as close as possible to nChunkMaxSize
-        while (nChunkSize * 2 < nChunkMaxSize)
+        while (nChunkSize < nChunkMaxSize / 2)
         {
             nFullResYChunk *= 2;
             nChunkSize = UpdateChunkHeightAndGetChunkSize();
@@ -5110,7 +5178,7 @@ CPLErr GDALRegenerateOverviewsMultiBand(
     if (pfnProgress == nullptr)
         pfnProgress = GDALDummyProgress;
 
-    if (EQUAL(pszResampling, "NONE"))
+    if (EQUAL(pszResampling, "NONE") || nBands == 0 || nOverviews == 0)
         return CE_None;
 
     // Sanity checks.
@@ -5207,7 +5275,8 @@ CPLErr GDALRegenerateOverviewsMultiBand(
 
     const GDALDataType eWrkDataType =
         GDALGetOvrWorkDataType(pszResampling, eDataType);
-    const int nWrkDataTypeSize = GDALGetDataTypeSizeBytes(eWrkDataType);
+    const int nWrkDataTypeSize =
+        std::max(1, GDALGetDataTypeSizeBytes(eWrkDataType));
 
     const bool bIsMask = papoSrcBands[0]->IsMaskBand();
 
@@ -5217,23 +5286,15 @@ CPLErr GDALRegenerateOverviewsMultiBand(
         !STARTS_WITH_CI(pszResampling, "NEAR") &&
         (bIsMask || (papoSrcBands[0]->GetMaskFlags() & GMF_ALL_VALID) == 0);
 
-    bool *const pabHasNoData =
-        static_cast<bool *>(VSI_MALLOC_VERBOSE(nBands * sizeof(bool)));
-    double *const padfNoDataValue =
-        static_cast<double *>(VSI_MALLOC_VERBOSE(nBands * sizeof(double)));
-    if (pabHasNoData == nullptr || padfNoDataValue == nullptr)
-    {
-        CPLFree(pabHasNoData);
-        CPLFree(padfNoDataValue);
-        return CE_Failure;
-    }
+    std::vector<bool> abHasNoData(nBands);
+    std::vector<double> adfNoDataValue(nBands);
 
     for (int iBand = 0; iBand < nBands; ++iBand)
     {
         int nHasNoData = 0;
-        padfNoDataValue[iBand] =
+        adfNoDataValue[iBand] =
             papoSrcBands[iBand]->GetNoDataValue(&nHasNoData);
-        pabHasNoData[iBand] = CPL_TO_BOOL(nHasNoData);
+        abHasNoData[iBand] = CPL_TO_BOOL(nHasNoData);
     }
     const bool bPropagateNoData =
         CPLTestBool(CPLGetConfigOption("GDAL_OVR_PROPAGATE_NODATA", "NO"));
@@ -5248,8 +5309,37 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                                    : std::unique_ptr<CPLJobQueue>(nullptr);
 
     // Only configurable for debug / testing
-    const int nChunkMaxSize = std::max(
-        100, atoi(CPLGetConfigOption("GDAL_OVR_CHUNK_MAX_SIZE", "10485760")));
+    const GIntBig nChunkMaxSize = []() -> GIntBig
+    {
+        const char *pszVal =
+            CPLGetConfigOption("GDAL_OVR_CHUNK_MAX_SIZE", nullptr);
+        if (pszVal)
+        {
+            GIntBig nRet = 0;
+            CPLParseMemorySize(pszVal, &nRet, nullptr);
+            return std::max<GIntBig>(100, nRet);
+        }
+        return 10 * 1024 * 1024;
+    }();
+
+    // Only configurable for debug / testing
+    const GIntBig nChunkMaxSizeForTempFile = []() -> GIntBig
+    {
+        const char *pszVal = CPLGetConfigOption(
+            "GDAL_OVR_CHUNK_MAX_SIZE_FOR_TEMP_FILE", nullptr);
+        if (pszVal)
+        {
+            GIntBig nRet = 0;
+            CPLParseMemorySize(pszVal, &nRet, nullptr);
+            return std::max<GIntBig>(100, nRet);
+        }
+        const auto nUsableRAM = CPLGetUsablePhysicalRAM();
+        if (nUsableRAM > 0)
+            return nUsableRAM / 10;
+        // Select a value to be able to at least downsample by 2 for a RGB
+        // 1024x1024 tiled output: (2 * 1024 + 2) * (2 * 1024 + 2) * 3 = 12 MB
+        return 100 * 1024 * 1024;
+    }();
 
     // Second pass to do the real job.
     double dfCurPixelCount = 0;
@@ -5286,6 +5376,7 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                                        nToplevelSrcHeight * nDstTotalHeight -
                                    EPS)),
                      nDstTotalHeight);
+        const int nDstHeight = nDstYOffEnd - nDstYOffStart;
 
         // Try to use previous level of overview as the source to compute
         // the next level.
@@ -5304,250 +5395,448 @@ CPLErr GDALRegenerateOverviewsMultiBand(
         const double dfYRatioDstToSrc =
             static_cast<double>(nSrcHeight) / nDstTotalHeight;
 
-        int nOvrFactor = std::max(static_cast<int>(0.5 + dfXRatioDstToSrc),
-                                  static_cast<int>(0.5 + dfYRatioDstToSrc));
-        if (nOvrFactor == 0)
-            nOvrFactor = 1;
+        const int nOvrFactor =
+            std::max(1, std::max(static_cast<int>(0.5 + dfXRatioDstToSrc),
+                                 static_cast<int>(0.5 + dfYRatioDstToSrc)));
 
         int nDstChunkXSize = 0;
         int nDstChunkYSize = 0;
         papapoOverviewBands[0][iOverview]->GetBlockSize(&nDstChunkXSize,
                                                         &nDstChunkYSize);
 
-        const char *pszDST_CHUNK_X_SIZE =
-            CSLFetchNameValue(papszOptions, "DST_CHUNK_X_SIZE");
-        const char *pszDST_CHUNK_Y_SIZE =
-            CSLFetchNameValue(papszOptions, "DST_CHUNK_Y_SIZE");
-        if (pszDST_CHUNK_X_SIZE && pszDST_CHUNK_Y_SIZE)
-        {
-            nDstChunkXSize = std::max(1, atoi(pszDST_CHUNK_X_SIZE));
-            nDstChunkYSize = std::max(1, atoi(pszDST_CHUNK_Y_SIZE));
-            CPLDebug("GDAL", "Using dst chunk size %d x %d", nDstChunkXSize,
-                     nDstChunkYSize);
-        }
-
+        constexpr int PIXEL_MARGIN = 2;
         // Try to extend the chunk size so that the memory needed to acquire
         // source pixels goes up to 10 MB.
         // This can help for drivers that support multi-threaded reading
-        const int nFullResYChunk =
-            2 + static_cast<int>(nDstChunkYSize * dfYRatioDstToSrc);
-        const int nFullResYChunkQueried =
-            nFullResYChunk + 2 * nKernelRadius * nOvrFactor;
+        const int nFullResYChunk = static_cast<int>(std::min<double>(
+            nSrcHeight, PIXEL_MARGIN + nDstChunkYSize * dfYRatioDstToSrc));
+        const int nFullResYChunkQueried = static_cast<int>(std::min<int64_t>(
+            nSrcHeight,
+            nFullResYChunk + static_cast<int64_t>(RADIUS_TO_DIAMETER) *
+                                 nKernelRadius * nOvrFactor));
         while (nDstChunkXSize < nDstWidth)
         {
-            const int nFullResXChunk =
-                2 + static_cast<int>(2 * nDstChunkXSize * dfXRatioDstToSrc);
+            constexpr int INCREASE_FACTOR = 2;
+
+            const int nFullResXChunk = static_cast<int>(std::min<double>(
+                nSrcWidth, PIXEL_MARGIN + INCREASE_FACTOR * nDstChunkXSize *
+                                              dfXRatioDstToSrc));
 
             const int nFullResXChunkQueried =
-                nFullResXChunk + 2 * nKernelRadius * nOvrFactor;
+                static_cast<int>(std::min<int64_t>(
+                    nSrcWidth,
+                    nFullResXChunk + static_cast<int64_t>(RADIUS_TO_DIAMETER) *
+                                         nKernelRadius * nOvrFactor));
 
-            if (static_cast<GIntBig>(nFullResXChunkQueried) *
-                    nFullResYChunkQueried * nBands * nWrkDataTypeSize >
-                nChunkMaxSize)
+            if (nBands > nChunkMaxSize / nFullResXChunkQueried /
+                             nFullResYChunkQueried / nWrkDataTypeSize)
             {
                 break;
             }
 
-            nDstChunkXSize *= 2;
+            nDstChunkXSize *= INCREASE_FACTOR;
         }
         nDstChunkXSize = std::min(nDstChunkXSize, nDstWidth);
 
-        const int nFullResXChunk =
-            2 + static_cast<int>(nDstChunkXSize * dfXRatioDstToSrc);
-        const int nFullResXChunkQueried =
-            nFullResXChunk + 2 * nKernelRadius * nOvrFactor;
+        const int nFullResXChunk = static_cast<int>(std::min<double>(
+            nSrcWidth, PIXEL_MARGIN + nDstChunkXSize * dfXRatioDstToSrc));
+        const int nFullResXChunkQueried = static_cast<int>(std::min<int64_t>(
+            nSrcWidth,
+            nFullResXChunk + static_cast<int64_t>(RADIUS_TO_DIAMETER) *
+                                 nKernelRadius * nOvrFactor));
 
         // Make sure that the RAM requirements to acquire the source data does
-        // not exceed nChunkMaxSize
+        // not exceed nChunkMaxSizeForTempFile
         // If so, reduce the destination chunk size, generate overviews in a
         // temporary dataset, and copy that temporary dataset over the target
         // overview bands (to avoid issues with lossy compression)
-        const auto nMemRequirement =
-            static_cast<GIntBig>(nFullResXChunkQueried) *
-            nFullResYChunkQueried * nBands * nWrkDataTypeSize;
-        if (nMemRequirement > nChunkMaxSize &&
-            !(pszDST_CHUNK_X_SIZE && pszDST_CHUNK_Y_SIZE))
-        {
-            // Compute a smaller destination chunk size
-            const auto nOverShootFactor = nMemRequirement / nChunkMaxSize;
-            const auto nSqrtOverShootFactor = std::max<GIntBig>(
-                4, static_cast<GIntBig>(std::ceil(
-                       std::sqrt(static_cast<double>(nOverShootFactor)))));
-            const int nReducedDstChunkXSize = std::max(
-                1, static_cast<int>(nDstChunkXSize / nSqrtOverShootFactor));
-            const int nReducedDstChunkYSize = std::max(
-                1, static_cast<int>(nDstChunkYSize / nSqrtOverShootFactor));
-            if (nReducedDstChunkXSize < nDstChunkXSize ||
-                nReducedDstChunkYSize < nDstChunkYSize)
-            {
-                CPLStringList aosOptions(papszOptions);
-                aosOptions.SetNameValue(
-                    "DST_CHUNK_X_SIZE",
-                    CPLSPrintf("%d", nReducedDstChunkXSize));
-                aosOptions.SetNameValue(
-                    "DST_CHUNK_Y_SIZE",
-                    CPLSPrintf("%d", nReducedDstChunkYSize));
+        const bool bOverflowFullResXChunkYChunkQueried =
+            nBands > std::numeric_limits<int64_t>::max() /
+                         nFullResXChunkQueried / nFullResYChunkQueried /
+                         nWrkDataTypeSize;
 
-                const auto nTmpDSMemRequirement =
-                    static_cast<GIntBig>(nDstTotalWidth) * nDstTotalHeight *
-                    nBands * GDALGetDataTypeSizeBytes(eDataType);
-                std::unique_ptr<GDALDataset> poTmpDS;
-                // Config option mostly/only for autotest purposes
-                const char *pszGDAL_OVR_TEMP_DRIVER =
-                    CPLGetConfigOption("GDAL_OVR_TEMP_DRIVER", "");
-                if ((nTmpDSMemRequirement <= nChunkMaxSize &&
-                     !EQUAL(pszGDAL_OVR_TEMP_DRIVER, "GTIFF")) ||
-                    EQUAL(pszGDAL_OVR_TEMP_DRIVER, "MEM"))
+        const auto nMemRequirement =
+            bOverflowFullResXChunkYChunkQueried
+                ? 0
+                : static_cast<GIntBig>(nFullResXChunkQueried) *
+                      nFullResYChunkQueried * nBands * nWrkDataTypeSize;
+        // Use a temporary dataset with a smaller destination chunk size
+        const auto nOverShootFactor =
+            nMemRequirement / nChunkMaxSizeForTempFile;
+
+        constexpr int MIN_OVERSHOOT_FACTOR = 4;
+        const auto nSqrtOverShootFactor = std::max<GIntBig>(
+            MIN_OVERSHOOT_FACTOR, static_cast<GIntBig>(std::ceil(std::sqrt(
+                                      static_cast<double>(nOverShootFactor)))));
+        constexpr int DEFAULT_CHUNK_SIZE = 256;
+        constexpr int GTIFF_BLOCK_SIZE_MULTIPLE = 16;
+        const int nReducedDstChunkXSize =
+            bOverflowFullResXChunkYChunkQueried
+                ? DEFAULT_CHUNK_SIZE
+                : std::max(1, static_cast<int>(nDstChunkXSize /
+                                               nSqrtOverShootFactor) &
+                                  ~(GTIFF_BLOCK_SIZE_MULTIPLE - 1));
+        const int nReducedDstChunkYSize =
+            bOverflowFullResXChunkYChunkQueried
+                ? DEFAULT_CHUNK_SIZE
+                : std::max(1, static_cast<int>(nDstChunkYSize /
+                                               nSqrtOverShootFactor) &
+                                  ~(GTIFF_BLOCK_SIZE_MULTIPLE - 1));
+
+        if (bOverflowFullResXChunkYChunkQueried ||
+            nMemRequirement > nChunkMaxSizeForTempFile)
+        {
+            const auto nDTSize =
+                std::max(1, GDALGetDataTypeSizeBytes(eDataType));
+            const bool bTmpDSMemRequirementOverflow =
+                nBands > std::numeric_limits<int64_t>::max() / nDstWidth /
+                             nDstHeight / nDTSize;
+            const auto nTmpDSMemRequirement =
+                bTmpDSMemRequirementOverflow
+                    ? 0
+                    : static_cast<GIntBig>(nDstWidth) * nDstHeight * nBands *
+                          nDTSize;
+
+            // make sure that one band buffer doesn't overflow size_t
+            const bool bChunkSizeOverflow =
+                static_cast<size_t>(nDTSize) >
+                std::numeric_limits<size_t>::max() / nDstWidth / nDstHeight;
+            const size_t nChunkSize =
+                bChunkSizeOverflow
+                    ? 0
+                    : static_cast<size_t>(nDstWidth) * nDstHeight * nDTSize;
+
+            const auto CreateVRT =
+                [nBands, nSrcWidth, nSrcHeight, nDstTotalWidth, nDstTotalHeight,
+                 pszResampling, eWrkDataType, papoSrcBands, papapoOverviewBands,
+                 iSrcOverview, &abHasNoData,
+                 &adfNoDataValue](int nVRTBlockXSize, int nVRTBlockYSize)
+            {
+                auto poVRTDS = std::make_unique<VRTDataset>(
+                    nDstTotalWidth, nDstTotalHeight, nVRTBlockXSize,
+                    nVRTBlockYSize);
+
+                for (int iBand = 0; iBand < nBands; ++iBand)
                 {
-                    auto poTmpDrv =
-                        GetGDALDriverManager()->GetDriverByName("MEM");
-                    if (!poTmpDrv)
-                    {
-                        eErr = CE_Failure;
-                        break;
-                    }
-                    poTmpDS.reset(poTmpDrv->Create("", nDstTotalWidth,
-                                                   nDstTotalHeight, nBands,
-                                                   eDataType, nullptr));
+                    auto poVRTSrc = std::make_unique<VRTSimpleSource>();
+                    poVRTSrc->SetResampling(pszResampling);
+                    poVRTDS->AddBand(eWrkDataType);
+                    auto poVRTBand = static_cast<VRTSourcedRasterBand *>(
+                        poVRTDS->GetRasterBand(iBand + 1));
+
+                    auto poSrcBand = papoSrcBands[iBand];
+                    if (iSrcOverview != -1)
+                        poSrcBand = papapoOverviewBands[iBand][iSrcOverview];
+                    poVRTBand->ConfigureSource(
+                        poVRTSrc.get(), poSrcBand, false, 0, 0, nSrcWidth,
+                        nSrcHeight, 0, 0, nDstTotalWidth, nDstTotalHeight);
+                    // Add the source to the band
+                    poVRTBand->AddSource(poVRTSrc.release());
+                    if (abHasNoData[iBand])
+                        poVRTBand->SetNoDataValue(adfNoDataValue[iBand]);
                 }
-                else
+
+                if (papoSrcBands[0]->GetMaskFlags() == GMF_PER_DATASET &&
+                    poVRTDS->CreateMaskBand(GMF_PER_DATASET) == CE_None)
                 {
-                    auto poTmpDrv =
-                        GetGDALDriverManager()->GetDriverByName("GTiff");
-                    if (!poTmpDrv)
-                    {
-                        eErr = CE_Failure;
-                        break;
-                    }
-                    std::string osTmpFilename;
-                    auto poDstDS = papapoOverviewBands[0][0]->GetDataset();
-                    if (poDstDS)
-                    {
-                        osTmpFilename = poDstDS->GetDescription();
-                        VSIStatBufL sStatBuf;
-                        if (!osTmpFilename.empty() &&
-                            VSIStatL(osTmpFilename.c_str(), &sStatBuf) == 0)
-                            osTmpFilename += "_tmp_ovr.tif";
-                    }
-                    if (osTmpFilename.empty())
-                    {
-                        osTmpFilename = CPLGenerateTempFilename(nullptr);
-                        osTmpFilename += ".tif";
-                    }
-                    CPLDebug("GDAL",
-                             "Creating temporary file %s of %d x %d x %d",
-                             osTmpFilename.c_str(), nDstTotalWidth,
-                             nDstTotalHeight, nBands);
-                    CPLStringList aosCO;
-                    poTmpDS.reset(poTmpDrv->Create(
-                        osTmpFilename.c_str(), nDstTotalWidth, nDstTotalHeight,
-                        nBands, eDataType, aosCO.List()));
-                    if (poTmpDS)
-                    {
-                        poTmpDS->MarkSuppressOnClose();
-                        VSIUnlink(osTmpFilename.c_str());
-                    }
+                    VRTSourcedRasterBand *poMaskVRTBand =
+                        cpl::down_cast<VRTSourcedRasterBand *>(
+                            poVRTDS->GetRasterBand(1)->GetMaskBand());
+                    auto poSrcBand = papoSrcBands[0];
+                    if (iSrcOverview != -1)
+                        poSrcBand = papapoOverviewBands[0][iSrcOverview];
+                    poMaskVRTBand->AddMaskBandSource(
+                        poSrcBand->GetMaskBand(), 0, 0, nSrcWidth, nSrcHeight,
+                        0, 0, nDstTotalWidth, nDstTotalHeight);
                 }
-                if (!poTmpDS)
+
+                return poVRTDS;
+            };
+
+            // If the overview accommodates chunking, do so and recurse
+            // to avoid generating full size temporary files
+            if (!bOverflowFullResXChunkYChunkQueried &&
+                !bTmpDSMemRequirementOverflow && !bChunkSizeOverflow &&
+                (nDstChunkXSize < nDstWidth || nDstChunkYSize < nDstHeight))
+            {
+                // Create a VRT with the smaller chunk to do the scaling
+                auto poVRTDS =
+                    CreateVRT(nReducedDstChunkXSize, nReducedDstChunkYSize);
+
+                std::vector<GDALRasterBand *> apoVRTBand(nBands);
+                std::vector<GDALRasterBand *> apoDstBand(nBands);
+                for (int iBand = 0; iBand < nBands; ++iBand)
+                {
+                    apoDstBand[iBand] = papapoOverviewBands[iBand][iOverview];
+                    apoVRTBand[iBand] = poVRTDS->GetRasterBand(iBand + 1);
+                }
+
+                // Use a flag to avoid reading from the overview being built
+                GDALRasterIOExtraArg sExtraArg;
+                INIT_RASTERIO_EXTRA_ARG(sExtraArg);
+                if (iSrcOverview == -1)
+                    sExtraArg.bUseOnlyThisScale = true;
+
+                // A single band buffer for data transfer to the overview
+                std::vector<GByte> abyChunk;
+                try
+                {
+                    abyChunk.resize(nChunkSize);
+                }
+                catch (const std::exception &)
+                {
+                    CPLError(CE_Failure, CPLE_OutOfMemory,
+                             "Out of memory allocating temporary buffer");
+                    return CE_Failure;
+                }
+
+                // Loop over output height, in chunks
+                for (int nDstYOff = nDstYOffStart;
+                     nDstYOff < nDstYOffEnd && eErr == CE_None;
+                     /* */)
+                {
+                    const int nDstYCount =
+                        std::min(nDstChunkYSize, nDstYOffEnd - nDstYOff);
+                    // Loop over output width, in output chunks
+                    for (int nDstXOff = nDstXOffStart;
+                         nDstXOff < nDstXOffEnd && eErr == CE_None;
+                         /* */)
+                    {
+                        const int nDstXCount =
+                            std::min(nDstChunkXSize, nDstXOffEnd - nDstXOff);
+                        // Read and transfer the chunk to the overview
+                        for (int iBand = 0; iBand < nBands && eErr == CE_None;
+                             ++iBand)
+                        {
+                            eErr = apoVRTBand[iBand]->RasterIO(
+                                GF_Read, nDstXOff, nDstYOff, nDstXCount,
+                                nDstYCount, abyChunk.data(), nDstXCount,
+                                nDstYCount, eDataType, 0, 0, &sExtraArg);
+                            if (eErr == CE_None)
+                            {
+                                eErr = apoDstBand[iBand]->RasterIO(
+                                    GF_Write, nDstXOff, nDstYOff, nDstXCount,
+                                    nDstYCount, abyChunk.data(), nDstXCount,
+                                    nDstYCount, eDataType, 0, 0, nullptr);
+                            }
+                        }
+
+                        dfCurPixelCount +=
+                            static_cast<double>(nDstXCount) * nDstYCount;
+
+                        nDstXOff += nDstXCount;
+                    }  // width
+
+                    if (!pfnProgress(dfCurPixelCount / dfTotalPixelCount,
+                                     nullptr, pProgressData))
+                    {
+                        CPLError(CE_Failure, CPLE_UserInterrupt,
+                                 "User terminated");
+                        eErr = CE_Failure;
+                    }
+
+                    nDstYOff += nDstYCount;
+                }  // height
+
+                if (CE_None != eErr)
+                {
+                    CPLError(CE_Failure, CPLE_AppDefined,
+                             "Error while writing overview");
+                    return CE_Failure;
+                }
+
+                pfnProgress(1.0, nullptr, pProgressData);
+                // Flush the overviews we just generated
+                for (int iBand = 0; iBand < nBands; ++iBand)
+                    apoDstBand[iBand]->FlushCache(false);
+
+                continue;  // Next overview
+            }              // chunking via temporary dataset
+
+            std::unique_ptr<GDALDataset> poTmpDS;
+            // Config option mostly/only for autotest purposes
+            const char *pszGDAL_OVR_TEMP_DRIVER =
+                CPLGetConfigOption("GDAL_OVR_TEMP_DRIVER", "");
+            if ((!bTmpDSMemRequirementOverflow &&
+                 nTmpDSMemRequirement <= nChunkMaxSizeForTempFile &&
+                 !EQUAL(pszGDAL_OVR_TEMP_DRIVER, "GTIFF")) ||
+                EQUAL(pszGDAL_OVR_TEMP_DRIVER, "MEM"))
+            {
+                auto poTmpDrv = GetGDALDriverManager()->GetDriverByName("MEM");
+                if (!poTmpDrv)
                 {
                     eErr = CE_Failure;
                     break;
                 }
-
-                std::vector<GDALRasterBand **> apapoOverviewBands(nBands);
-                for (int i = 0; i < nBands; ++i)
-                {
-                    apapoOverviewBands[i] = static_cast<GDALRasterBand **>(
-                        CPLMalloc(sizeof(GDALRasterBand *)));
-                    apapoOverviewBands[i][0] = poTmpDS->GetRasterBand(i + 1);
-                }
-
-                const double dfExtraPixels =
-                    static_cast<double>(nSrcXSize) / nToplevelSrcWidth *
-                    papapoOverviewBands[0][iOverview]->GetXSize() *
-                    static_cast<double>(nSrcYSize) / nToplevelSrcHeight *
-                    papapoOverviewBands[0][iOverview]->GetYSize();
-
-                void *pScaledProgressData = GDALCreateScaledProgress(
-                    dfCurPixelCount / dfTotalPixelCount,
-                    (dfCurPixelCount + dfExtraPixels) / dfTotalPixelCount,
-                    pfnProgress, pProgressData);
-
-                // Generate overviews in temporary dataset
-                eErr = GDALRegenerateOverviewsMultiBand(
-                    nBands, papoSrcBands, 1, apapoOverviewBands.data(),
-                    pszResampling, GDALScaledProgress, pScaledProgressData,
-                    aosOptions.List());
-
-                GDALDestroyScaledProgress(pScaledProgressData);
-
-                dfCurPixelCount += dfExtraPixels;
-
-                for (int i = 0; i < nBands; ++i)
-                {
-                    CPLFree(apapoOverviewBands[i]);
-                }
-
-                // Copy temporary dataset to destination overview bands
-
-                if (eErr == CE_None)
-                {
-                    // Check if all papapoOverviewBands[][iOverview] bands point
-                    // to the same dataset. If so, we can use
-                    // GDALDatasetCopyWholeRaster()
-                    GDALDataset *poDstOvrBandDS =
-                        papapoOverviewBands[0][iOverview]->GetDataset();
-                    if (poDstOvrBandDS)
-                    {
-                        if (poDstOvrBandDS->GetRasterCount() != nBands ||
-                            poDstOvrBandDS->GetRasterBand(1) !=
-                                papapoOverviewBands[0][iOverview])
-                        {
-                            poDstOvrBandDS = nullptr;
-                        }
-                        else
-                        {
-                            for (int i = 1; poDstOvrBandDS && i < nBands; ++i)
-                            {
-                                GDALDataset *poThisDstOvrBandDS =
-                                    papapoOverviewBands[i][iOverview]
-                                        ->GetDataset();
-                                if (poThisDstOvrBandDS == nullptr ||
-                                    poThisDstOvrBandDS != poDstOvrBandDS ||
-                                    poThisDstOvrBandDS->GetRasterBand(i + 1) !=
-                                        papapoOverviewBands[i][iOverview])
-                                {
-                                    poDstOvrBandDS = nullptr;
-                                }
-                            }
-                        }
-                    }
-                    if (poDstOvrBandDS)
-                    {
-                        eErr = GDALDatasetCopyWholeRaster(
-                            GDALDataset::ToHandle(poTmpDS.get()),
-                            GDALDataset::ToHandle(poDstOvrBandDS), nullptr,
-                            nullptr, nullptr);
-                    }
-                    else
-                    {
-                        for (int i = 0; eErr == CE_None && i < nBands; ++i)
-                        {
-                            eErr = GDALRasterBandCopyWholeRaster(
-                                GDALRasterBand::ToHandle(
-                                    poTmpDS->GetRasterBand(i + 1)),
-                                GDALRasterBand::ToHandle(
-                                    papapoOverviewBands[i][iOverview]),
-                                nullptr, nullptr, nullptr);
-                        }
-                    }
-                }
-
-                if (eErr != CE_None)
-                    break;
-
-                continue;
+                poTmpDS.reset(poTmpDrv->Create("", nDstTotalWidth,
+                                               nDstTotalHeight, nBands,
+                                               eDataType, nullptr));
             }
+            else
+            {
+                // Create a temporary file for the overview
+                auto poTmpDrv =
+                    GetGDALDriverManager()->GetDriverByName("GTiff");
+                if (!poTmpDrv)
+                {
+                    eErr = CE_Failure;
+                    break;
+                }
+                std::string osTmpFilename;
+                auto poDstDS = papapoOverviewBands[0][0]->GetDataset();
+                if (poDstDS)
+                {
+                    osTmpFilename = poDstDS->GetDescription();
+                    VSIStatBufL sStatBuf;
+                    if (!osTmpFilename.empty() &&
+                        VSIStatL(osTmpFilename.c_str(), &sStatBuf) == 0)
+                        osTmpFilename += "_tmp_ovr.tif";
+                }
+                if (osTmpFilename.empty())
+                {
+                    osTmpFilename = CPLGenerateTempFilenameSafe(nullptr);
+                    osTmpFilename += ".tif";
+                }
+                CPLDebug("GDAL", "Creating temporary file %s of %d x %d x %d",
+                         osTmpFilename.c_str(), nDstWidth, nDstHeight, nBands);
+                CPLStringList aosCO;
+                if (0 == ((nReducedDstChunkXSize % GTIFF_BLOCK_SIZE_MULTIPLE) |
+                          (nReducedDstChunkYSize % GTIFF_BLOCK_SIZE_MULTIPLE)))
+                {
+                    aosCO.SetNameValue("TILED", "YES");
+                    aosCO.SetNameValue("BLOCKXSIZE",
+                                       CPLSPrintf("%d", nReducedDstChunkXSize));
+                    aosCO.SetNameValue("BLOCKYSIZE",
+                                       CPLSPrintf("%d", nReducedDstChunkYSize));
+                }
+                if (const char *pszCOList =
+                        poTmpDrv->GetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST))
+                {
+                    aosCO.SetNameValue(
+                        "COMPRESS", strstr(pszCOList, "ZSTD") ? "ZSTD" : "LZW");
+                }
+                poTmpDS.reset(poTmpDrv->Create(osTmpFilename.c_str(), nDstWidth,
+                                               nDstHeight, nBands, eDataType,
+                                               aosCO.List()));
+                if (poTmpDS)
+                {
+                    poTmpDS->MarkSuppressOnClose();
+                    VSIUnlink(osTmpFilename.c_str());
+                }
+            }
+            if (!poTmpDS)
+            {
+                eErr = CE_Failure;
+                break;
+            }
+
+            // Create a full size VRT to do the resampling without edge effects
+            auto poVRTDS =
+                CreateVRT(nReducedDstChunkXSize, nReducedDstChunkYSize);
+
+            // Allocate a band buffer with the overview chunk size
+            std::unique_ptr<void, VSIFreeReleaser> pDstBuffer(
+                VSI_MALLOC3_VERBOSE(size_t(nWrkDataTypeSize), nDstChunkXSize,
+                                    nDstChunkYSize));
+            if (pDstBuffer == nullptr)
+            {
+                eErr = CE_Failure;
+                break;
+            }
+
+            // Use a flag to avoid reading the overview being built
+            GDALRasterIOExtraArg sExtraArg;
+            INIT_RASTERIO_EXTRA_ARG(sExtraArg);
+            if (iSrcOverview == -1)
+                sExtraArg.bUseOnlyThisScale = true;
+
+            // Scale and copy data from the VRT to the temp file
+            for (int nDstYOff = nDstYOffStart;
+                 nDstYOff < nDstYOffEnd && eErr == CE_None;
+                 /* */)
+            {
+                const int nDstYCount =
+                    std::min(nReducedDstChunkYSize, nDstYOffEnd - nDstYOff);
+                for (int nDstXOff = nDstXOffStart;
+                     nDstXOff < nDstXOffEnd && eErr == CE_None;
+                     /* */)
+                {
+                    const int nDstXCount =
+                        std::min(nReducedDstChunkXSize, nDstXOffEnd - nDstXOff);
+                    for (int iBand = 0; iBand < nBands && eErr == CE_None;
+                         ++iBand)
+                    {
+                        auto poSrcBand = poVRTDS->GetRasterBand(iBand + 1);
+                        eErr = poSrcBand->RasterIO(
+                            GF_Read, nDstXOff, nDstYOff, nDstXCount, nDstYCount,
+                            pDstBuffer.get(), nDstXCount, nDstYCount,
+                            eWrkDataType, 0, 0, &sExtraArg);
+                        if (eErr == CE_None)
+                        {
+                            // Write to the temporary dataset, shifted
+                            auto poOvrBand = poTmpDS->GetRasterBand(iBand + 1);
+                            eErr = poOvrBand->RasterIO(
+                                GF_Write, nDstXOff - nDstXOffStart,
+                                nDstYOff - nDstYOffStart, nDstXCount,
+                                nDstYCount, pDstBuffer.get(), nDstXCount,
+                                nDstYCount, eWrkDataType, 0, 0, nullptr);
+                        }
+                    }
+                    nDstXOff += nDstXCount;
+                }
+                nDstYOff += nDstYCount;
+            }
+
+            // Copy from the temporary to the overview
+            for (int nDstYOff = nDstYOffStart;
+                 nDstYOff < nDstYOffEnd && eErr == CE_None;
+                 /* */)
+            {
+                const int nDstYCount =
+                    std::min(nDstChunkYSize, nDstYOffEnd - nDstYOff);
+                for (int nDstXOff = nDstXOffStart;
+                     nDstXOff < nDstXOffEnd && eErr == CE_None;
+                     /* */)
+                {
+                    const int nDstXCount =
+                        std::min(nDstChunkXSize, nDstXOffEnd - nDstXOff);
+                    for (int iBand = 0; iBand < nBands && eErr == CE_None;
+                         ++iBand)
+                    {
+                        auto poSrcBand = poTmpDS->GetRasterBand(iBand + 1);
+                        eErr = poSrcBand->RasterIO(
+                            GF_Read, nDstXOff - nDstXOffStart,
+                            nDstYOff - nDstYOffStart, nDstXCount, nDstYCount,
+                            pDstBuffer.get(), nDstXCount, nDstYCount,
+                            eWrkDataType, 0, 0, nullptr);
+                        if (eErr == CE_None)
+                        {
+                            // Write to the destination overview bands
+                            auto poOvrBand =
+                                papapoOverviewBands[iBand][iOverview];
+                            eErr = poOvrBand->RasterIO(
+                                GF_Write, nDstXOff, nDstYOff, nDstXCount,
+                                nDstYCount, pDstBuffer.get(), nDstXCount,
+                                nDstYCount, eWrkDataType, 0, 0, nullptr);
+                        }
+                    }
+                    nDstXOff += nDstXCount;
+                }
+                nDstYOff += nDstYCount;
+            }
+
+            if (eErr != CE_None)
+            {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "Failed to write overview %d", iOverview);
+                return eErr;
+            }
+
+            // Flush the data to overviews.
+            for (int iBand = 0; iBand < nBands; ++iBand)
+                papapoOverviewBands[iBand][iOverview]->FlushCache(false);
+
+            continue;
         }
 
         // Structure describing a resampling job
@@ -5632,8 +5921,9 @@ CPLErr GDALRegenerateOverviewsMultiBand(
         // Queue of jobs
         std::list<std::unique_ptr<OvrJob>> jobList;
 
-        std::vector<void *> apaChunk(nBands);
-        std::vector<GByte *> apabyChunkNoDataMask(nBands);
+        std::vector<std::unique_ptr<void, VSIFreeReleaser>> apaChunk(nBands);
+        std::vector<std::unique_ptr<GByte, VSIFreeReleaser>>
+            apabyChunkNoDataMask(nBands);
 
         // Iterate on destination overview, block by block.
         for (int nDstYOff = nDstYOffStart;
@@ -5656,7 +5946,8 @@ CPLErr GDALRegenerateOverviewsMultiBand(
             CPLAssert(nYCount <= nFullResYChunk);
 
             int nChunkYOffQueried = nChunkYOff - nKernelRadius * nOvrFactor;
-            int nChunkYSizeQueried = nYCount + 2 * nKernelRadius * nOvrFactor;
+            int nChunkYSizeQueried =
+                nYCount + RADIUS_TO_DIAMETER * nKernelRadius * nOvrFactor;
             if (nChunkYOffQueried < 0)
             {
                 nChunkYSizeQueried += nChunkYOffQueried;
@@ -5666,8 +5957,8 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                 nChunkYSizeQueried = nSrcHeight - nChunkYOffQueried;
             CPLAssert(nChunkYSizeQueried <= nFullResYChunkQueried);
 
-            if (!pfnProgress(dfCurPixelCount / dfTotalPixelCount, nullptr,
-                             pProgressData))
+            if (!pfnProgress(std::min(1.0, dfCurPixelCount / dfTotalPixelCount),
+                             nullptr, pProgressData))
             {
                 CPLError(CE_Failure, CPLE_UserInterrupt, "User terminated");
                 eErr = CE_Failure;
@@ -5697,7 +5988,7 @@ CPLErr GDALRegenerateOverviewsMultiBand(
 
                 int nChunkXOffQueried = nChunkXOff - nKernelRadius * nOvrFactor;
                 int nChunkXSizeQueried =
-                    nXCount + 2 * nKernelRadius * nOvrFactor;
+                    nXCount + RADIUS_TO_DIAMETER * nKernelRadius * nOvrFactor;
                 if (nChunkXOffQueried < 0)
                 {
                     nChunkXSizeQueried += nChunkXOffQueried;
@@ -5744,14 +6035,15 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                     eErr = WaitAndFinalizeOldestJob(jobList);
                 }
 
-                // (Re)allocate buffers if needed
-                for (int iBand = 0; iBand < nBands; ++iBand)
+                // Read the source buffers for all the bands.
+                for (int iBand = 0; iBand < nBands && eErr == CE_None; ++iBand)
                 {
+                    // (Re)allocate buffers if needed
                     if (apaChunk[iBand] == nullptr)
                     {
-                        apaChunk[iBand] = VSI_MALLOC3_VERBOSE(
+                        apaChunk[iBand].reset(VSI_MALLOC3_VERBOSE(
                             nFullResXChunkQueried, nFullResYChunkQueried,
-                            nWrkDataTypeSize);
+                            nWrkDataTypeSize));
                         if (apaChunk[iBand] == nullptr)
                         {
                             eErr = CE_Failure;
@@ -5760,40 +6052,41 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                     if (bUseNoDataMask &&
                         apabyChunkNoDataMask[iBand] == nullptr)
                     {
-                        apabyChunkNoDataMask[iBand] =
+                        apabyChunkNoDataMask[iBand].reset(
                             static_cast<GByte *>(VSI_MALLOC2_VERBOSE(
-                                nFullResXChunkQueried, nFullResYChunkQueried));
+                                nFullResXChunkQueried, nFullResYChunkQueried)));
                         if (apabyChunkNoDataMask[iBand] == nullptr)
                         {
                             eErr = CE_Failure;
                         }
                     }
-                }
 
-                // Read the source buffers for all the bands.
-                for (int iBand = 0; iBand < nBands && eErr == CE_None; ++iBand)
-                {
-                    GDALRasterBand *poSrcBand = nullptr;
-                    if (iSrcOverview == -1)
-                        poSrcBand = papoSrcBands[iBand];
-                    else
-                        poSrcBand = papapoOverviewBands[iBand][iSrcOverview];
-                    eErr = poSrcBand->RasterIO(
-                        GF_Read, nChunkXOffQueried, nChunkYOffQueried,
-                        nChunkXSizeQueried, nChunkYSizeQueried, apaChunk[iBand],
-                        nChunkXSizeQueried, nChunkYSizeQueried, eWrkDataType, 0,
-                        0, nullptr);
-
-                    if (bUseNoDataMask && eErr == CE_None)
+                    if (eErr == CE_None)
                     {
-                        auto poMaskBand = poSrcBand->IsMaskBand()
-                                              ? poSrcBand
-                                              : poSrcBand->GetMaskBand();
-                        eErr = poMaskBand->RasterIO(
+                        GDALRasterBand *poSrcBand = nullptr;
+                        if (iSrcOverview == -1)
+                            poSrcBand = papoSrcBands[iBand];
+                        else
+                            poSrcBand =
+                                papapoOverviewBands[iBand][iSrcOverview];
+                        eErr = poSrcBand->RasterIO(
                             GF_Read, nChunkXOffQueried, nChunkYOffQueried,
                             nChunkXSizeQueried, nChunkYSizeQueried,
-                            apabyChunkNoDataMask[iBand], nChunkXSizeQueried,
-                            nChunkYSizeQueried, GDT_Byte, 0, 0, nullptr);
+                            apaChunk[iBand].get(), nChunkXSizeQueried,
+                            nChunkYSizeQueried, eWrkDataType, 0, 0, nullptr);
+
+                        if (bUseNoDataMask && eErr == CE_None)
+                        {
+                            auto poMaskBand = poSrcBand->IsMaskBand()
+                                                  ? poSrcBand
+                                                  : poSrcBand->GetMaskBand();
+                            eErr = poMaskBand->RasterIO(
+                                GF_Read, nChunkXOffQueried, nChunkYOffQueried,
+                                nChunkXSizeQueried, nChunkYSizeQueried,
+                                apabyChunkNoDataMask[iBand].get(),
+                                nChunkXSizeQueried, nChunkYSizeQueried,
+                                GDT_Byte, 0, 0, nullptr);
+                        }
                     }
                 }
 
@@ -5813,9 +6106,9 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                     poJob->args.dfXRatioDstToSrc = dfXRatioDstToSrc;
                     poJob->args.dfYRatioDstToSrc = dfYRatioDstToSrc;
                     poJob->args.eWrkDataType = eWrkDataType;
-                    poJob->pChunk = apaChunk[iBand];
+                    poJob->pChunk = apaChunk[iBand].get();
                     poJob->args.pabyChunkNodataMask =
-                        apabyChunkNoDataMask[iBand];
+                        apabyChunkNoDataMask[iBand].get();
                     poJob->args.nChunkXOff = nChunkXOffQueried;
                     poJob->args.nChunkXSize = nChunkXSizeQueried;
                     poJob->args.nChunkYOff = nChunkYOffQueried;
@@ -5825,20 +6118,18 @@ CPLErr GDALRegenerateOverviewsMultiBand(
                     poJob->args.nDstYOff = nDstYOff;
                     poJob->args.nDstYOff2 = nDstYOff + nDstYCount;
                     poJob->args.pszResampling = pszResampling;
-                    poJob->args.bHasNoData = pabHasNoData[iBand];
-                    poJob->args.dfNoDataValue = padfNoDataValue[iBand];
+                    poJob->args.bHasNoData = abHasNoData[iBand];
+                    poJob->args.dfNoDataValue = adfNoDataValue[iBand];
                     poJob->args.eSrcDataType = eDataType;
                     poJob->args.bPropagateNoData = bPropagateNoData;
 
                     if (poJobQueue)
                     {
-                        poJob->oSrcMaskBufferHolder.reset(
-                            new PointerHolder(apabyChunkNoDataMask[iBand]));
-                        apabyChunkNoDataMask[iBand] = nullptr;
+                        poJob->oSrcMaskBufferHolder.reset(new PointerHolder(
+                            apabyChunkNoDataMask[iBand].release()));
 
                         poJob->oSrcBufferHolder.reset(
-                            new PointerHolder(apaChunk[iBand]));
-                        apaChunk[iBand] = nullptr;
+                            new PointerHolder(apaChunk[iBand].release()));
 
                         poJobQueue->SubmitJob(JobResampleFunc, poJob.get());
                         jobList.emplace_back(std::move(poJob));
@@ -5867,15 +6158,11 @@ CPLErr GDALRegenerateOverviewsMultiBand(
         // Flush the data to overviews.
         for (int iBand = 0; iBand < nBands; ++iBand)
         {
-            CPLFree(apaChunk[iBand]);
-            papapoOverviewBands[iBand][iOverview]->FlushCache(false);
-
-            CPLFree(apabyChunkNoDataMask[iBand]);
+            if (papapoOverviewBands[iBand][iOverview]->FlushCache(false) !=
+                CE_None)
+                eErr = CE_Failure;
         }
     }
-
-    CPLFree(pabHasNoData);
-    CPLFree(padfNoDataValue);
 
     if (eErr == CE_None)
         pfnProgress(1.0, nullptr, pProgressData);
@@ -6019,13 +6306,13 @@ CPLErr CPL_STDCALL GDALComputeBandStats(GDALRasterBandH hSrcBand,
     if (bComplex)
     {
         pafData = static_cast<float *>(
-            VSI_MALLOC_VERBOSE(nWidth * 2 * sizeof(float)));
+            VSI_MALLOC2_VERBOSE(nWidth, 2 * sizeof(float)));
         eWrkType = GDT_CFloat32;
     }
     else
     {
         pafData =
-            static_cast<float *>(VSI_MALLOC_VERBOSE(nWidth * sizeof(float)));
+            static_cast<float *>(VSI_MALLOC2_VERBOSE(nWidth, sizeof(float)));
         eWrkType = GDT_Float32;
     }
 

@@ -29,7 +29,17 @@
 #include "cpl_string.h"
 #include "gdal_frmts.h"
 #include "gdal_pam.h"
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdocumentation-unknown-command"
+#endif
+
 #include "png.h"
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #include <csetjmp>
 
@@ -991,20 +1001,6 @@ CPLErr PNGDataset::LoadWholeImage(void *pSingleBuffer, GSpacing nPixelSpace,
 #endif  // ENABLE_WHOLE_IMAGE_OPTIMIZATION
 
 /************************************************************************/
-/*                            IsFullBandMap()                           */
-/************************************************************************/
-
-static int IsFullBandMap(const int *panBandMap, int nBands)
-{
-    for (int i = 0; i < nBands; i++)
-    {
-        if (panBandMap[i] != i + 1)
-            return FALSE;
-    }
-    return TRUE;
-}
-
-/************************************************************************/
 /*                             IRasterIO()                              */
 /************************************************************************/
 
@@ -1028,7 +1024,7 @@ CPLErr PNGDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
         (nYSize == nBufYSize) && (nYSize == nRasterYSize) &&
         (eBufType == GDT_Byte) &&
         (eBufType == GetRasterBand(1)->GetRasterDataType()) &&
-        (pData != nullptr) && IsFullBandMap(panBandMap, nBands))
+        (pData != nullptr) && IsAllBands(nBands, panBandMap))
     {
 #ifdef ENABLE_WHOLE_IMAGE_OPTIMIZATION
         // Below should work without SSE2, but the lack of optimized
@@ -1788,9 +1784,7 @@ GDALDataset *PNGDataset::Open(GDALOpenInfo *poOpenInfo)
 
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The PNG driver does not support update access to existing"
-                 " datasets.\n");
+        ReportUpdateNotSupportedByDriver("PNG");
         return nullptr;
     }
 

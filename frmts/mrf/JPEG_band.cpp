@@ -276,7 +276,7 @@ CPLErr JPEG_Codec::CompressJPEG(buf_mgr &dst, buf_mgr &src)
     ILSize sz = img.pagesize;
 
     jpeg_destination_mgr jmgr;
-    jmgr.next_output_byte = (JOCTET *)dst.buffer;
+    jmgr.next_output_byte = reinterpret_cast<JOCTET *>(dst.buffer);
     jmgr.free_in_buffer = dst.size;
     jmgr.init_destination = init_or_terminate_destination;
     jmgr.empty_output_buffer = empty_output_buffer;
@@ -933,6 +933,11 @@ JPEG_Band::JPEG_Band(MRFDataset *pDS, const ILImage &image, int b, int level)
     {
         codec.optimize = true;  // Required for 12bit
     }
+    // For high Q, no downsampling and multispectral, output can be larger than the input
+    // This is just a guess, 20% larger plus some space for the headers and mask
+    // If too small, the empty_output_buffer() above will be called and an
+    // error will be generated
+    poMRFDS->SetPBufferSize(int(1.2 * image.pageSizeBytes + 4000));
 }
 #endif
 

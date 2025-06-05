@@ -26,7 +26,7 @@ CPLString OGRCARTOEscapeLiteral(const char *pszStr);
 CPLString OGRCARTOEscapeLiteralCopy(const char *pszStr);
 
 /************************************************************************/
-/*                      OGRCartoGeomFieldDefn                         */
+/*                      OGRCartoGeomFieldDefn                           */
 /************************************************************************/
 
 class OGRCartoGeomFieldDefn final : public OGRGeomFieldDefn
@@ -38,6 +38,8 @@ class OGRCartoGeomFieldDefn final : public OGRGeomFieldDefn
         : OGRGeomFieldDefn(pszNameIn, eType), nSRID(0)
     {
     }
+
+    ~OGRCartoGeomFieldDefn() override;
 };
 
 /************************************************************************/
@@ -164,21 +166,13 @@ class OGRCARTOTableLayer final : public OGRCARTOLayer
     virtual OGRErr ISetFeature(OGRFeature *poFeature) override;
     virtual OGRErr DeleteFeature(GIntBig nFID) override;
 
-    virtual void SetSpatialFilter(OGRGeometry *poGeom) override
-    {
-        SetSpatialFilter(0, poGeom);
-    }
+    OGRErr ISetSpatialFilter(int iGeomField,
+                             const OGRGeometry *poGeom) override;
 
-    virtual void SetSpatialFilter(int iGeomField, OGRGeometry *poGeom) override;
     virtual OGRErr SetAttributeFilter(const char *) override;
 
-    virtual OGRErr GetExtent(OGREnvelope *psExtent, int bForce) override
-    {
-        return GetExtent(0, psExtent, bForce);
-    }
-
-    virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                             int bForce) override;
+    OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                      bool bForce) override;
 
     void SetLaunderFlag(bool bFlag)
     {

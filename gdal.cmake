@@ -6,8 +6,8 @@
 # a new member or virtual function in a public C++ class, etc.
 # This will typically happen for each GDAL feature release (change of X or Y in
 # a X.Y.Z numbering scheme), but should not happen for a bugfix release (change of Z)
-# Previous value: 36 for GDAL 3.10
-set(GDAL_SOVERSION 36)
+# Previous value: 37 for GDAL 3.11
+set(GDAL_SOVERSION 37)
 
 # Switches to control build targets(cached)
 option(ENABLE_GNM "Build GNM (Geography Network Model) component" ON)
@@ -30,6 +30,56 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif ()
 option(GDAL_BUILD_OPTIONAL_DRIVERS "Whether to build GDAL optional drivers by default" ON)
 option(OGR_BUILD_OPTIONAL_DRIVERS "Whether to build OGR optional drivers by default" ON)
+
+# If the GDAL/OGR_BUILD_OPTIONAL_DRIVERS value has been turned OFF, unset
+# GDAL/OGR_ENABLE_DRIVER_xxxx variables
+if( GDAL_BUILD_OPTIONAL_DRIVERS_OLD_VAL AND NOT GDAL_BUILD_OPTIONAL_DRIVERS )
+    get_cmake_property(_variableNames VARIABLES)
+    foreach (_variableName ${_variableNames})
+        if ("${_variableName}" MATCHES "GDAL_ENABLE_DRIVER_" AND (NOT "${_variableName}" MATCHES "_PLUGIN"))
+            message(STATUS "Unsetting ${_variableName}")
+            unset(${_variableName})
+            unset(${_variableName} CACHE)
+            if ("${_variableName}" STREQUAL "GDAL_ENABLE_DRIVER_IDRISI")
+                set(_variableName "OGR_ENABLE_DRIVER_IDRISI")
+                message(STATUS "Unsetting ${_variableName}")
+                unset(${_variableName})
+                unset(${_variableName} CACHE)
+            elseif ("${_variableName}" STREQUAL "GDAL_ENABLE_DRIVER_PDS")
+                set(_variableName "OGR_ENABLE_DRIVER_PDS")
+                message(STATUS "Unsetting ${_variableName}")
+                unset(${_variableName})
+                unset(${_variableName} CACHE)
+            endif()
+        endif()
+    endforeach()
+endif()
+if( OGR_BUILD_OPTIONAL_DRIVERS_OLD_VAL AND NOT OGR_BUILD_OPTIONAL_DRIVERS )
+    get_cmake_property(_variableNames VARIABLES)
+    foreach (_variableName ${_variableNames})
+        if ("${_variableName}" MATCHES "OGR_ENABLE_DRIVER_" AND (NOT "${_variableName}" MATCHES "_PLUGIN"))
+            message(STATUS "Unsetting ${_variableName}")
+            unset(${_variableName})
+            unset(${_variableName} CACHE)
+            if ("${_variableName}" STREQUAL "OGR_ENABLE_DRIVER_AVC")
+                set(_variableName "GDAL_ENABLE_DRIVER_AIGRID")
+                message(STATUS "Unsetting ${_variableName}")
+                unset(${_variableName})
+                unset(${_variableName} CACHE)
+            elseif ("${_variableName}" STREQUAL "OGR_ENABLE_DRIVER_GPKG")
+                set(_variableName "GDAL_ENABLE_DRIVER_MBTILES")
+                message(STATUS "Unsetting ${_variableName}")
+                unset(${_variableName})
+                unset(${_variableName} CACHE)
+            endif()
+        endif()
+    endforeach()
+endif()
+# Save new value of GDAL/OGR_BUILD_OPTIONAL_DRIVERS
+set(GDAL_BUILD_OPTIONAL_DRIVERS_OLD_VAL ${GDAL_BUILD_OPTIONAL_DRIVERS} CACHE INTERNAL
+    "Old value of option GDAL_BUILD_OPTIONAL_DRIVERS_OLD_VAL")
+set(OGR_BUILD_OPTIONAL_DRIVERS_OLD_VAL ${OGR_BUILD_OPTIONAL_DRIVERS} CACHE INTERNAL
+    "Old value of option OGR_BUILD_OPTIONAL_DRIVERS_OLD_VAL")
 
 # libgdal shared/satic library generation
 option(BUILD_SHARED_LIBS "Set ON to build shared library" ON)
@@ -266,7 +316,8 @@ set(INSTALL_PLUGIN_FULL_DIR "${CMAKE_INSTALL_PREFIX}/${INSTALL_PLUGIN_DIR}")
 
 function (is_sharp_embed_available res)
     if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.21 AND
-        ((CMAKE_C_COMPILER_ID STREQUAL "GNU") OR (CMAKE_C_COMPILER_ID STREQUAL "Clang")))
+        ((CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 15.0) OR
+         (CMAKE_C_COMPILER_ID STREQUAL "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 19.0)))
         # CMAKE_C_STANDARD=23 only supported since CMake 3.21
         set(TEST_SHARP_EMBED
           "static const unsigned char embedded[] = {\n#embed __FILE__\n};\nint main() { (void)embedded; return 0;}"
@@ -386,6 +437,7 @@ if (USE_PRECOMPILED_HEADERS)
   target_compile_definitions(gdal_priv_header PUBLIC $<$<CONFIG:DEBUG>:GDAL_DEBUG>)
   set_property(TARGET gdal_priv_header PROPERTY POSITION_INDEPENDENT_CODE ${GDAL_OBJECT_LIBRARIES_POSITION_INDEPENDENT_CODE})
   target_precompile_headers(gdal_priv_header PUBLIC
+    $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/port/cpl_float.h>
     $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/gcore/gdal_priv.h>
     $<$<COMPILE_LANGUAGE:C>:${CMAKE_CURRENT_SOURCE_DIR}/port/cpl_port.h>
   )
@@ -497,11 +549,6 @@ endif ()
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/frmts/drivers.ini DESTINATION ${INSTALL_PLUGIN_DIR})
 
 # ######################################################################################################################
-
-# Note: this file is generated but not used.
-configure_file(${GDAL_CMAKE_TEMPLATE_PATH}/gdal_def.h.in ${CMAKE_CURRENT_BINARY_DIR}/gcore/gdal_def.h @ONLY)
-
-# ######################################################################################################################
 set_property(
   TARGET ${GDAL_LIB_TARGET_NAME}
   APPEND
@@ -551,6 +598,11 @@ install(
   RESOURCE DESTINATION ${GDAL_RESOURCE_PATH}
   PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FRAMEWORK DESTINATION "${FRAMEWORK_DESTINATION}")
+
+# Generate targets file for importing directly from GDAL build tree
+export(TARGETS ${GDAL_LIB_TARGET_NAME}
+        NAMESPACE GDAL::
+        FILE "GDAL-targets.cmake")
 
 if (NOT GDAL_ENABLE_MACOSX_FRAMEWORK)
   # Generate GdalConfig.cmake and GdalConfigVersion.cmake

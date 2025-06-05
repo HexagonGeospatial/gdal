@@ -303,14 +303,15 @@ OGRSpatialReference *OGRSXFLayer::GetSpatialRef()
 }
 
 /************************************************************************/
-/*                             GetExtent()                              */
+/*                            IGetExtent()                              */
 /************************************************************************/
 
-OGRErr OGRSXFLayer::GetExtent(OGREnvelope *psExtent, int bForce)
+OGRErr OGRSXFLayer::IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                               bool bForce)
 {
     if (bForce)
     {
-        return OGRLayer::GetExtent(psExtent, bForce);
+        return OGRLayer::IGetExtent(iGeomField, psExtent, bForce);
     }
     else
     {
@@ -881,7 +882,8 @@ OGRFeature *OGRSXFLayer::GetNextRawFeature(long nFID)
             {
                 char *psSemanticsdBufBeg = psSemanticsdBuf + offset;
                 SXFRecordAttributeInfo stAttInfo =
-                    *(SXFRecordAttributeInfo *)psSemanticsdBufBeg;
+                    *reinterpret_cast<SXFRecordAttributeInfo *>(
+                        psSemanticsdBufBeg);
                 CPL_LSBPTR16(&(stAttInfo.nCode));
                 offset += 4;
 

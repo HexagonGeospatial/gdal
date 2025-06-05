@@ -44,6 +44,7 @@
 #include "cpl_conv.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <climits>
@@ -52,9 +53,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#if HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
 #include <mutex>
 #include <set>
 
@@ -65,8 +63,12 @@
 #include <xlocale.h>  // for LC_NUMERIC_MASK on MacOS
 #endif
 
+#include <sys/types.h>  // open
+#include <sys/stat.h>   // open
+#include <fcntl.h>      // open
+
 #ifdef _WIN32
-#include <io.h>  // _isatty
+#include <io.h>  // _isatty, _wopen
 #else
 #include <unistd.h>  // isatty
 #endif
@@ -1890,9 +1892,16 @@ static void NotifyOtherComponentsConfigOptionChanged(const char *pszKey,
                                                      const char *pszValue,
                                                      bool bThreadLocal)
 {
-    // Hack
-    if (STARTS_WITH_CI(pszKey, "AWS_"))
+    // When changing authentication parameters of virtual file systems,
+    // partially invalidate cached state about file availability.
+    if (STARTS_WITH_CI(pszKey, "AWS_") || STARTS_WITH_CI(pszKey, "GS_") ||
+        STARTS_WITH_CI(pszKey, "GOOGLE_") ||
+        STARTS_WITH_CI(pszKey, "GDAL_HTTP_HEADER_FILE") ||
+        STARTS_WITH_CI(pszKey, "AZURE_") ||
+        (STARTS_WITH_CI(pszKey, "SWIFT_") && !EQUAL(pszKey, "SWIFT_MAX_KEYS")))
+    {
         VSICurlAuthParametersChanged();
+    }
 
     if (!gSetConfigOptionSubscribers.empty())
     {
@@ -2038,8 +2047,8 @@ static void CPLSetConfigOptionDetectUnknownConfigOption(const char *pszKey,
  * value provided during the last call will be used.
  *
  * Options can also be passed on the command line of most GDAL utilities
- * with '--config KEY VALUE' (or '--config KEY=VALUE' since GDAL 3.10).
- * For example, ogrinfo --config CPL_DEBUG ON ~/data/test/point.shp
+ * with '\--config KEY VALUE' (or '\--config KEY=VALUE' since GDAL 3.10).
+ * For example, ogrinfo \--config CPL_DEBUG ON ~/data/test/point.shp
  *
  * This function can also be used to clear a setting by passing NULL as the
  * value (note: passing NULL will not unset an existing environment variable;
@@ -2454,12 +2463,12 @@ void CPLLoadConfigOptionsFromFile(const char *pszFilename, int bOverrideEnvVars)
  *
  * Otherwise, for Unix builds, CPLLoadConfigOptionsFromFile() will be called
  * with ${sysconfdir}/gdal/gdalrc first where ${sysconfdir} evaluates
- * to ${prefix}/etc, unless the --sysconfdir switch of configure has been
+ * to ${prefix}/etc, unless the \--sysconfdir switch of configure has been
  * invoked.
  *
- * Then CPLLoadConfigOptionsFromFile() will be called with $(HOME)/.gdal/gdalrc
+ * Then CPLLoadConfigOptionsFromFile() will be called with ${HOME}/.gdal/gdalrc
  * on Unix builds (potentially overriding what was loaded with the sysconfdir)
- * or $(USERPROFILE)/.gdal/gdalrc on Windows builds.
+ * or ${USERPROFILE}/.gdal/gdalrc on Windows builds.
  *
  * CPLLoadConfigOptionsFromFile() will be called with bOverrideEnvVars = false,
  * that is the value of environment variables previously set will be used
@@ -2481,9 +2490,12 @@ void CPLLoadConfigOptionsFromPredefinedFiles()
     else
     {
 #ifdef SYSCONFDIR
-        pszFile = CPLFormFilename(CPLFormFilename(SYSCONFDIR, "gdal", nullptr),
-                                  "gdalrc", nullptr);
-        CPLLoadConfigOptionsFromFile(pszFile, false);
+        CPLLoadConfigOptionsFromFile(
+            CPLFormFilenameSafe(
+                CPLFormFilenameSafe(SYSCONFDIR, "gdal", nullptr).c_str(),
+                "gdalrc", nullptr)
+                .c_str(),
+            false);
 #endif
 
 #ifdef _WIN32
@@ -2493,9 +2505,12 @@ void CPLLoadConfigOptionsFromPredefinedFiles()
 #endif
         if (pszHome != nullptr)
         {
-            pszFile = CPLFormFilename(
-                CPLFormFilename(pszHome, ".gdal", nullptr), "gdalrc", nullptr);
-            CPLLoadConfigOptionsFromFile(pszFile, false);
+            CPLLoadConfigOptionsFromFile(
+                CPLFormFilenameSafe(
+                    CPLFormFilenameSafe(pszHome, ".gdal", nullptr).c_str(),
+                    "gdalrc", nullptr)
+                    .c_str(),
+                false);
         }
     }
 }
@@ -2781,35 +2796,76 @@ double CPLDecToPackedDMS(double dfDec)
 /************************************************************************/
 
 /** Fetch the real and imaginary part of a serialized complex number */
-void CPL_DLL CPLStringToComplex(const char *pszString, double *pdfReal,
-                                double *pdfImag)
+CPLErr CPL_DLL CPLStringToComplex(const char *pszString, double *pdfReal,
+                                  double *pdfImag)
 
 {
     while (*pszString == ' ')
         pszString++;
 
-    *pdfReal = CPLAtof(pszString);
-    *pdfImag = 0.0;
+    char *end;
+    *pdfReal = CPLStrtod(pszString, &end);
 
     int iPlus = -1;
     int iImagEnd = -1;
 
-    for (int i = 0; i < 100 && pszString[i] != '\0' && pszString[i] != ' '; i++)
+    if (pszString == end)
     {
-        if (pszString[i] == '+' && i > 0)
+        goto error;
+    }
+
+    *pdfImag = 0.0;
+
+    for (int i = static_cast<int>(end - pszString);
+         i < 100 && pszString[i] != '\0' && pszString[i] != ' '; i++)
+    {
+        if (pszString[i] == '+')
+        {
+            if (iPlus != -1)
+                goto error;
             iPlus = i;
-        if (pszString[i] == '-' && i > 0)
+        }
+        if (pszString[i] == '-')
+        {
+            if (iPlus != -1)
+                goto error;
             iPlus = i;
+        }
         if (pszString[i] == 'i')
+        {
+            if (iPlus == -1)
+                goto error;
             iImagEnd = i;
+        }
     }
 
-    if (iPlus > -1 && iImagEnd > -1 && iPlus < iImagEnd)
+    // If we have a "+" or "-" we must also have an "i"
+    if ((iPlus == -1) != (iImagEnd == -1))
     {
-        *pdfImag = CPLAtof(pszString + iPlus);
+        goto error;
     }
 
-    return;
+    // Parse imaginary component, if any
+    if (iPlus > -1)
+    {
+        *pdfImag = CPLStrtod(pszString + iPlus, &end);
+    }
+
+    // Check everything remaining is whitespace
+    for (; *end != '\0'; end++)
+    {
+        if (!isspace(*end) && end - pszString != iImagEnd)
+        {
+            goto error;
+        }
+    }
+
+    return CE_None;
+
+error:
+    CPLError(CE_Failure, CPLE_AppDefined, "Failed to parse number: %s",
+             pszString);
+    return CE_Failure;
 }
 
 /************************************************************************/
@@ -3106,7 +3162,7 @@ int CPLUnlinkTree(const char *pszPath)
                 continue;
 
             const std::string osSubPath =
-                CPLFormFilename(pszPath, papszItems[i], nullptr);
+                CPLFormFilenameSafe(pszPath, papszItems[i], nullptr);
 
             const int nErr = CPLUnlinkTree(osSubPath.c_str());
 
@@ -3197,9 +3253,9 @@ int CPLCopyTree(const char *pszNewPath, const char *pszOldPath)
                 continue;
 
             const std::string osNewSubPath =
-                CPLFormFilename(pszNewPath, papszItems[i], nullptr);
+                CPLFormFilenameSafe(pszNewPath, papszItems[i], nullptr);
             const std::string osOldSubPath =
-                CPLFormFilename(pszOldPath, papszItems[i], nullptr);
+                CPLFormFilenameSafe(pszOldPath, papszItems[i], nullptr);
 
             const int nErr =
                 CPLCopyTree(osNewSubPath.c_str(), osOldSubPath.c_str());
@@ -3645,4 +3701,258 @@ bool CPLIsInteractive(FILE *f)
 #else
     return _isatty(_fileno(f));
 #endif
+}
+
+/************************************************************************/
+/*                          CPLLockFileStruct                          */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+struct CPLLockFileStruct
+{
+    std::string osLockFilename{};
+    std::atomic<bool> bStop = false;
+    CPLJoinableThread *hThread = nullptr;
+};
+
+//! @endcond
+
+/************************************************************************/
+/*                          CPLLockFileEx()                             */
+/************************************************************************/
+
+/** Create and acquire a lock file.
+ *
+ * Only one caller can acquire the lock file at a time. The O_CREAT|O_EXCL
+ * flags of open() are used for that purpose (there might be limitations for
+ * network file systems).
+ *
+ * The lock file is continuously touched by a thread started by this function,
+ * to indicate it is still alive. If an existing lock file is found that has
+ * not been recently refreshed it will be considered stalled, and will be
+ * deleted before attempting to recreate it.
+ *
+ * This function must be paired with CPLUnlockFileEx().
+ *
+ * Available options are:
+ * <ul>
+ * <li>WAIT_TIME=value_in_sec/inf: Maximum amount of time in second that this
+ *     function can spend waiting for the lock. If not set, default to infinity.
+ * </li>
+ * <li>STALLED_DELAY=value_in_sec: Delay in second to consider that an existing
+ * lock file that has not been touched since STALLED_DELAY is stalled, and can
+ * be re-acquired. Defaults to 10 seconds.
+ * </li>
+ * <li>VERBOSE_WAIT_MESSAGE=YES/NO: Whether to emit a CE_Warning message while
+ * waiting for a busy lock. Default to NO.
+ * </li>
+ * </ul>
+
+ * @param pszLockFileName Lock file name. The directory must already exist.
+ *                        Must not be NULL.
+ * @param[out] phLockFileHandle Pointer to at location where to store the lock
+ *                              handle that must be passed to CPLUnlockFileEx().
+ *                              *phLockFileHandle will be null if the return
+ *                              code of that function is not CLFS_OK.
+ * @param papszOptions NULL terminated list of strings, or NULL.
+ *
+ * @return lock file status.
+ *
+ * @since 3.11
+ */
+CPLLockFileStatus CPLLockFileEx(const char *pszLockFileName,
+                                CPLLockFileHandle *phLockFileHandle,
+                                CSLConstList papszOptions)
+{
+    if (!pszLockFileName || !phLockFileHandle)
+        return CLFS_API_MISUSE;
+
+    *phLockFileHandle = nullptr;
+
+    const double dfWaitTime =
+        CPLAtof(CSLFetchNameValueDef(papszOptions, "WAIT_TIME", "inf"));
+    const double dfStalledDelay =
+        CPLAtof(CSLFetchNameValueDef(papszOptions, "STALLED_DELAY", "10"));
+    const bool bVerboseWait =
+        CPLFetchBool(papszOptions, "VERBOSE_WAIT_MESSAGE", false);
+
+    for (int i = 0; i < 2; ++i)
+    {
+#ifdef _WIN32
+        wchar_t *pwszFilename =
+            CPLRecodeToWChar(pszLockFileName, CPL_ENC_UTF8, CPL_ENC_UCS2);
+        int fd = _wopen(pwszFilename, _O_CREAT | _O_EXCL, _S_IREAD | _S_IWRITE);
+        CPLFree(pwszFilename);
+#else
+        int fd = open(pszLockFileName, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+#endif
+        if (fd == -1)
+        {
+            if (errno != EEXIST || i == 1)
+            {
+                return CLFS_CANNOT_CREATE_LOCK;
+            }
+            else
+            {
+                // Wait for the .lock file to have been removed or
+                // not refreshed since dfStalledDelay seconds.
+                double dfCurWaitTime = dfWaitTime;
+                VSIStatBufL sStat;
+                while (VSIStatL(pszLockFileName, &sStat) == 0 &&
+                       static_cast<double>(sStat.st_mtime) + dfStalledDelay >
+                           static_cast<double>(time(nullptr)))
+                {
+                    if (dfCurWaitTime <= 1e-5)
+                        return CLFS_LOCK_BUSY;
+
+                    if (bVerboseWait)
+                    {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "Waiting for %s to be freed...",
+                                 pszLockFileName);
+                    }
+                    else
+                    {
+                        CPLDebug("CPL", "Waiting for %s to be freed...",
+                                 pszLockFileName);
+                    }
+
+                    const double dfPauseDelay = std::min(0.5, dfWaitTime);
+                    CPLSleep(dfPauseDelay);
+                    dfCurWaitTime -= dfPauseDelay;
+                }
+
+                if (VSIUnlink(pszLockFileName) != 0)
+                {
+                    return CLFS_CANNOT_CREATE_LOCK;
+                }
+            }
+        }
+        else
+        {
+            close(fd);
+            break;
+        }
+    }
+
+    // Touch regularly the lock file to show it is still alive
+    struct KeepAliveLockFile
+    {
+        static void func(void *user_data)
+        {
+            CPLLockFileHandle hLockFileHandle =
+                static_cast<CPLLockFileHandle>(user_data);
+            while (!hLockFileHandle->bStop)
+            {
+                auto f = VSIVirtualHandleUniquePtr(
+                    VSIFOpenL(hLockFileHandle->osLockFilename.c_str(), "wb"));
+                if (f)
+                {
+                    f.reset();
+                }
+                constexpr double REFRESH_DELAY = 0.5;
+                CPLSleep(REFRESH_DELAY);
+            }
+        }
+    };
+
+    *phLockFileHandle = new CPLLockFileStruct();
+    (*phLockFileHandle)->osLockFilename = pszLockFileName;
+
+    (*phLockFileHandle)->hThread =
+        CPLCreateJoinableThread(KeepAliveLockFile::func, *phLockFileHandle);
+    if ((*phLockFileHandle)->hThread == nullptr)
+    {
+        VSIUnlink(pszLockFileName);
+        delete *phLockFileHandle;
+        *phLockFileHandle = nullptr;
+        return CLFS_THREAD_CREATION_FAILED;
+    }
+
+    return CLFS_OK;
+}
+
+/************************************************************************/
+/*                         CPLUnlockFileEx()                            */
+/************************************************************************/
+
+/** Release and delete a lock file.
+ *
+ * This function must be paired with CPLLockFileEx().
+ *
+ * @param hLockFileHandle Lock handle (value of *phLockFileHandle argument
+ *                        set by CPLLockFileEx()), or NULL.
+ *
+ * @since 3.11
+ */
+void CPLUnlockFileEx(CPLLockFileHandle hLockFileHandle)
+{
+    if (hLockFileHandle)
+    {
+        // Remove .lock file
+        hLockFileHandle->bStop = true;
+        CPLJoinThread(hLockFileHandle->hThread);
+        VSIUnlink(hLockFileHandle->osLockFilename.c_str());
+
+        delete hLockFileHandle;
+    }
+}
+
+/************************************************************************/
+/*                       CPLFormatReadableFileSize()                    */
+/************************************************************************/
+
+template <class T>
+static std::string CPLFormatReadableFileSizeInternal(T nSizeInBytes)
+{
+    constexpr T ONE_MEGA_BYTE = 1000 * 1000;
+    constexpr T ONE_GIGA_BYTE = 1000 * ONE_MEGA_BYTE;
+    constexpr T ONE_TERA_BYTE = 1000 * ONE_GIGA_BYTE;
+    constexpr T ONE_PETA_BYTE = 1000 * ONE_TERA_BYTE;
+    constexpr T ONE_HEXA_BYTE = 1000 * ONE_PETA_BYTE;
+
+    if (nSizeInBytes > ONE_HEXA_BYTE)
+        return CPLSPrintf("%.02f HB", static_cast<double>(nSizeInBytes) /
+                                          static_cast<double>(ONE_HEXA_BYTE));
+
+    if (nSizeInBytes > ONE_PETA_BYTE)
+        return CPLSPrintf("%.02f PB", static_cast<double>(nSizeInBytes) /
+                                          static_cast<double>(ONE_PETA_BYTE));
+
+    if (nSizeInBytes > ONE_TERA_BYTE)
+        return CPLSPrintf("%.02f TB", static_cast<double>(nSizeInBytes) /
+                                          static_cast<double>(ONE_TERA_BYTE));
+
+    if (nSizeInBytes > ONE_GIGA_BYTE)
+        return CPLSPrintf("%.02f GB", static_cast<double>(nSizeInBytes) /
+                                          static_cast<double>(ONE_GIGA_BYTE));
+
+    if (nSizeInBytes > ONE_MEGA_BYTE)
+        return CPLSPrintf("%.02f MB", static_cast<double>(nSizeInBytes) /
+                                          static_cast<double>(ONE_MEGA_BYTE));
+
+    return CPLSPrintf("%03d,%03d bytes", static_cast<int>(nSizeInBytes) / 1000,
+                      static_cast<int>(nSizeInBytes) % 1000);
+}
+
+/** Return a file size in a human readable way.
+ *
+ * e.g 1200000 -> "1.20 MB"
+ *
+ * @since 3.12
+ */
+std::string CPLFormatReadableFileSize(uint64_t nSizeInBytes)
+{
+    return CPLFormatReadableFileSizeInternal(nSizeInBytes);
+}
+
+/** Return a file size in a human readable way.
+ *
+ * e.g 1200000 -> "1.20 MB"
+ *
+ * @since 3.12
+ */
+std::string CPLFormatReadableFileSize(double dfSizeInBytes)
+{
+    return CPLFormatReadableFileSizeInternal(dfSizeInBytes);
 }

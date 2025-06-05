@@ -1,7 +1,7 @@
-.. _gdal_vector_convert_subcommand:
+.. _gdal_vector_convert:
 
 ================================================================================
-"gdal vector convert" sub-command
+``gdal vector convert``
 ================================================================================
 
 .. versionadded:: 3.11
@@ -15,36 +15,7 @@
 Synopsis
 --------
 
-.. code-block::
-
-    Usage: gdal vector convert [OPTIONS] <INPUT> <OUTPUT>
-
-    Convert a vector dataset.
-
-    Positional arguments:
-      -i, --input <INPUT>                                  Input vector dataset [required]
-      -o, --output <OUTPUT>                                Output vector dataset [required]
-
-    Common Options:
-      -h, --help                                           Display help message and exit
-      --json-usage                                         Display usage as JSON document and exit
-      --progress                                           Display progress bar
-
-    Options:
-      -f, --of, --format, --output-format <OUTPUT-FORMAT>  Output format
-      --co, --creation-option <KEY>=<VALUE>                Creation option [may be repeated]
-      --lco, --layer-creation-option <KEY>=<VALUE>         Layer creation option [may be repeated]
-      --overwrite                                          Whether overwriting existing output is allowed
-      --update                                             Whether updating existing dataset is allowed
-      --overwrite-layer                                    Whether overwriting existing layer is allowed
-      --append                                             Whether appending to existing layer is allowed
-      -l, --layer, --input-layer <INPUT-LAYER>             Input layer name(s) [may be repeated]
-      --output-layer <OUTPUT-LAYER>                        Output layer name
-
-    Advanced Options:
-      --oo, --open-option <KEY=VALUE>                      Open options [may be repeated]
-      --if, --input-format <INPUT-FORMAT>                  Input formats [may be repeated]
-
+.. program-output:: gdal vector convert --help-doc
 
 Description
 -----------
@@ -59,7 +30,9 @@ Standard options
 
 .. include:: gdal_options/of_vector.rst
 
-.. include:: gdal_options/co.rst
+.. include:: gdal_options/co_vector.rst
+
+.. include:: gdal_options/lco.rst
 
 .. include:: gdal_options/overwrite.rst
 

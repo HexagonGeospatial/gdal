@@ -28,6 +28,14 @@
 #define UNSUPPORTED_OP_READ_ONLY                                               \
     "%s : unsupported operation on a read-only datasource."
 
+void OGRPGFeatureDefn::UnsetLayer()
+{
+    const int nGeomFieldCount = GetGeomFieldCount();
+    for (int i = 0; i < nGeomFieldCount; i++)
+        cpl::down_cast<OGRPGGeomFieldDefn *>(apoGeomFieldDefn[i].get())
+            ->UnsetLayer();
+}
+
 /************************************************************************/
 /*                        OGRPGTableFeatureDefn                         */
 /************************************************************************/
@@ -49,11 +57,7 @@ class OGRPGTableFeatureDefn final : public OGRPGFeatureDefn
     {
     }
 
-    virtual void UnsetLayer() override
-    {
-        poLayer = nullptr;
-        OGRPGFeatureDefn::UnsetLayer();
-    }
+    virtual void UnsetLayer() override;
 
     virtual int GetFieldCount() const override
     {
@@ -107,6 +111,12 @@ class OGRPGTableFeatureDefn final : public OGRPGFeatureDefn
         return OGRPGFeatureDefn::GetGeomFieldIndex(pszName);
     }
 };
+
+void OGRPGTableFeatureDefn::UnsetLayer()
+{
+    poLayer = nullptr;
+    OGRPGFeatureDefn::UnsetLayer();
+}
 
 /************************************************************************/
 /*                           SolveFields()                              */
@@ -827,10 +837,10 @@ int OGRPGTableLayer::ReadTableDefinition()
         if (pszDescription)
             oField.SetComment(pszDescription);
 
+        oField.SetGenerated(pszGenerated != nullptr && pszGenerated[0] != '\0');
+
         // CPLDebug("PG", "name=%s, type=%s", oField.GetNameRef(), pszType);
         poFeatureDefn->AddFieldDefn(&oField);
-        m_abGeneratedColumns.push_back(pszGenerated != nullptr &&
-                                       pszGenerated[0] != '\0');
     }
 
     OGRPGClearResult(hResult);
@@ -1008,22 +1018,13 @@ void OGRPGTableLayer::SetTableDefinition(const char *pszFIDColumnName,
 }
 
 /************************************************************************/
-/*                          SetSpatialFilter()                          */
+/*                         ISetSpatialFilter()                          */
 /************************************************************************/
 
-void OGRPGTableLayer::SetSpatialFilter(int iGeomField, OGRGeometry *poGeomIn)
+OGRErr OGRPGTableLayer::ISetSpatialFilter(int iGeomField,
+                                          const OGRGeometry *poGeomIn)
 
 {
-    if (iGeomField < 0 || iGeomField >= GetLayerDefn()->GetGeomFieldCount() ||
-        GetLayerDefn()->GetGeomFieldDefn(iGeomField)->GetType() == wkbNone)
-    {
-        if (iGeomField != 0)
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Invalid geometry field index : %d", iGeomField);
-        }
-        return;
-    }
     m_iGeomFieldFilter = iGeomField;
 
     if (InstallFilter(poGeomIn))
@@ -1032,6 +1033,8 @@ void OGRPGTableLayer::SetSpatialFilter(int iGeomField, OGRGeometry *poGeomIn)
 
         ResetReading();
     }
+
+    return OGRERR_NONE;
 }
 
 /************************************************************************/
@@ -1574,7 +1577,7 @@ OGRErr OGRPGTableLayer::IUpdateFeature(OGRFeature *poFeature,
             continue;
         if (!poFeature->IsFieldSet(iField))
             continue;
-        if (m_abGeneratedColumns[iField])
+        if (poFeature->GetDefnRef()->GetFieldDefn(iField)->IsGenerated())
             continue;
 
         if (bNeedComma)
@@ -1934,7 +1937,7 @@ OGRErr OGRPGTableLayer::CreateFeatureViaInsert(OGRFeature *poFeature)
             continue;
         if (!poFeature->IsFieldSet(i))
             continue;
-        if (m_abGeneratedColumns[i])
+        if (poFeature->GetDefnRef()->GetFieldDefn(i)->IsGenerated())
             continue;
 
         if (!bNeedComma)
@@ -2058,7 +2061,7 @@ OGRErr OGRPGTableLayer::CreateFeatureViaInsert(OGRFeature *poFeature)
             continue;
         if (!poFeature->IsFieldSet(i))
             continue;
-        if (m_abGeneratedColumns[i])
+        if (poFeature->GetDefnRef()->GetFieldDefn(i)->IsGenerated())
             continue;
 
         if (bNeedComma)
@@ -2204,9 +2207,11 @@ OGRErr OGRPGTableLayer::CreateFeatureViaCopy(OGRFeature *poFeature)
         }
     }
 
-    std::vector<bool> abFieldsToInclude(m_abGeneratedColumns.size(), true);
+    std::vector<bool> abFieldsToInclude(poFeature->GetFieldCount(), true);
     for (size_t i = 0; i < abFieldsToInclude.size(); i++)
-        abFieldsToInclude[i] = !m_abGeneratedColumns[i];
+        abFieldsToInclude[i] = !poFeature->GetDefnRef()
+                                    ->GetFieldDefn(static_cast<int>(i))
+                                    ->IsGenerated();
 
     if (bFIDColumnInCopyFields)
     {
@@ -2448,7 +2453,7 @@ OGRErr OGRPGTableLayer::CreateField(const OGRFieldDefn *poFieldIn,
             osCreateTable += osConstraints;
 
             if (!osCommentON.empty())
-                m_aosDeferredCommentOnColumns.push_back(osCommentON);
+                m_aosDeferredCommentOnColumns.push_back(std::move(osCommentON));
         }
     }
     else
@@ -2481,7 +2486,6 @@ OGRErr OGRPGTableLayer::CreateField(const OGRFieldDefn *poFieldIn,
     }
 
     whileUnsealing(poFeatureDefn)->AddFieldDefn(&oField);
-    m_abGeneratedColumns.resize(poFeatureDefn->GetFieldCount());
 
     if (pszFIDColumn != nullptr && EQUAL(oField.GetNameRef(), pszFIDColumn))
     {
@@ -2738,8 +2742,6 @@ OGRErr OGRPGTableLayer::DeleteField(int iField)
     }
 
     OGRPGClearResult(hResult);
-
-    m_abGeneratedColumns.erase(m_abGeneratedColumns.begin() + iField);
 
     return whileUnsealing(poFeatureDefn)->DeleteFieldDefn(iField);
 }
@@ -3584,7 +3586,8 @@ CPLString OGRPGTableLayer::BuildCopyFields()
     {
         if (i == nFIDIndex)
             continue;
-        if (m_abGeneratedColumns[i])
+
+        if (poFeatureDefn->GetFieldDefn(i)->IsGenerated())
             continue;
 
         const char *pszName = poFeatureDefn->GetFieldDefn(i)->GetNameRef();
@@ -3681,27 +3684,16 @@ void OGRPGTableLayer::SetOverrideColumnTypes(const char *pszOverrideColumnTypes)
 }
 
 /************************************************************************/
-/*                             GetExtent()                              */
+/*                            IGetExtent()                              */
 /*                                                                      */
 /*      For PostGIS use internal ST_EstimatedExtent(geometry) function  */
 /*      if bForce == 0                                                  */
 /************************************************************************/
 
-OGRErr OGRPGTableLayer::GetExtent(int iGeomField, OGREnvelope *psExtent,
-                                  int bForce)
+OGRErr OGRPGTableLayer::IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                                   bool bForce)
 {
     CPLString osCommand;
-
-    if (iGeomField < 0 || iGeomField >= GetLayerDefn()->GetGeomFieldCount() ||
-        GetLayerDefn()->GetGeomFieldDefn(iGeomField)->GetType() == wkbNone)
-    {
-        if (iGeomField != 0)
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Invalid geometry field index : %d", iGeomField);
-        }
-        return OGRERR_FAILURE;
-    }
 
     if (bDeferredCreation && RunDeferredCreationIfNecessary() != OGRERR_NONE)
         return OGRERR_FAILURE;
@@ -3743,7 +3735,7 @@ OGRErr OGRPGTableLayer::GetExtent(int iGeomField, OGREnvelope *psExtent,
             "Unable to get estimated extent by PostGIS. Trying real extent.");
     }
 
-    return OGRPGLayer::GetExtent(iGeomField, psExtent, bForce);
+    return OGRPGLayer::IGetExtent(iGeomField, psExtent, bForce);
 }
 
 /************************************************************************/

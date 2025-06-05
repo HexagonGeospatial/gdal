@@ -458,6 +458,11 @@ void RawRasterBand::DoByteSwap(void *pBuffer, size_t nValues, int nByteSkip,
                             nValues, nByteSkip);
         }
     }
+    else if (eDataType == GDT_Float16 || eDataType == GDT_CFloat16)
+    {
+        // No VAX support for GFloat16
+        std::abort();
+    }
     else if (eDataType == GDT_Float32 || eDataType == GDT_CFloat32)
     {
         GByte *pPtr = static_cast<GByte *>(pBuffer);
@@ -1760,17 +1765,17 @@ bool RAWDatasetCheckMemoryUsage(int nXSize, int nYSize, int nBands, int nDTSize,
         try
         {
             nExpectedFileSize =
-                (CPLSM(static_cast<GUInt64>(nHeaderSize)) +
-                 CPLSM(static_cast<GUInt64>(nBandOffset)) *
-                     CPLSM(static_cast<GUInt64>(nBands - 1)) +
+                (CPLSM(static_cast<uint64_t>(nHeaderSize)) +
+                 CPLSM(static_cast<uint64_t>(nBandOffset)) *
+                     CPLSM(static_cast<uint64_t>(nBands - 1)) +
                  (nLineOffset >= 0
-                      ? CPLSM(static_cast<GUInt64>(nYSize - 1)) *
-                            CPLSM(static_cast<GUInt64>(nLineOffset))
-                      : CPLSM(static_cast<GUInt64>(0))) +
+                      ? CPLSM(static_cast<uint64_t>(nYSize - 1)) *
+                            CPLSM(static_cast<uint64_t>(nLineOffset))
+                      : CPLSM(static_cast<uint64_t>(0))) +
                  (nPixelOffset >= 0
-                      ? CPLSM(static_cast<GUInt64>(nXSize - 1)) *
-                            CPLSM(static_cast<GUInt64>(nPixelOffset))
-                      : CPLSM(static_cast<GUInt64>(0))))
+                      ? CPLSM(static_cast<uint64_t>(nXSize - 1)) *
+                            CPLSM(static_cast<uint64_t>(nPixelOffset))
+                      : CPLSM(static_cast<uint64_t>(0))))
                     .v();
         }
         catch (...)
@@ -1808,7 +1813,7 @@ bool RAWDatasetCheckMemoryUsage(int nXSize, int nYSize, int nBands, int nDTSize,
             " MB of RAM would be needed to open the dataset. If you are "
             "comfortable with this, you can set the RAW_MEM_ALLOC_LIMIT_MB "
             "configuration option to that value or above",
-            (nTotalBufferSize + MB_IN_BYTES - 1) / MB_IN_BYTES);
+            DIV_ROUND_UP(nTotalBufferSize, MB_IN_BYTES));
         return false;
     }
 

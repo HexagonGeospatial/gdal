@@ -72,10 +72,7 @@ struct OGRSpatialReference::Private
         Listener(const Listener &) = delete;
         Listener &operator=(const Listener &) = delete;
 
-        void notifyChange(OGR_SRSNode *) override
-        {
-            m_poObj->nodesChanged();
-        }
+        void notifyChange(OGR_SRSNode *) override;
     };
 
     OGRSpatialReference *m_poSelf = nullptr;
@@ -194,6 +191,11 @@ struct OGRSpatialReference::Private
         return OptionalLockGuard(this);
     }
 };
+
+void OGRSpatialReference::Private::Listener::notifyChange(OGR_SRSNode *)
+{
+    m_poObj->nodesChanged();
+}
 
 #define TAKE_OPTIONAL_LOCK()                                                   \
     auto lock = d->GetOptionalLockGuard();                                     \
@@ -1754,12 +1756,15 @@ OGRErr OGRSpatialReference::exportToWkt(char **ppszResult,
             d->getPROJContext(), d->m_pj_crs, true, true);
     }
 
-    std::vector<CPLErrorHandlerAccumulatorStruct> aoErrors;
-    CPLInstallErrorHandlerAccumulator(aoErrors);
-    const char *pszWKT = proj_as_wkt(ctxt, boundCRS ? boundCRS : d->m_pj_crs,
-                                     wktFormat, aosOptions.List());
-    CPLUninstallErrorHandlerAccumulator();
-    for (const auto &oError : aoErrors)
+    CPLErrorAccumulator oErrorAccumulator;
+    const char *pszWKT;
+    {
+        auto oAccumulator = oErrorAccumulator.InstallForCurrentScope();
+        CPL_IGNORE_RET_VAL(oAccumulator);
+        pszWKT = proj_as_wkt(ctxt, boundCRS ? boundCRS : d->m_pj_crs, wktFormat,
+                             aosOptions.List());
+    }
+    for (const auto &oError : oErrorAccumulator.GetErrors())
     {
         if (pszFormat[0] == '\0' &&
             (oError.msg.find("Unsupported conversion method") !=
@@ -11469,14 +11474,9 @@ OGRErr OGRSpatialReference::importFromProj4(const char *pszProj4)
     if (osProj4.find("+init=epsg:") != std::string::npos &&
         getenv("PROJ_USE_PROJ4_INIT_RULES") == nullptr)
     {
-        static bool bHasWarned = false;
-        if (!bHasWarned)
-        {
-            CPLError(CE_Warning, CPLE_AppDefined,
+        CPLErrorOnce(CE_Warning, CPLE_AppDefined,
                      "+init=epsg:XXXX syntax is deprecated. It might return "
                      "a CRS with a non-EPSG compliant axis order.");
-            bHasWarned = true;
-        }
     }
     proj_context_use_proj4_init_rules(d->getPROJContext(), true);
     d->setPjCRS(proj_create(d->getPROJContext(), osProj4.c_str()));
@@ -11571,15 +11571,10 @@ OGRErr OGRSpatialReference::exportToProj4(char **ppszProj4) const
     const char *pszUseETMERC = CPLGetConfigOption("OSR_USE_ETMERC", nullptr);
     if (pszUseETMERC && pszUseETMERC[0])
     {
-        static bool bHasWarned = false;
-        if (!bHasWarned)
-        {
-            CPLError(CE_Warning, CPLE_AppDefined,
+        CPLErrorOnce(CE_Warning, CPLE_AppDefined,
                      "OSR_USE_ETMERC is a legacy configuration option, which "
                      "now has only effect when set to NO (YES is the default). "
                      "Use OSR_USE_APPROX_TMERC=YES instead");
-            bHasWarned = true;
-        }
         bForceApproxTMerc = !CPLTestBool(pszUseETMERC);
     }
     else

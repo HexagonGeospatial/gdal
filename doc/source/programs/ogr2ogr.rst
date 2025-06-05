@@ -13,57 +13,7 @@ ogr2ogr
 Synopsis
 --------
 
-.. code-block::
-
-    ogr2ogr [--help] [--long-usage] [--help-general]
-            [-of <output_format>]
-            [-dsco <NAME>=<VALUE>]... [-lco <NAME>=<VALUE>]...
-            [[-append]|[-upsert]|[-overwrite]]
-            [-update] [-sql <statement>|@<filename>] [-dialect <dialect>]
-            [-spat <xmin> <ymin> <xmax> <ymax>]
-            [-where <restricted_where>|@<filename>] [-select <field_list>]
-            [-nln <name>] [-nlt <type>]...
-            [-s_srs <srs_def>]
-            [[-a_srs <srs_def>]|[-t_srs <srs_def>]]
-            <dst_dataset_name> <src_dataset_name> [<layer_name>]...
-
-    Field related options:
-           [-addfields] [-relaxedFieldNameMatch]
-           [-fieldTypeToString All|<type1>[,<type2>]...]
-           [-mapFieldType <srctype>|All=<dsttype>[,<srctype2>=<dsttype2>]...]
-           [-fieldmap <field_1>[,<field_2>]...]
-           [-splitlistfields] [-maxsubfields <n>] [-emptyStrAsNull]
-           [-forceNullable] [-unsetFieldWidth]
-           [-unsetDefault] [-resolveDomains]
-           [-dateTimeTo UTC|UTC(+|-)<HH>|UTC(+|-)<HH>:<MM>] [-noNativeData]
-
-    Advanced geometry and SRS related options:
-           [-dim layer_dim|2|XY|3|XYZ|XYM|XYZM]
-           [-s_coord_epoch <epoch>] [-a_coord_epoch <epoch>]
-           [-t_coord_epoch <epoch>] [-ct <pipeline_def>]
-           [-spat_srs <srs_def>] [-geomfield <name>]
-           [-segmentize <max_dist>] [-simplify <tolerance>]
-           [-makevalid] [-skipinvalid]
-           [-wrapdateline] [-datelineoffset <val_in_degree>]
-           [-clipsrc [<xmin> <ymin> <xmax> <ymax>]|<WKT>|<datasource>|spat_extent]
-           [-clipsrcsql <sql_statement>] [-clipsrclayer <layername>]
-           [-clipsrcwhere <expression>]
-           [-clipdst [<xmin> <ymin> <xmax> <ymax>]|<WKT>|<datasource>]
-           [-clipdstsql <sql_statement>] [-clipdstlayer <layername>]
-           [-clipdstwhere <expression>]
-           [-explodecollections] [-zfield <name>]
-           [-gcp <ungeoref_x> <ungeoref_y> <georef_x> <georef_y> [<elevation>]]...
-           [-tps] [-order 1|2|3]
-           [-xyRes <val>[ m|mm|deg]] [-zRes <val>[ m|mm]] [-mRes <val>]
-           [-unsetCoordPrecision]
-
-    Other options:
-           [--quiet] [-progress] [-if <format>]...
-           [-oo <NAME>=<VALUE>]... [-doo <NAME>=<VALUE>]...
-           [-fid <FID>] [-preserve_fid] [-unsetFid]
-           [[-skipfailures]|[-gt <n>|unlimited]]
-           [-limit <nb_features>] [-ds_transaction]
-           [-mo <NAME>=<VALUE>]... [-nomd]
+.. program-output:: ogr2ogr --help-doc
 
 Description
 -----------
@@ -194,9 +144,7 @@ output coordinate system or even reprojecting the features during translation.
 
     Dataset creation option (format specific)
 
-.. option:: -lco <NAME>=<VALUE>
-
-    Layer creation option (format specific)
+.. include:: options/lco.rst
 
 .. option:: -nln <name>
 
@@ -338,6 +286,8 @@ output coordinate system or even reprojecting the features during translation.
 
 .. option:: -ct <string>
 
+    .. versionadded:: 3.0
+
     A PROJ string (single step operation or multiple step string starting with
     +proj=pipeline), a WKT2 string describing a CoordinateOperation, or a
     urn:ogc:def:coordinateOperation:EPSG::XXXX URN overriding the default
@@ -348,7 +298,40 @@ output coordinate system or even reprojecting the features during translation.
     the pipeline if the source CRS has northing/easting axis order, and/or at
     the end of the pipeline if the target CRS has northing/easting axis order.
 
-    .. versionadded:: 3.0
+.. option:: -ct_opt <NAME>=<VALUE>
+
+    .. versionadded:: 3.11
+
+    Specify a coordinate operation option that influences how PROJ selects
+    coordinate operations when :option:`-ct` is *not* set.
+
+    The following options are available:
+
+    - ``ONLY_BEST``=``YES``/``NO``. By default (at least in the PROJ 9.x series), PROJ may use
+      coordinate operations that are not the "best" if resources
+      (typically grids) needed to use them are missing. It will then
+      fallback to other coordinate operations that have a lesser
+      accuracy, for example using Helmert transformations, or in the
+      absence of such operations, to ones with potential very rough
+      accuracy, using "ballpark" transformations (see
+      https://proj.org/glossary.html).
+      When calling this method with YES, PROJ will only consider the
+      "best" operation, and error out (at Transform() time) if they
+      cannot be used. This method may be used together with
+      ``ALLOW_BALLPARK``=``NO`` to only allow best operations that have a known
+      accuracy. Note that this method has no effect on PROJ versions
+      before 9.2. The default value for this option can be also set with
+      the ``PROJ_ONLY_BEST_DEFAULT`` environment variable, or with the
+      ``only_best_default`` setting of proj.ini. Setting
+      ONLY_BEST=YES/NO overrides such default value.
+
+    - ``ALLOW_BALLPARK``=``YES``/``NO``. Whether ballpark coordinate operations are
+      allowed. Default is YES.
+
+    - ``WARN_ABOUT_DIFFERENT_COORD_OP``=``YES``/``NO``. Can be set to NO to avoid GDAL
+      warning when different coordinate operations are used to transform the
+      different geometries of the dataset (or part of the same geometry).
+      Default is YES.
 
 .. option:: -preserve_fid
 
@@ -455,7 +438,7 @@ output coordinate system or even reprojecting the features during translation.
 
     The specified value of this option is the tolerance used to merge
     consecutive points of the output geometry using the
-    :cpp:func:`OGRGeometry::Simplify` method
+    :cpp:func:`OGRGeometry::SimplifyPreserveTopology` method
     The unit of the distance is in
     georeferenced units of the source vector dataset.
     This option is applied before the reprojection implied by :option:`-t_srs`
@@ -464,7 +447,7 @@ output coordinate system or even reprojecting the features during translation.
 
     The specified value of this option is the maximum distance between two
     consecutive points of the output geometry before intermediate points are added.
-    The unit of the distance is georeferenced units of the source raster.
+    The unit of the distance is georeferenced units of the source layer.
     This option is applied before the reprojection implied by :option:`-t_srs`
 
 .. option:: -makevalid

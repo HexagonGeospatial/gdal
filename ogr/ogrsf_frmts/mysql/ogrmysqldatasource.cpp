@@ -190,7 +190,7 @@ int OGRMySQLDataSource::Open(const char *pszNewName, char **papszOpenOptionsIn,
         const char *pszTimeoutLength = CPLGetConfigOption("MYSQL_TIMEOUT", "0");
 
         unsigned int timeout = atoi(pszTimeoutLength);
-        mysql_options(hConn, MYSQL_OPT_CONNECT_TIMEOUT, (char *)&timeout);
+        mysql_options(hConn, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
 
         mysql_options(hConn, MYSQL_SET_CHARSET_NAME, "utf8");
     }
@@ -217,6 +217,7 @@ int OGRMySQLDataSource::Open(const char *pszNewName, char **papszOpenOptionsIn,
         CSLDestroy(papszTableNames);
         return FALSE;
     }
+#if defined(LIBMYSQL_VERSION_ID) && (LIBMYSQL_VERSION_ID < 80034)
     else
     {
         // Enable automatic reconnection
@@ -229,6 +230,7 @@ int OGRMySQLDataSource::Open(const char *pszNewName, char **papszOpenOptionsIn,
         // and at any point on more recent versions.
         mysql_options(hConn, MYSQL_OPT_RECONNECT, &reconnect);
     }
+#endif
 
     bDSUpdate = bUpdate;
 

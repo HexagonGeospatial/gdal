@@ -29,15 +29,16 @@ class GDALVectorWriteAlgorithm final : public GDALVectorPipelineStepAlgorithm
     static constexpr const char *HELP_URL =
         "/programs/gdal_vector_pipeline.html";
 
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
-
     GDALVectorWriteAlgorithm();
 
+    bool IsNativelyStreamingCompatible() const override
+    {
+        return false;
+    }
+
   private:
-    bool RunStep(GDALProgressFunc pfnProgress, void *pProgressData) override;
+    friend class GDALVectorPipelineStepAlgorithm;
+    bool RunStep(GDALVectorPipelineStepRunContext &ctxt) override;
 };
 
 //! @endcond

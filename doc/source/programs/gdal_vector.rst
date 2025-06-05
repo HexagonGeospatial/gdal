@@ -1,7 +1,7 @@
-.. _gdal_vector_command:
+.. _gdal_vector:
 
 ================================================================================
-"gdal vector" command
+``gdal vector``
 ================================================================================
 
 .. versionadded:: 3.11
@@ -15,22 +15,24 @@
 Synopsis
 --------
 
-.. code-block::
-
-    Usage: gdal vector <SUBCOMMAND>
-    where <SUBCOMMAND> is one of:
-      - convert:   Convert a vector dataset.
-      - filter:    Filter a vector dataset.
-      - info:      Return information on a vector dataset.
-      - pipeline:  Process a vector dataset.
-      - reproject: Reproject a vector dataset.
+.. program-output:: gdal vector --help-doc
 
 Available sub-commands
 ----------------------
 
-- :ref:`gdal_vector_info_subcommand`
-- :ref:`gdal_vector_convert_subcommand`
-- :ref:`gdal_vector_pipeline_subcommand`
+- :ref:`gdal_vector_clip`
+- :ref:`gdal_vector_concat`
+- :ref:`gdal_vector_convert`
+- :ref:`gdal_vector_edit`
+- :ref:`gdal_vector_filter`
+- :ref:`gdal_vector_index`
+- :ref:`gdal_vector_info`
+- :ref:`gdal_vector_layer_algebra`
+- :ref:`gdal_vector_pipeline`
+- :ref:`gdal_vector_rasterize`
+- :ref:`gdal_vector_reproject`
+- :ref:`gdal_vector_select`
+- :ref:`gdal_vector_sql`
 
 Examples
 --------

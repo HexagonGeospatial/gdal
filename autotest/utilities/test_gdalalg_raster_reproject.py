@@ -13,7 +13,7 @@
 
 import pytest
 
-from osgeo import gdal
+from osgeo import gdal, osr
 
 
 def get_reproject_alg():
@@ -29,36 +29,238 @@ def test_gdalalg_raster_reproject(tmp_vsimem):
     last_pct = [0]
 
     def my_progress(pct, msg, user_data):
+        assert pct >= last_pct[0]
         last_pct[0] = pct
         return True
 
-    pipeline = get_reproject_alg()
-    assert pipeline.ParseRunAndFinalize(
-        [
-            "--src-crs=EPSG:32611",
-            "--dst-crs=EPSG:4326",
-            "../gcore/data/byte.tif",
-            out_filename,
-        ],
-        my_progress,
+    alg = get_reproject_alg()
+    alg["src-crs"] = "EPSG:32611"
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(4326)
+    alg["dst-crs"] = srs
+    alg["input"] = "../gcore/data/byte.tif"
+    alg["output"] = out_filename
+    alg["creation-option"] = {"COMPRESS": "LZW"}
+    assert alg.Run(my_progress) and alg.Finalize()
+    assert last_pct[0] == 1.0
+
+    with gdal.OpenEx(out_filename) as ds:
+        assert ds.GetRasterBand(1).Checksum() == 4727
+        assert ds.GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE") == "LZW"
+
+
+def test_gdalalg_raster_reproject_through_pipeline(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    last_pct = [0]
+
+    def my_progress(pct, msg, user_data):
+        assert pct >= last_pct[0]
+        last_pct[0] = pct
+        return True
+
+    assert gdal.Run(
+        "raster",
+        "pipeline",
+        pipeline=f"read ../gcore/data/byte.tif ! reproject --src-crs=EPSG:32611 --dst-crs=EPSG:4326 ! write {out_filename} --co COMPRESS=LZW",
+        progress=my_progress,
     )
     assert last_pct[0] == 1.0
 
     with gdal.OpenEx(out_filename) as ds:
         assert ds.GetRasterBand(1).Checksum() == 4727
+        assert ds.GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE") == "LZW"
+
+
+def test_gdalalg_raster_reproject_through_pipeline_non_optimized_path(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    last_pct = [0]
+
+    def my_progress(pct, msg, user_data):
+        assert pct >= last_pct[0]
+        last_pct[0] = pct
+        return True
+
+    assert gdal.Run(
+        "raster",
+        "pipeline",
+        pipeline=f"read ../gcore/data/byte.tif ! reproject --src-crs=EPSG:32611 --dst-crs=EPSG:4326 ! edit ! write {out_filename} --co COMPRESS=LZW",
+        progress=my_progress,
+    )
+    assert last_pct[0] == 1.0
+
+    with gdal.OpenEx(out_filename) as ds:
+        assert ds.GetRasterBand(1).Checksum() == 4727
+        assert ds.GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE") == "LZW"
 
 
 def test_gdalalg_raster_reproject_failure(tmp_vsimem):
 
     out_filename = str(tmp_vsimem / "out.tif")
 
-    pipeline = get_reproject_alg()
+    alg = get_reproject_alg()
     with pytest.raises(Exception, match="Unable to compute a transformation"):
-        pipeline.ParseRunAndFinalize(
+        alg.ParseRunAndFinalize(
             [
                 "--src-crs=EPSG:32611",
                 "--dst-crs=EPSG:4326",
                 "../gcore/data/nan32.tif",
+                out_filename,
+            ],
+        )
+
+
+def test_gdalalg_raster_reproject_size(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    alg = get_reproject_alg()
+    alg.ParseRunAndFinalize(
+        [
+            "--size=10,0",
+            "../gcore/data/byte.tif",
+            out_filename,
+        ],
+    )
+
+    with gdal.OpenEx(out_filename) as ds:
+        assert ds.RasterXSize == 10
+        assert ds.RasterYSize == 10
+
+
+def test_gdalalg_raster_reproject_bbox_crs(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    alg = get_reproject_alg()
+    alg.ParseRunAndFinalize(
+        [
+            "--bbox=-117.638051657173,33.8904636339659,-117.627303823822,33.8995379597727",
+            "--bbox-crs=EPSG:4267",
+            "../gcore/data/byte.tif",
+            out_filename,
+        ],
+    )
+
+    with gdal.OpenEx(out_filename) as ds:
+        assert ds.RasterXSize == 17
+        assert ds.RasterYSize == 17
+
+
+def test_gdalalg_raster_reproject_srcnodata_dst_nodata(tmp_vsimem):
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 2, 1)
+    src_ds.SetGeoTransform([0, 1, 0, 0, 0, -1])
+    src_ds.WriteRaster(0, 0, 2, 1, b"\x00\x01")
+
+    alg = get_reproject_alg()
+    alg["input"] = src_ds
+    alg["output"] = ""
+    alg["output-format"] = "MEM"
+    alg["src-nodata"] = [1]
+    alg["dst-nodata"] = [2]
+    assert alg.Run()
+    out_ds = alg["output"].GetDataset()
+    assert out_ds.GetRasterBand(1).GetNoDataValue() == 2
+    assert out_ds.GetRasterBand(1).ReadRaster() == b"\x00\x02"
+
+
+def test_gdalalg_raster_reproject_addalpha(tmp_vsimem):
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 1, 1)
+    src_ds.SetGeoTransform([0, 1, 0, 0, 0, -1])
+
+    alg = get_reproject_alg()
+    alg["input"] = src_ds
+    alg["output"] = ""
+    alg["output-format"] = "MEM"
+    alg["add-alpha"] = True
+    assert alg.Run()
+    out_ds = alg["output"].GetDataset()
+    assert out_ds.RasterCount == 2
+    assert out_ds.GetRasterBand(2).GetColorInterpretation() == gdal.GCI_AlphaBand
+
+
+def test_gdalalg_raster_reproject_warp_option(tmp_vsimem):
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 1, 1, 2)
+    src_ds.SetGeoTransform([0, 1, 0, 0, 0, -1])
+    src_ds.GetRasterBand(1).SetNoDataValue(0)
+    src_ds.GetRasterBand(2).SetNoDataValue(1)
+    src_ds.GetRasterBand(2).WriteRaster(0, 0, 1, 1, b"\x02")
+
+    alg = get_reproject_alg()
+    alg["input"] = src_ds
+    alg["output"] = ""
+    alg["output-format"] = "MEM"
+    alg["warp-option"] = ["UNIFIED_SRC_NODATA=YES"]
+    alg["dst-nodata"] = [3, 4]
+    assert alg.Run()
+    out_ds = alg["output"].GetDataset()
+    assert out_ds.GetRasterBand(1).ReadRaster() == b"\x00"
+
+
+def test_gdalalg_raster_reproject_transform_option(tmp_vsimem):
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 1, 1)
+    src_ds.SetGeoTransform([0, 1, 0, 0, 0, -1])
+
+    alg = get_reproject_alg()
+    alg["input"] = src_ds
+    alg["output"] = ""
+    alg["output-format"] = "MEM"
+    alg["transform-option"] = ["METHOD=RPC"]
+    with pytest.raises(Exception, match="Unable to compute a RPC based transformation"):
+        alg.Run()
+
+
+def test_gdalalg_raster_reproject_error_threshold(tmp_vsimem):
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 1, 1)
+    src_ds.SetGeoTransform([0, 1, 0, 0, 0, -1])
+
+    alg = get_reproject_alg()
+    with pytest.raises(
+        Exception, match="Value of argument 'error-threshold' is -1, but should be >= 0"
+    ):
+        alg["error-threshold"] = -1
+
+
+def test_gdalalg_raster_reproject_num_threads_warp_option(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    alg = get_reproject_alg()
+    assert alg.ParseRunAndFinalize(
+        [
+            "--src-crs=EPSG:32611",
+            "--dst-crs=EPSG:4326",
+            "../gcore/data/byte.tif",
+            "--wo=NUM_THREADS=2",
+            out_filename,
+        ],
+    )
+
+
+def test_gdalalg_raster_reproject_both_num_threads_and_warp_option(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    alg = get_reproject_alg()
+    with pytest.raises(
+        Exception,
+        match="--num-threads argument and NUM_THREADS warp options are mutually exclusive",
+    ):
+        alg.ParseRunAndFinalize(
+            [
+                "--src-crs=EPSG:32611",
+                "--dst-crs=EPSG:4326",
+                "../gcore/data/byte.tif",
+                "--wo=NUM_THREADS=1",
+                "--num-threads=2",
                 out_filename,
             ],
         )

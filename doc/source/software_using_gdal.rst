@@ -80,14 +80,13 @@ Proprietary license / Other
 - `CARTO <http://www.carto.com>`_ A cloud mapping platform to analyze and visualize geospatial data.
 - `CatchmentSIM <https://csse.com.au/index.php/products/catchmentsim>`_  A Windows terrain analysis model for hydrologic applications.
 - `Daylon Leveller <https://www.daylongraphics.com/products/leveller.php>`_ A terrain/heightfield/bumpmap modeler
-- `Eonfusion <http://www.eonfusion.com>`_  Analysis and visualization of time-varying spatial datasets integrated via true data fusion.
 - `ERDAS ER Viewer  <https://hexagon.com/products/other-geospatial-products>`_ Image viewer for very large JPEG 2000 and ECW files.
 - `ESRI ArcGIS Pro <http://www.esri.com>`_  A popular GIS platform.
 - `Eternix Blaze <http://www.eternix.co.il>`_ Advanced geo-spatial visualization application and SDK.
 - `FalconView  <http://www.falconview.org>`_  Windows-based GIS platform with roots in military mission planning, now available as a free GIS visualization and analysis package.
 - `flighttrack  <http://flighttrack.sourceforge.net>`_  GPS track viewing and downloading software for Mac.
 - `FME  <http://www.safe.com>`_  A GIS translator package includes a GDAL plugin.
-- `GenGIS  <hhttps://beikolab.cs.dal.ca/gengis/Main_Page>`_  Software for geospatial analysis of genetic data.
+- `GenGIS  <https://beikolab.cs.dal.ca/gengis/Main_Page>`_  Software for geospatial analysis of genetic data.
 - `Geographic Imager  <https://www.avenza.com/geographic-imager>`_  DEM / aerial / satellite image processing GIS plug-in for Adobe Photoshop, by Avenza Systems.
 - `GeoDMS  <https://geodms.nl/>`_  A framework for building spatial calculation models.
 - `GeoFusion  <http://www.geofusion.com>`_  3D visualization.

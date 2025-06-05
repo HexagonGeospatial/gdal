@@ -63,10 +63,7 @@ class MAPWrapperRasterBand final : public GDALProxyRasterBand
 
   protected:
     virtual GDALRasterBand *
-    RefUnderlyingRasterBand(bool /*bForceOpen*/) const override
-    {
-        return poBaseBand;
-    }
+    RefUnderlyingRasterBand(bool /*bForceOpen*/) const override;
 
   public:
     explicit MAPWrapperRasterBand(GDALRasterBand *poBaseBandIn)
@@ -80,6 +77,12 @@ class MAPWrapperRasterBand final : public GDALProxyRasterBand
     {
     }
 };
+
+GDALRasterBand *
+MAPWrapperRasterBand::RefUnderlyingRasterBand(bool /*bForceOpen*/) const
+{
+    return poBaseBand;
+}
 
 /************************************************************************/
 /* ==================================================================== */
@@ -150,7 +153,7 @@ int MAPDataset::Identify(GDALOpenInfo *poOpenInfo)
 
 {
     if (poOpenInfo->nHeaderBytes < 200 ||
-        !EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "MAP"))
+        !poOpenInfo->IsExtensionEqualToCI("MAP"))
         return FALSE;
 
     if (strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader),
@@ -174,9 +177,7 @@ GDALDataset *MAPDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The MAP driver does not support update access to existing"
-                 " datasets.\n");
+        ReportUpdateNotSupportedByDriver("MAP");
         return nullptr;
     }
 
@@ -229,11 +230,11 @@ GDALDataset *MAPDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     poDS->osImgFilename = papszLines[2];
 
-    const CPLString osPath = CPLGetPath(poOpenInfo->pszFilename);
+    const CPLString osPath = CPLGetPathSafe(poOpenInfo->pszFilename);
     if (CPLIsFilenameRelative(poDS->osImgFilename))
     {
         poDS->osImgFilename =
-            CPLFormCIFilename(osPath, poDS->osImgFilename, nullptr);
+            CPLFormCIFilenameSafe(osPath, poDS->osImgFilename, nullptr);
     }
     else
     {
@@ -242,7 +243,7 @@ GDALDataset *MAPDataset::Open(GDALOpenInfo *poOpenInfo)
         {
             poDS->osImgFilename = CPLGetFilename(poDS->osImgFilename);
             poDS->osImgFilename =
-                CPLFormCIFilename(osPath, poDS->osImgFilename, nullptr);
+                CPLFormCIFilenameSafe(osPath, poDS->osImgFilename, nullptr);
         }
     }
 

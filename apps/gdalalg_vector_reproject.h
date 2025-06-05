@@ -30,16 +30,12 @@ class GDALVectorReprojectAlgorithm /* non final */
     static constexpr const char *HELP_URL =
         "/programs/gdal_vector_pipeline.html";
 
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
-
     explicit GDALVectorReprojectAlgorithm(bool standaloneStep = false);
 
   private:
-    bool RunStep(GDALProgressFunc pfnProgress, void *pProgressData) override;
+    bool RunStep(GDALVectorPipelineStepRunContext &ctxt) override;
 
+    std::string m_activeLayer{};
     std::string m_srsCrs{};
     std::string m_dstCrs{};
 };
@@ -56,6 +52,8 @@ class GDALVectorReprojectAlgorithmStandalone final
         : GDALVectorReprojectAlgorithm(/* standaloneStep = */ true)
     {
     }
+
+    ~GDALVectorReprojectAlgorithmStandalone() override;
 };
 
 //! @endcond

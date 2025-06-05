@@ -2397,14 +2397,15 @@ OGRErr OGRFlatGeobufLayer::ICreateFeature(OGRFeature *poNewFeature)
     }
 }
 
-OGRErr OGRFlatGeobufLayer::GetExtent(OGREnvelope *psExtent, int bForce)
+OGRErr OGRFlatGeobufLayer::IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                                      bool bForce)
 {
     if (m_sExtent.IsInit())
     {
         *psExtent = m_sExtent;
         return OGRERR_NONE;
     }
-    return OGRLayer::GetExtent(psExtent, bForce);
+    return OGRLayer::IGetExtent(iGeomField, psExtent, bForce);
 }
 
 int OGRFlatGeobufLayer::TestCapability(const char *pszCap)
@@ -2455,14 +2456,14 @@ void OGRFlatGeobufLayer::ResetReading()
 std::string OGRFlatGeobufLayer::GetTempFilePath(const CPLString &fileName,
                                                 CSLConstList papszOptions)
 {
-    const CPLString osDirname(CPLGetPath(fileName.c_str()));
-    const CPLString osBasename(CPLGetBasename(fileName.c_str()));
+    const CPLString osDirname(CPLGetPathSafe(fileName.c_str()));
+    const CPLString osBasename(CPLGetBasenameSafe(fileName.c_str()));
     const char *pszTempDir = CSLFetchNameValue(papszOptions, "TEMPORARY_DIR");
     std::string osTempFile =
-        pszTempDir ? CPLFormFilename(pszTempDir, osBasename, nullptr)
+        pszTempDir ? CPLFormFilenameSafe(pszTempDir, osBasename, nullptr)
         : (STARTS_WITH(fileName, "/vsi") && !STARTS_WITH(fileName, "/vsimem/"))
-            ? CPLGenerateTempFilename(osBasename)
-            : CPLFormFilename(osDirname, osBasename, nullptr);
+            ? CPLGenerateTempFilenameSafe(osBasename)
+            : CPLFormFilenameSafe(osDirname, osBasename, nullptr);
     osTempFile += "_temp.fgb";
     return osTempFile;
 }

@@ -182,7 +182,7 @@ static void AddInterestLayersForDSName(const CPLString &osDSName,
     oDSToBeOpened.nPID = CPLGetPID();
     oDSToBeOpened.osDSName = osDSName;
     oDSToBeOpened.osInterestLayers = osInterestLayers;
-    oListDSToBeOpened.push_back(oDSToBeOpened);
+    oListDSToBeOpened.push_back(std::move(oDSToBeOpened));
 }
 
 /************************************************************************/
@@ -2896,7 +2896,7 @@ int OGROSMDataSource::Open(const char *pszFilename,
             VSIUnlink(m_osNodesFilename);
 
             m_bInMemoryNodesFile = false;
-            m_osNodesFilename = CPLGenerateTempFilename("osm_tmp_nodes");
+            m_osNodesFilename = CPLGenerateTempFilenameSafe("osm_tmp_nodes");
 
             m_fpNodes = VSIFOpenL(m_osNodesFilename, "wb+");
             if (m_fpNodes == nullptr)
@@ -3000,7 +3000,7 @@ bool OGROSMDataSource::CreateTempDB()
 
     if (!bSuccess)
     {
-        m_osTmpDBName = CPLGenerateTempFilename("osm_tmp");
+        m_osTmpDBName = CPLGenerateTempFilenameSafe("osm_tmp");
         rc = sqlite3_open(m_osTmpDBName.c_str(), &m_hDB);
 
         /* On Unix filesystems, you can remove a file even if it */
@@ -4072,7 +4072,7 @@ bool OGROSMDataSource::TransferToDiskIfNecesserary()
             m_fpNodes = nullptr;
 
             const std::string osNewTmpDBName(
-                CPLGenerateTempFilename("osm_tmp_nodes"));
+                CPLGenerateTempFilenameSafe("osm_tmp_nodes"));
 
             CPLDebug("OSM",
                      "%s too big for RAM. Transferring it onto disk in %s",
@@ -4153,7 +4153,7 @@ bool OGROSMDataSource::TransferToDiskIfNecesserary()
             CloseDB();
 
             const std::string osNewTmpDBName(
-                CPLGenerateTempFilename("osm_tmp"));
+                CPLGenerateTempFilenameSafe("osm_tmp"));
 
             CPLDebug("OSM",
                      "%s too big for RAM. Transferring it onto disk in %s",
@@ -4363,15 +4363,17 @@ class OGROSMResultLayerDecorator final : public OGRLayerDecorator
     {
     }
 
-    virtual GIntBig GetFeatureCount(int bForce = TRUE) override
-    {
-        /* When we run GetFeatureCount() with SQLite SQL dialect, */
-        /* the OSM dataset will be re-opened. Make sure that it is */
-        /* re-opened with the same interest layers */
-        AddInterestLayersForDSName(osDSName, osInterestLayers);
-        return OGRLayerDecorator::GetFeatureCount(bForce);
-    }
+    GIntBig GetFeatureCount(int bForce = TRUE) override;
 };
+
+GIntBig OGROSMResultLayerDecorator::GetFeatureCount(int bForce)
+{
+    /* When we run GetFeatureCount() with SQLite SQL dialect, */
+    /* the OSM dataset will be re-opened. Make sure that it is */
+    /* re-opened with the same interest layers */
+    AddInterestLayersForDSName(osDSName, osInterestLayers);
+    return OGRLayerDecorator::GetFeatureCount(bForce);
+}
 
 /************************************************************************/
 /*                             ExecuteSQL()                             */

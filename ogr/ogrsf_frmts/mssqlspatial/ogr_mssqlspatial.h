@@ -152,7 +152,7 @@ class OGRMSSQLGeometryValidator
 class OGRMSSQLGeometryParser
 {
   protected:
-    unsigned char *pszData;
+    const unsigned char *pszData;
     /* version information */
     char chVersion;
     /* serialization properties */
@@ -193,7 +193,7 @@ class OGRMSSQLGeometryParser
 
   public:
     explicit OGRMSSQLGeometryParser(int nGeomColumnType);
-    OGRErr ParseSqlGeometry(unsigned char *pszInput, int nLen,
+    OGRErr ParseSqlGeometry(const unsigned char *pszInput, int nLen,
                             OGRGeometry **poGeom);
 
     int GetSRSId()
@@ -441,13 +441,8 @@ class OGRMSSQLSpatialTableLayer final : public OGRMSSQLSpatialLayer
     OGRErr CreateSpatialIndex();
     void DropSpatialIndex();
 
-    virtual OGRErr GetExtent(OGREnvelope *psExtent, int bForce) override
-    {
-        return GetExtent(0, psExtent, bForce);
-    }
-
-    virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                             int bForce) override;
+    virtual OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                              bool bForce) override;
 
     virtual GIntBig GetFeatureCount(int) override;
 
@@ -520,8 +515,8 @@ class OGRMSSQLSpatialTableLayer final : public OGRMSSQLSpatialLayer
         bUpdateAccess = bFlag;
     }
 
-    // cppcheck-suppress functionStatic
-    OGRErr StartCopy();
+    static OGRErr StartCopy();
+
     // cppcheck-suppress functionStatic
     OGRErr EndCopy();
 
@@ -551,14 +546,6 @@ class OGRMSSQLSpatialSelectLayer final : public OGRMSSQLSpatialLayer
     virtual GIntBig GetFeatureCount(int) override;
 
     virtual OGRFeature *GetFeature(GIntBig nFeatureId) override;
-
-    virtual OGRErr GetExtent(OGREnvelope *psExtent, int bForce = TRUE) override;
-
-    virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                             int bForce) override
-    {
-        return OGRLayer::GetExtent(iGeomField, psExtent, bForce);
-    }
 
     virtual int TestCapability(const char *) override;
 };

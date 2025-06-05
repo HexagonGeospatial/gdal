@@ -4,7 +4,6 @@
 // clang-format off
 constexpr static const char* const apszKnownConfigOptions[] =
 {
-   "ADRG_SIMULATE_MULTI_IMG", // from adrgdataset.cpp
    "ALLOW_GPKG_ZOOM_OTHER_EXTENSION", // from ogrgeopackagedatasource.cpp
    "ALLOW_OGR_SQL_FUNCTIONS_FROM_TRIGGER_AND_VIEW", // from ogrsqlitedatasource.cpp
    "ALLOW_VIRTUAL_OGR_FROM_TRIGGER_AND_VIEW", // from ogrsqlitevirtualogr.cpp
@@ -57,7 +56,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "BAG_GEOREF_MD_BLOCKYSIZE", // from bagdataset.cpp
    "BASISU_MAX_FILE_SIZE", // from basisudataset.cpp
    "BIGTIFF_OVERVIEW", // from gt_overview.cpp
-   "BLACKLISTED_OPENCL_VENDOR", // from gdalwarpkernel_opencl.cpp
    "BLOCKXSIZE", // from netcdfdataset.cpp
    "BLOCKYSIZE", // from netcdfdataset.cpp
    "BSB_DISABLE_INDEX", // from bsb_read.c
@@ -109,6 +107,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "CPL_GS_CREDENTIALS_FILE", // from cpl_google_cloud.cpp
    "CPL_GS_ENDPOINT", // from cpl_google_cloud.cpp
    "CPL_GS_TIMESTAMP", // from cpl_google_cloud.cpp
+   "CPL_JSON_MAX_SIZE", // from cpl_json.cpp
    "CPL_LOG", // from cpl_error.cpp
    "CPL_LOG_APPEND", // from cpl_error.cpp
    "CPL_LOG_ERRORS", // from cpl_error.cpp
@@ -121,7 +120,8 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "CPL_SOZIP_ENABLED", // from cpl_minizip_zip.cpp
    "CPL_SOZIP_MIN_FILE_SIZE", // from cpl_minizip_zip.cpp
    "CPL_TIMESTAMP", // from cpl_error.cpp
-   "CPL_TMPDIR", // from cogdriver.cpp, cpl_path.cpp, gdalwmscache.cpp, ogrgmlasconf.cpp, wcsutils.cpp
+   "CPL_TMPDIR", // from cogdriver.cpp, cpl_path.cpp, gdal_misc.cpp, gdalwmscache.cpp, wcsutils.cpp
+   "CPL_VSI_MEM_MTIME", // from cpl_vsi_mem.cpp
    "CPL_VSIAZ_UNLINK_BATCH_SIZE", // from cpl_vsil_az.cpp
    "CPL_VSIGS_UNLINK_BATCH_SIZE", // from cpl_vsil_gs.cpp
    "CPL_VSIL_CURL_ADVISE_READ_TOTAL_BYTES_LIMIT", // from cpl_vsil_curl.cpp
@@ -163,6 +163,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "DISABLE_OPEN_REAL_NETCDF_FILES", // from netcdfdataset.cpp, netcdfdrivercore.cpp
    "DRIVER_WISHED", // from test_ogrsf.cpp
    "DTED_APPLY_PIXEL_IS_POINT", // from dteddataset.cpp
+   "DTED_ASSUME_CONFORMANT", // from dted_api.c
    "DTED_VERIFY_CHECKSUM", // from dteddataset.cpp
    "DUMP_JP2_BOXES", // from gdaljp2metadata.cpp
    "DWG_ALL_ATTRIBUTES", // from ogrdwgdatasource.cpp
@@ -216,19 +217,14 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "ES_OVERWRITE", // from ogrelasticdatasource.cpp
    "ES_WRITEMAP", // from ogrelasticdatasource.cpp
    "ESRI_XML_PAM", // from gtiffdataset.cpp, gtiffdataset_write.cpp
-   "FGDB_BULK_LOAD", // from FGdbLayer.cpp
-   "FGDB_PER_LAYER_COPYING_TRANSACTION", // from FGdbDatasource.cpp
-   "FGDB_RESYNC_THRESHOLD", // from FGdbLayer.cpp
-   "FGDB_SIMUL_FAIL", // from FGdbDriver.cpp
-   "FGDB_SIMUL_FAIL_REOPEN", // from FGdbDatasource.cpp
    "FGDB_STRING_WIDTH", // from FGdbUtils.cpp
-   "FILEGDB_DISABLE_SPARSE_PAGES", // from FGdbLayer.cpp
    "FORCE_BLOCKSIZE", // from hfaopen.cpp
-   "FUSIL_SRC_DIR", // from ogropenfilegdbdriver.cpp
    "GDAL_ALLOW_LARGE_LIBJPEG_MEM_ALLOC", // from JPEG_band.cpp, jpgdataset.cpp
+   "GDAL_ALLOW_REMOTE_RESOURCE_TO_ACCESS_LOCAL_FILE", // from vsikerchunk.cpp
    "GDAL_BAG_BLOCK_SIZE", // from bagdataset.cpp
    "GDAL_BAG_MAX_SIZE_VARRES_MAP", // from bagdataset.cpp
    "GDAL_BAND_BLOCK_CACHE", // from gdalrasterband.cpp
+   "GDAL_CACHE_DIRECTORY", // from gdal_misc.cpp
    "GDAL_CACHEMAX", // from gdalrasterblock.cpp, nearblack_bin.cpp
    "GDAL_CONFIG_FILE", // from cpl_conv.cpp
    "GDAL_CURL_CA_BUNDLE", // from cpl_http.cpp
@@ -249,7 +245,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_DEFAULT_WMS_CACHE_PATH", // from gdalwmscache.cpp
    "GDAL_DISABLE_CPLLOCALEC", // from cpl_conv.cpp
    "GDAL_DISABLE_READDIR_ON_OPEN", // from cpl_vsil_curl.cpp, gdalopeninfo.cpp
-   "GDAL_DRIVER_PATH", // from gdaldataset.cpp, gdaldrivermanager.cpp, gdalpythondriverloader.cpp
+   "GDAL_DRIVER_PATH", // from gdaldriver.cpp, gdaldrivermanager.cpp, gdalpythondriverloader.cpp
    "GDAL_DTED_SINGLE_BLOCK", // from dteddataset.cpp
    "GDAL_ECW_CACHE_MAXMEM", // from ecwdataset.cpp
    "GDAL_ECW_PROMOTE_1BIT_ALPHA_AS_8BIT", // from ecwdataset.cpp
@@ -261,6 +257,10 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_ENABLE_TIFF_SPLIT", // from gtiffdataset_read.cpp
    "GDAL_ENABLE_WMS_CACHE", // from gdalwmsdataset.cpp
    "GDAL_ERROR_ON_LIBJPEG_WARNING", // from jpgdataset.cpp
+   "GDAL_EXPRTK_ENABLE_LOOPS", // from vrtexpression_exprtk.cpp
+   "GDAL_EXPRTK_MAX_EXPRESSION_LENGTH", // from vrtexpression_exprtk.cpp
+   "GDAL_EXPRTK_MAX_VECTOR_LENGTH", // from vrtexpression_exprtk.cpp
+   "GDAL_EXPRTK_TIMEOUT_SECONDS", // from vrtexpression_exprtk.cpp
    "GDAL_FILENAME_IS_UTF8", // from cpl_getexecpath.cpp, cpl_odbc.cpp, cpl_vsil_win32.cpp, cpl_vsisimple.cpp, cplgetsymbol.cpp, ecwcreatecopy.cpp, ecwdataset.cpp, gdalpython.cpp, netcdfdataset.cpp, netcdfmultidim.cpp, ogrxlsdatasource.cpp
    "GDAL_FORCE_CACHING", // from gdaldataset.cpp, gdalrasterband.cpp
    "GDAL_GCPS_TO_GEOTRANSFORM_APPROX_OK", // from gdal_misc.cpp
@@ -288,7 +288,9 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_HTTP_KEYPASSWD", // from cpl_http.cpp
    "GDAL_HTTP_LOW_SPEED_LIMIT", // from cpl_http.cpp
    "GDAL_HTTP_LOW_SPEED_TIME", // from cpl_http.cpp
+   "GDAL_HTTP_MAX_CACHED_CONNECTIONS", // from cpl_vsil_curl.cpp
    "GDAL_HTTP_MAX_RETRY", // from cpl_http.cpp
+   "GDAL_HTTP_MAX_TOTAL_CONNECTIONS", // from cpl_vsil_curl.cpp
    "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES", // from cpl_vsil_curl.cpp
    "GDAL_HTTP_MULTIPLEX", // from cpl_vsil_curl.cpp
    "GDAL_HTTP_MULTIRANGE", // from cpl_vsil_curl.cpp
@@ -308,7 +310,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_HTTP_TIMEOUT", // from cpl_http.cpp, gdalwmsdataset.cpp
    "GDAL_HTTP_UNSAFESSL", // from cpl_http.cpp
    "GDAL_HTTP_USE_CAPI_STORE", // from cpl_http.cpp
-   "GDAL_HTTP_USERAGENT", // from cpl_http.cpp, gdalwmsdataset.cpp
+   "GDAL_HTTP_USERAGENT", // from cpl_http.cpp, gdalwmsdataset.cpp, plmosaicdataset.cpp
    "GDAL_HTTP_USERPWD", // from cpl_http.cpp
    "GDAL_HTTP_VERSION", // from cpl_http.cpp
    "GDAL_HTTPS_PROXY", // from cpl_http.cpp
@@ -324,7 +326,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_MAX_CONNECTIONS", // from gdalogcapidataset.cpp, gdalwmsdataset.cpp
    "GDAL_MAX_DATASET_POOL_RAM_USAGE", // from gdalproxypool.cpp
    "GDAL_MAX_DATASET_POOL_SIZE", // from gdal_translate_bin.cpp, gdalproxypool.cpp, gdalwarp_bin.cpp
-   "GDAL_MAX_RAW_BLOCK_CACHE_SIZE", // from gtiffrasterband_read.cpp
+   "GDAL_MAX_RAW_BLOCK_CACHE_SIZE", // from gtiffdataset_read.cpp
    "GDAL_MEM_ENABLE_OPEN", // from memdataset.cpp
    "GDAL_NETCDF_ASSUME_LONGLAT", // from netcdfdataset.cpp
    "GDAL_NETCDF_BOTTOMUP", // from netcdfdataset.cpp
@@ -334,13 +336,14 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_NETCDF_REPORT_EXTRA_DIM_VALUES", // from netcdfdataset.cpp
    "GDAL_NETCDF_VERIFY_DIMS", // from netcdfdataset.cpp
    "GDAL_NO_COSTLY_OVERVIEW", // from rasterio.cpp
-   "GDAL_NUM_THREADS", // from avifdataset.cpp, common.cpp, cpl_vsil_gzip.cpp, gdal_tps.cpp, gdalgrid.cpp, gdalpansharpen.cpp, gdaltileindexdataset.cpp, gdalwarpkernel.cpp, gtiffdataset_write.cpp, jpegxl.cpp, libertiffdataset.cpp, ogr2ogr_lib.cpp, ogrmvtdataset.cpp, ogrparquetlayer.cpp, osm_parser.cpp, overview.cpp, rmfdataset.cpp, vrtdataset.cpp, zarr_array.cpp
+   "GDAL_NUM_THREADS", // from avifdataset.cpp, common.cpp, cpl_vsil_gzip.cpp, gdal_tps.cpp, gdalalgorithm.cpp, gdalgrid.cpp, gdalpansharpen.cpp, gdaltileindexdataset.cpp, gdalwarpkernel.cpp, gtiffdataset_write.cpp, jpegxl.cpp, libertiffdataset.cpp, ogr2ogr_lib.cpp, ogrmvtdataset.cpp, ogrparquetlayer.cpp, osm_parser.cpp, overview.cpp, rmfdataset.cpp, vrtdataset.cpp, zarr_array.cpp
    "GDAL_OGCAPI_TILEMATRIXSET_LIMITS", // from gdalogcapidataset.cpp
    "GDAL_ONE_BIG_READ", // from jp2kakdataset.cpp, jpipkakdataset.cpp, mrsiddataset.cpp, rawdataset.cpp, wcsdataset.cpp
    "GDAL_OPEN_AFTER_COPY", // from jpgdataset.cpp, pngdataset.cpp
    "GDAL_OPENGIS_SCHEMAS", // from cpl_xml_validate.cpp
    "GDAL_OVERVIEW_OVERSAMPLING_THRESHOLD", // from rasterio.cpp, vrtwarped.cpp
    "GDAL_OVR_CHUNK_MAX_SIZE", // from overview.cpp
+   "GDAL_OVR_CHUNK_MAX_SIZE_FOR_TEMP_FILE", // from overview.cpp
    "GDAL_OVR_CHUNKYSIZE", // from overview.cpp
    "GDAL_OVR_PROPAGATE_NODATA", // from overview.cpp
    "GDAL_OVR_TEMP_DRIVER", // from overview.cpp
@@ -358,7 +361,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_PDF_LIMIT_PAGE_COUNT", // from pdfdataset.cpp
    "GDAL_PDF_NEATLINE", // from pdfdrivercore.cpp
    "GDAL_PDF_OGC_BP_READ_WKT", // from pdfdataset.cpp
-   "GDAL_PDF_OGC_BP_WRITE_WKT", // from pdfcreatecopy.cpp, pdfcreatefromcomposition.cpp
    "GDAL_PDF_PRINT_COMMANDS", // from pdfdataset.cpp
    "GDAL_PDF_RENDERING_OPTIONS", // from pdfdrivercore.cpp
    "GDAL_PDF_USE_SPAWN", // from pdfdataset.cpp
@@ -368,6 +370,9 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_PNG_WHOLE_IMAGE_OPTIM", // from pngdataset.cpp
    "GDAL_PROXY_AUTH", // from cpl_http.cpp
    "GDAL_PYTHON_DRIVER_PATH", // from gdalpythondriverloader.cpp
+   "GDAL_RASTER_PIPELINE_USE_GTIFF_FOR_TEMP_DATASET", // from gdalalg_raster_pipeline.cpp
+   "GDAL_RASTER_TILE_HTML_PREC", // from gdalalg_raster_tile.cpp
+   "GDAL_RASTER_TILE_KML_PREC", // from gdalalg_raster_tile.cpp
    "GDAL_RASTERIO_RESAMPLING", // from gdal_misc.cpp
    "GDAL_RB_FLUSHBLOCK_SLEEP_AFTER_DROP_LOCK", // from gdalrasterblock.cpp
    "GDAL_RB_FLUSHBLOCK_SLEEP_AFTER_RB_LOCK", // from gdalrasterblock.cpp
@@ -395,7 +400,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GDAL_USE_AVX", // from gdalgrid.cpp
    "GDAL_USE_GEOJP2", // from gdaljp2metadata.cpp
    "GDAL_USE_GMLJP2", // from gdaljp2metadata.cpp
-   "GDAL_USE_OPENCL", // from gdalwarpkernel.cpp
    "GDAL_USE_SSE", // from gdalgrid.cpp
    "GDAL_USE_SSSE3", // from cpl_cpu_features.cpp
    "GDAL_VALIDATE_CREATION_OPTIONS", // from gdaldataset.cpp, gdaldriver.cpp
@@ -475,6 +479,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "GRIB_CACHEMAX", // from gribdataset.cpp
    "GRIB_DEFAULT_SEMI_MAJOR", // from gribdataset.cpp
    "GRIB_DEFAULT_SEMI_MINOR", // from gribdataset.cpp
+   "GRIB_LATITUDE_OF_FIRST_GRID_POINT_IS_SOUTHERN_MOST", // from gribdataset.cpp
    "GRIB_NORMALIZE_UNITS", // from gribdataset.cpp
    "GRIB_PDS_ALL_BANDS", // from gribdataset.cpp
    "GRIB_RESOURCE_DIR", // from metaname.cpp
@@ -524,7 +529,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "HFA_USE_ESRI_PE_STRING", // from hfadataset.cpp
    "HFA_USE_RRD", // from hfaband.cpp
    "HFA_WRITE_PE_STRING", // from hfaopen.cpp
-   "HOME", // from cpl_aws.cpp, cpl_azure.cpp, cpl_conv.cpp, cpl_google_cloud.cpp, cpl_path.cpp, gdalwmscache.cpp, ogrgmlasconf.cpp, wcsutils.cpp
+   "HOME", // from cpl_aws.cpp, cpl_azure.cpp, cpl_conv.cpp, cpl_google_cloud.cpp, cpl_path.cpp, gdal_misc.cpp, gdalwmscache.cpp, wcsutils.cpp
    "IDB_OGR_FID", // from ogridblayer.cpp
    "IDRISIDIR", // from IdrisiDataset.cpp
    "INTERLEAVE_OVERVIEW", // from gt_overview.cpp
@@ -643,10 +648,14 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "NGW_BATCH_SIZE", // from gdalngwdataset.cpp
    "NGW_CACHE_EXPIRES", // from gdalngwdataset.cpp
    "NGW_CACHE_MAX_SIZE", // from gdalngwdataset.cpp
+   "NGW_CONNECTTIMEOUT", // from gdalngwdataset.cpp, ogrngwdriver.cpp
    "NGW_EXTENSIONS", // from gdalngwdataset.cpp
    "NGW_JSON_DEPTH", // from gdalngwdataset.cpp
+   "NGW_MAX_RETRY", // from gdalngwdataset.cpp, ogrngwdriver.cpp
    "NGW_NATIVE_DATA", // from gdalngwdataset.cpp
    "NGW_PAGE_SIZE", // from gdalngwdataset.cpp
+   "NGW_RETRY_DELAY", // from gdalngwdataset.cpp, ogrngwdriver.cpp
+   "NGW_TIMEOUT", // from gdalngwdataset.cpp, ogrngwdriver.cpp
    "NGW_USERPWD", // from gdalngwdataset.cpp, ogrngwdriver.cpp
    "NITF_DISABLE_RPF_LOCATION_TABLE_SANITY_TESTS", // from nitfimage.c
    "NITF_OPEN_UNDERLYING_DS", // from nitfdataset.cpp, nitfrasterband.cpp
@@ -663,7 +672,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "OGR_API_SPY_SNAPSHOT_PATH", // from ograpispy.cpp
    "OGR_APPLY_GEOM_SET_PRECISION", // from ogr2ogr_lib.cpp, ogrlayer.cpp
    "OGR_ARC_MAX_GAP", // from ogrgeometryfactory.cpp
-   "OGR_ARC_STEPSIZE", // from gml2ogrgeometry.cpp, ogrdgnv8layer.cpp, ogrgeometryfactory.cpp, ogrili1datasource.cpp, ogrili1layer.cpp, ogrpgeogeometry.cpp
+   "OGR_ARC_STEPSIZE", // from ogrgeometryfactory.cpp
    "OGR_ARROW_COMPUTE_GEOMETRY_TYPE", // from ogrfeatherlayer.cpp
    "OGR_ARROW_LOAD_FILE_SYSTEM_FACTORIES", // from ogrfeatherdriver.cpp
    "OGR_ARROW_MEM_LIMIT", // from ograrrowarrayhelper.cpp
@@ -736,7 +745,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "OGR_ODS_FIELD_TYPES", // from ogrodsdatasource.cpp
    "OGR_ODS_HEADERS", // from ogrodsdatasource.cpp
    "OGR_ODS_MAX_FIELD_COUNT", // from ogrodsdatasource.cpp
-   "OGR_OGDI_LAUNDER_LAYER_NAMES", // from ogrogdidatasource.cpp
    "OGR_OPENFILEGDB_ERROR_ON_INCONSISTENT_BUFFER_MAX_SIZE", // from filegdbtable.cpp
    "OGR_OPENFILEGDB_WRITE_EMPTY_GEOMETRY", // from ogropenfilegdblayer_write.cpp
    "OGR_ORGANIZE_POLYGONS", // from filegdbtable.cpp, ogrgeometryfactory.cpp
@@ -832,7 +840,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "OGR_XLS_HEADERS", // from ogrxlslayer.cpp
    "OGR_XLSX_FIELD_TYPES", // from ogrxlsxdatasource.cpp
    "OGR_XLSX_HEADERS", // from ogrxlsxdatasource.cpp
-   "OPENCL_USE_CPU", // from gdalwarpkernel_opencl.cpp
    "OPENFILEGDB_CREATE_FIELD_BEFORE_GEOMETRY", // from ogropenfilegdblayer_write.cpp
    "OPENFILEGDB_CREATOR", // from filegdbtable_write.cpp
    "OPENFILEGDB_DEFAULT_STRING_WIDTH", // from ogropenfilegdblayer_write.cpp
@@ -947,7 +954,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "PR_RESOLUTION_STRATEGY", // from postgisrasterdataset.cpp
    "PR_WE_RES", // from postgisrasterdataset.cpp
    "PREDICTOR_OVERVIEW", // from gt_overview.cpp
-   "PREFERRED_OPENCL_VENDOR", // from gdalwarpkernel_opencl.cpp
    "PROJ_DATA", // from ogr_proj_p.cpp
    "PROJ_LIB", // from ogr_proj_p.cpp
    "PST_INSTANCE", // from jpipkakdataset.cpp
@@ -955,7 +961,6 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "PYTHONSO", // from gdalpython.cpp
    "QGIS_HACK", // from ogrfeaturedefn.cpp
    "QHULL_LOG_TO_TEMP_FILE", // from delaunay.c
-   "RASTERLITE_OVR_OPTIONS", // from rasterliteoverviews.cpp
    "RAW_CHECK_FILE_SIZE", // from rawdataset.cpp
    "RAW_MEM_ALLOC_LIMIT_MB", // from rawdataset.cpp
    "REPORT_COMPD_CS", // from dteddataset.cpp, srtmhgtdataset.cpp
@@ -993,12 +998,10 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "SXF_RSC_FILENAME", // from ogrsxfdatasource.cpp
    "SXF_SET_VERTCS", // from ogrsxfdatasource.cpp
    "TAB_APPROX_GEOTRANSFORM", // from gdal_misc.cpp
-   "TEMP", // from cpl_path.cpp, gdalwmscache.cpp, ogrgmlasconf.cpp, wcsutils.cpp
+   "TEMP", // from cpl_path.cpp, gdal_misc.cpp, gdalwmscache.cpp, wcsutils.cpp
    "THRESHOLD", // from ogrct.cpp
    "TIFF_READ_STREAMING", // from gtiffdataset_read.cpp
    "TIFF_USE_OVR", // from gtiffdataset_write.cpp
-   "TIGER_LFIELD_AS_STRING", // from tigerfilebase.cpp
-   "TIGER_VERSION", // from ogrtigerdatasource.cpp
    "TILEDB_ATTRIBUTE", // from tiledbdense.cpp
    "TILEDB_BINARY_TYPE", // from tiledbsparse.cpp
    "TILEDB_BUG", // from tiledbsparse.cpp
@@ -1006,16 +1009,16 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "TILEDB_INT_TYPE", // from tiledbsparse.cpp
    "TILEDB_WKB_GEOMETRY_TYPE", // from tiledbsparse.cpp
    "TILEDB_WRITE_IMAGE_STRUCTURE", // from tiledbdense.cpp
-   "TMPDIR", // from cpl_path.cpp, gdalwmscache.cpp, ogrgmlasconf.cpp, wcsutils.cpp
+   "TMPDIR", // from cpl_path.cpp, gdal_misc.cpp, gdalwmscache.cpp, wcsutils.cpp
    "USE_OSR_FIND_MATCHES", // from FGdbUtils.cpp, ogropenfilegdbdatasource.cpp, ogrshapelayer.cpp
    "USE_RRD", // from gdaldefaultoverviews.cpp, gtiffdataset_write.cpp, pcidskdataset2.cpp
    "USE_SPILL", // from hfaband.cpp
    "USE_SQLITE_DEBUG_MEMALLOC", // from ogrsqlitedatasource.cpp
    "USE_TEMPFILE", // from ogrgpsbabeldatasource.cpp, ogrgpsbabelwritedatasource.cpp
    "USE_TILE_AS_BLOCK", // from jp2kakdataset.cpp
-   "USER", // from gdalwmscache.cpp, isis3dataset.cpp, ogrgmlasconf.cpp, wcsutils.cpp
-   "USERNAME", // from gdalwmscache.cpp, isis3dataset.cpp, ogrgmlasconf.cpp, wcsutils.cpp
-   "USERPROFILE", // from cpl_aws.cpp, cpl_azure.cpp, cpl_conv.cpp, cpl_google_cloud.cpp, cpl_path.cpp, gdalwmscache.cpp, ogrgmlasconf.cpp, wcsutils.cpp
+   "USER", // from gdal_misc.cpp, gdalwmscache.cpp, isis3dataset.cpp, wcsutils.cpp
+   "USERNAME", // from gdal_misc.cpp, gdalwmscache.cpp, isis3dataset.cpp, wcsutils.cpp
+   "USERPROFILE", // from cpl_aws.cpp, cpl_azure.cpp, cpl_conv.cpp, cpl_google_cloud.cpp, cpl_path.cpp, gdal_misc.cpp, gdalwmscache.cpp, wcsutils.cpp
    "VRT_ALLOW_MEM_DRIVER", // from vrtrasterband.cpp
    "VRT_MIN_MAX_FROM_SOURCES", // from vrtsourcedrasterband.cpp
    "VRT_NUM_THREADS", // from vrtdataset.cpp
@@ -1040,6 +1043,10 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "VSICURL_PC_SAS_TOKEN_URL", // from cpl_vsil_curl.cpp
    "VSICURL_PC_URL_SIGNING", // from cpl_vsil_curl.cpp
    "VSICURL_QUERY_STRING", // from cpl_vsil_curl.cpp
+   "VSIKERCHUNK_CACHE_DIR", // from vsikerchunk_json_ref.cpp
+   "VSIKERCHUNK_FOR_TESTS", // from vsikerchunk_json_ref.cpp
+   "VSIKERCHUNK_USE_CACHE", // from vsikerchunk_json_ref.cpp
+   "VSIKERCHUNK_USE_STREAMING_PARSER", // from vsikerchunk_json_ref.cpp
    "VSIS3_COPYFILE_USE_STREAMING_SOURCE", // from cpl_vsil_s3.cpp
    "VSIS3_SIMULATE_THREADING", // from cpl_vsil_s3.cpp
    "VSIS3_SYNC_MULTITHREADING", // from cpl_vsil_s3.cpp
@@ -1054,7 +1061,7 @@ constexpr static const char* const apszKnownConfigOptions[] =
    "WEBP_LEVEL_OVERVIEW", // from gt_overview.cpp
    "WEBP_LOSSLESS_OVERVIEW", // from gt_overview.cpp
    "WMS_INFO_FORMAT", // from minidriver_wms.cpp
-   "XDG_CACHE_HOME", // from gdalwmscache.cpp
+   "XDG_CACHE_HOME", // from gdal_misc.cpp, gdalwmscache.cpp
    "ZARR_ALLOW_BIG_TILE_SIZE", // from zarr_v2_array.cpp, zarr_v3_array.cpp
    "ZLEVEL_OVERVIEW", // from gt_overview.cpp
    "ZMAP_EMIT_EOL_AT_END_OF_COLUMN", // from zmapdataset.cpp

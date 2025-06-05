@@ -72,7 +72,7 @@ can publish a picture without proper georeferencing too.
 
 .. option:: -r <RESAMPLING>, --resampling=<RESAMPLING>
 
-  Resampling method (average, near, bilinear, cubic, cubicspline, lanczos, antialias, mode, max, min, med, q1, q3) - default 'average'.
+  Resampling method (average, near, bilinear, cubic, cubicspline, lanczos, mode, max, min, med, q1, q3) - default 'average'.
 
 .. option:: -s <SRS>, --s_srs=<SRS>
 
@@ -153,7 +153,7 @@ can publish a picture without proper georeferencing too.
 .. option:: --excluded-values=<EXCLUDED_VALUES>
 
   Comma-separated tuple of values (thus typically "R,G,B"), that are ignored
-  as contributing source * pixels during resampling. The number of values in
+  as contributing source pixels during resampling. The number of values in
   the tuple must be the same as the number of bands, excluding the alpha band.
   Several tuples of excluded values may be specified using the "(R1,G1,B2),(R2,G2,B2)" syntax.
   Only taken into account by Average currently.

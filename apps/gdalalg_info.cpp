@@ -32,11 +32,6 @@ class GDALInfoAlgorithm final
         "'gdal vector info').";
     static constexpr const char *HELP_URL = "/programs/gdal_info.html";
 
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
-
     GDALInfoAlgorithm() : GDALDispatcherAlgorithm(NAME, DESCRIPTION, HELP_URL)
     {
         // only for the help message
@@ -47,6 +42,8 @@ class GDALInfoAlgorithm final
         m_longDescription = "For all options, run 'gdal raster info --help' or "
                             "'gdal vector info --help'";
     }
+
+    ~GDALInfoAlgorithm() override;
 
   private:
     std::unique_ptr<GDALRasterInfoAlgorithm> m_rasterInfo{};
@@ -63,5 +60,7 @@ class GDALInfoAlgorithm final
         return false;
     }
 };
+
+GDALInfoAlgorithm::~GDALInfoAlgorithm() = default;
 
 GDAL_STATIC_REGISTER_ALG(GDALInfoAlgorithm);

@@ -128,9 +128,8 @@ def test_vsis3_init(aws_test_config):
 def test_vsis3_no_sign_request(aws_test_config_as_config_options_or_credentials):
 
     options = {
-        "AWS_S3_ENDPOINT": "s3.amazonaws.com",
+        "AWS_S3_ENDPOINT": "https://s3.amazonaws.com",
         "AWS_NO_SIGN_REQUEST": "YES",
-        "AWS_HTTPS": "YES",
         "AWS_VIRTUAL_HOSTING": "TRUE",
     }
 
@@ -175,7 +174,7 @@ def test_vsis3_sync_multithreaded_download(
 
     tab = [-1]
     options = {
-        "AWS_S3_ENDPOINT": "s3.amazonaws.com",
+        "AWS_S3_ENDPOINT": "http://s3.amazonaws.com",
         "AWS_NO_SIGN_REQUEST": "YES",
         "AWS_VIRTUAL_HOSTING": "FALSE",
     }
@@ -1952,6 +1951,101 @@ def test_vsis3_opendir_synthetize_missing_directory(aws_test_config, webserver_p
 
 
 ###############################################################################
+# Test OpenDir() with a fake AWS server on /vsis3/ root
+
+
+def test_vsis3_opendir_from_prefix(aws_test_config, webserver_port):
+
+    handler = webserver.SequentialHandler()
+    handler.add(
+        "GET",
+        "/",
+        200,
+        {"Content-type": "application/xml"},
+        """<?xml version="1.0" encoding="UTF-8"?>
+        <ListAllMyBucketsResult>
+        <Buckets>
+            <Bucket>
+                <Name>bucket1</Name>
+            </Bucket>
+            <Bucket>
+                <Name>bucket2</Name>
+            </Bucket>
+        </Buckets>
+        </ListAllMyBucketsResult>
+        """,
+    )
+    handler.add(
+        "GET",
+        "/bucket1/",
+        200,
+        {"Content-type": "application/xml"},
+        """<?xml version="1.0" encoding="UTF-8"?>
+            <ListBucketResult>
+                <Prefix/>
+                <Marker/>
+                <Contents>
+                    <Key>test1.txt</Key>
+                    <LastModified>1970-01-01T00:00:01.000Z</LastModified>
+                    <Size>40</Size>
+                </Contents>
+                <Contents>
+                    <Key>test2.txt</Key>
+                    <LastModified>1970-01-01T00:00:01.000Z</LastModified>
+                    <Size>40</Size>
+                </Contents>
+            </ListBucketResult>
+        """,
+    )
+    handler.add(
+        "GET",
+        "/bucket2/",
+        200,
+        {"Content-type": "application/xml"},
+        """<?xml version="1.0" encoding="UTF-8"?>
+            <ListBucketResult>
+                <Prefix/>
+                <Marker/>
+                <Contents>
+                    <Key>test3.txt</Key>
+                    <LastModified>1970-01-01T00:00:01.000Z</LastModified>
+                    <Size>40</Size>
+                </Contents>
+            </ListBucketResult>
+        """,
+    )
+    with webserver.install_http_handler(handler):
+        d = gdal.OpenDir("/vsis3/")
+        assert d is not None
+        try:
+
+            entry = gdal.GetNextDirEntry(d)
+            assert entry.name == "bucket1"
+            assert entry.mode == 16384
+
+            entry = gdal.GetNextDirEntry(d)
+            assert entry.name == "bucket1/test1.txt"
+            assert entry.mode == 32768
+
+            entry = gdal.GetNextDirEntry(d)
+            assert entry.name == "bucket1/test2.txt"
+            assert entry.mode == 32768
+
+            entry = gdal.GetNextDirEntry(d)
+            assert entry.name == "bucket2"
+            assert entry.mode == 16384
+
+            entry = gdal.GetNextDirEntry(d)
+            assert entry.name == "bucket2/test3.txt"
+            assert entry.mode == 32768
+
+            assert gdal.GetNextDirEntry(d) is None
+
+        finally:
+            gdal.CloseDir(d)
+
+
+###############################################################################
 # Test simple PUT support with a fake AWS server
 
 
@@ -2663,9 +2757,7 @@ def test_vsis3_rmdir_recursive_no_batch_deletion(aws_test_config, webserver_port
 # Test multipart upload with a fake AWS server
 
 
-@pytest.mark.skipif(
-    gdaltest.is_travis_branch("macos_build"), reason="randomly fails on macos"
-)
+@pytest.mark.skipif(gdaltest.is_ci(), reason="randomly fails on CI")
 def test_vsis3_6(aws_test_config, webserver_port):
     with gdaltest.config_option("VSIS3_CHUNK_SIZE", "1", thread_local=False):  # 1 MB
         with webserver.install_http_handler(webserver.SequentialHandler()):
@@ -2968,9 +3060,7 @@ def test_vsis3_6(aws_test_config, webserver_port):
 # Test multipart upload with retry logic
 
 
-@pytest.mark.skipif(
-    gdaltest.is_travis_branch("macos_build"), reason="randomly fails on macos"
-)
+@pytest.mark.skipif(gdaltest.is_ci(), reason="randomly fails on CI")
 def test_vsis3_write_multipart_retry(aws_test_config, webserver_port):
 
     with gdaltest.config_options(

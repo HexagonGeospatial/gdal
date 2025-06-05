@@ -74,7 +74,7 @@ CEOSRasterBand::CEOSRasterBand(CEOSDataset *poDSIn, int nBandIn)
 CPLErr CEOSRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
                                   void *pImage)
 {
-    CEOSDataset *poCEOS_DS = (CEOSDataset *)poDS;
+    CEOSDataset *poCEOS_DS = cpl::down_cast<CEOSDataset *>(poDS);
 
     CPLAssert(nBlockXOff == 0);
 
@@ -155,9 +155,7 @@ GDALDataset *CEOSDataset::Open(GDALOpenInfo *poOpenInfo)
     if (poOpenInfo->eAccess == GA_Update)
     {
         CEOSClose(psCEOS);
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The CEOS driver does not support update access to existing"
-                 " datasets.\n");
+        ReportUpdateNotSupportedByDriver("CEOS");
         return nullptr;
     }
     /* -------------------------------------------------------------------- */

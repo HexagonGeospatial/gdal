@@ -23,6 +23,7 @@
 
 #include "ogr_wkb.h"
 
+#include <cassert>
 #include <utility>
 
 /************************************************************************/
@@ -208,7 +209,7 @@ bool OGRParquetWriterLayer::CopyTmpGpkgLayerToFinalFile()
 
             // nCellCount shouldn't be over 51 normally, but even 65535
             // would be fine...
-            // coverity[tainted_data]
+            assert(nCellCount <= 65535);
             for (int i = 0; i < nCellCount; ++i)
             {
                 int64_t nFID;
@@ -356,17 +357,12 @@ bool OGRParquetWriterLayer::SetOptions(CSLConstList papszOptions,
             m_eGeomEncoding = OGRArrowGeomEncoding::WKT;
         else if (EQUAL(pszGeomEncoding, "GEOARROW_INTERLEAVED"))
         {
-            static bool bHasWarned = false;
-            if (!bHasWarned)
-            {
-                bHasWarned = true;
-                CPLError(
-                    CE_Warning, CPLE_AppDefined,
-                    "Use of GEOMETRY_ENCODING=GEOARROW_INTERLEAVED is not "
-                    "recommended. "
-                    "GeoParquet 1.1 uses GEOMETRY_ENCODING=GEOARROW (struct) "
-                    "instead.");
-            }
+            CPLErrorOnce(
+                CE_Warning, CPLE_AppDefined,
+                "Use of GEOMETRY_ENCODING=GEOARROW_INTERLEAVED is not "
+                "recommended. "
+                "GeoParquet 1.1 uses GEOMETRY_ENCODING=GEOARROW (struct) "
+                "instead.");
             m_eGeomEncoding = OGRArrowGeomEncoding::GEOARROW_FSL_GENERIC;
         }
         else if (EQUAL(pszGeomEncoding, "GEOARROW") ||
@@ -831,7 +827,7 @@ void OGRParquetWriterLayer::PerformStepsBeforeFinalFlushGroup()
 {
     if (m_poKeyValueMetadata)
     {
-        const std::string osGeoMetadata = GetGeoMetadata();
+        std::string osGeoMetadata = GetGeoMetadata();
         auto poTmpSchema = m_poSchema;
         if (!osGeoMetadata.empty())
         {
@@ -844,7 +840,7 @@ void OGRParquetWriterLayer::PerformStepsBeforeFinalFlushGroup()
             auto kvMetadata = poTmpSchema->metadata()
                                   ? poTmpSchema->metadata()->Copy()
                                   : std::make_shared<arrow::KeyValueMetadata>();
-            kvMetadata->Append("geo", osGeoMetadata);
+            kvMetadata->Append("geo", std::move(osGeoMetadata));
             poTmpSchema = poTmpSchema->WithMetadata(kvMetadata);
         }
 
@@ -858,12 +854,12 @@ void OGRParquetWriterLayer::PerformStepsBeforeFinalFlushGroup()
                 // The serialized schema is not UTF-8, which is required for
                 // Thrift
                 const std::string schema_as_string = (*status)->ToString();
-                const std::string schema_base64 =
+                std::string schema_base64 =
                     ::arrow::util::base64_encode(schema_as_string);
                 static const std::string kArrowSchemaKey = "ARROW:schema";
                 const_cast<arrow::KeyValueMetadata *>(
                     m_poKeyValueMetadata.get())
-                    ->Append(kArrowSchemaKey, schema_base64);
+                    ->Append(kArrowSchemaKey, std::move(schema_base64));
             }
         }
 
@@ -1081,7 +1077,11 @@ OGRErr OGRParquetWriterLayer::ICreateFeature(OGRFeature *poFeature)
 
 bool OGRParquetWriterLayer::FlushGroup()
 {
+#if PARQUET_VERSION_MAJOR >= 20
+    auto status = m_poFileWriter->NewRowGroup();
+#else
     auto status = m_poFileWriter->NewRowGroup(m_apoBuilders[0]->length());
+#endif
     if (!status.ok())
     {
         CPLError(CE_Failure, CPLE_AppDefined, "NewRowGroup() failed with %s",

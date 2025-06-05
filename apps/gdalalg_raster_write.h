@@ -29,15 +29,16 @@ class GDALRasterWriteAlgorithm final : public GDALRasterPipelineStepAlgorithm
     static constexpr const char *HELP_URL =
         "/programs/gdal_raster_pipeline.html";
 
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
-
     GDALRasterWriteAlgorithm();
 
+    bool IsNativelyStreamingCompatible() const override
+    {
+        return false;
+    }
+
   private:
-    bool RunStep(GDALProgressFunc pfnProgress, void *pProgressData) override;
+    friend class GDALRasterPipelineStepAlgorithm;
+    bool RunStep(GDALRasterPipelineStepRunContext &ctxt) override;
 };
 
 //! @endcond

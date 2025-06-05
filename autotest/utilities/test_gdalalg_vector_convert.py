@@ -17,9 +17,7 @@ from osgeo import gdal
 
 
 def get_convert_alg():
-    reg = gdal.GetGlobalAlgorithmRegistry()
-    vector = reg.InstantiateAlg("vector")
-    return vector.InstantiateSubAlgorithm("convert")
+    return gdal.GetGlobalAlgorithmRegistry()["vector"]["convert"]
 
 
 @pytest.mark.require_driver("GPKG")
@@ -146,7 +144,7 @@ def test_gdalalg_vector_wrong_layer_name(tmp_vsimem):
         convert.ParseRunAndFinalize(
             [
                 "../ogr/data/poly.shp",
-                "--of=Memory",
+                "--of=MEM",
                 "--output=empty",
                 "--layer",
                 "invalid",
@@ -156,10 +154,84 @@ def test_gdalalg_vector_wrong_layer_name(tmp_vsimem):
 
 def test_gdalalg_vector_convert_error_output_not_set():
     convert = get_convert_alg()
-    convert.GetArg("input").Get().SetName("../ogr/data/poly.shp")
-    convert.GetArg("output").Set(convert.GetArg("output").Get())
+    convert["input"] = "../ogr/data/poly.shp"
+
+    # Make it such that the "output" argument is set, but to a unset GDALArgDatasetValue
+    convert["output"] = convert["output"]
+
     with pytest.raises(
         Exception,
         match="convert: Argument 'output' has no dataset object or dataset name",
     ):
         convert.Run()
+
+
+@pytest.mark.require_driver("GeoJSON")
+def test_gdalalg_vector_convert_vsistdout(tmp_vsimem):
+    convert = get_convert_alg()
+    convert["input"] = "../ogr/data/poly.shp"
+    convert["output"] = f"/vsistdout_redirect/{tmp_vsimem}/tmp.json"
+    convert["output-format"] = "GeoJSON"
+    assert convert.Run()
+    assert convert.Finalize()
+    assert gdal.OpenEx(f"{tmp_vsimem}/tmp.json") is not None
+
+
+@pytest.mark.require_driver("OpenFileGDB")
+def test_gdalalg_vector_convert_overwrite_fgdb(tmp_vsimem):
+
+    convert = get_convert_alg()
+    convert["input"] = "../ogr/data/poly.shp"
+    convert["output"] = tmp_vsimem / "out.gdb"
+    convert["output-format"] = "OpenFileGDB"
+    convert["layer-creation-option"] = {
+        "TARGET_ARCGIS_VERSION": "ARCGIS_PRO_3_2_OR_LATER"
+    }
+    assert convert.Run()
+    assert convert.Finalize()
+
+    gdal.FileFromMemBuffer(tmp_vsimem / "out.gdb" / "new_file.txt", "foo")
+    assert gdal.VSIStatL(tmp_vsimem / "out.gdb" / "new_file.txt") is not None
+
+    convert = get_convert_alg()
+    convert["input"] = "../ogr/data/poly.shp"
+    convert["output"] = tmp_vsimem / "out.gdb"
+    convert["output-format"] = "OpenFileGDB"
+    convert["overwrite"] = True
+    convert["layer-creation-option"] = {
+        "TARGET_ARCGIS_VERSION": "ARCGIS_PRO_3_2_OR_LATER"
+    }
+    assert convert.Run()
+    assert convert.Finalize()
+
+    assert gdal.VSIStatL(tmp_vsimem / "out.gdb" / "new_file.txt") is None
+
+
+@pytest.mark.require_driver("OpenFileGDB")
+def test_gdalalg_vector_convert_overwrite_non_dataset_directory(tmp_vsimem):
+
+    gdal.FileFromMemBuffer(tmp_vsimem / "out" / "foo", "bar")
+
+    convert = get_convert_alg()
+    convert["input"] = "../ogr/data/poly.shp"
+    convert["output"] = tmp_vsimem / "out"
+    convert["output-format"] = "OpenFileGDB"
+    convert["overwrite"] = True
+    with pytest.raises(
+        Exception,
+        match="already exists, but is not recognized as a valid GDAL dataset. Please manually delete it before retrying",
+    ):
+        convert.Run()
+
+
+@pytest.mark.require_driver("GPKG")
+def test_gdalalg_vector_convert_overwrite_non_dataset_file(tmp_vsimem):
+
+    gdal.FileFromMemBuffer(tmp_vsimem / "out.gpkg", "bar")
+
+    convert = get_convert_alg()
+    convert["input"] = "../ogr/data/poly.shp"
+    convert["output"] = tmp_vsimem / "out.gpkg"
+    convert["output-format"] = "GPKG"
+    convert["overwrite"] = True
+    assert convert.Run()

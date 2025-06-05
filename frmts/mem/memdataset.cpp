@@ -149,7 +149,7 @@ CPLErr MEMRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
 
     if (nPixelOffset == nWordSize)
     {
-        memcpy(pImage, pabyData + nLineOffset * (size_t)nBlockYOff,
+        memcpy(pImage, pabyData + nLineOffset * static_cast<size_t>(nBlockYOff),
                static_cast<size_t>(nPixelOffset) * nBlockXSize);
     }
     else
@@ -179,7 +179,7 @@ CPLErr MEMRasterBand::IWriteBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
 
     if (nPixelOffset == nWordSize)
     {
-        memcpy(pabyData + nLineOffset * (size_t)nBlockYOff, pImage,
+        memcpy(pabyData + nLineOffset * static_cast<size_t>(nBlockYOff), pImage,
                static_cast<size_t>(nPixelOffset) * nBlockXSize);
     }
     else
@@ -365,14 +365,14 @@ CPLErr MEMDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             {
                 for (int iLine = 0; iLine < nYSize; iLine++)
                 {
-                    GDALCopyWords(static_cast<GByte *>(pData) +
-                                      nLineSpaceBuf * (size_t)iLine,
-                                  eBufType, eBufTypeSize,
-                                  pabyData +
-                                      nLineOffset *
-                                          static_cast<size_t>(iLine + nYOff) +
-                                      nXOff * nPixelOffset,
-                                  eDT, eDTSize, nXSize * nBands);
+                    GDALCopyWords(
+                        static_cast<GByte *>(pData) +
+                            nLineSpaceBuf * static_cast<size_t>(iLine),
+                        eBufType, eBufTypeSize,
+                        pabyData +
+                            nLineOffset * static_cast<size_t>(iLine + nYOff) +
+                            nXOff * nPixelOffset,
+                        eDT, eDTSize, nXSize * nBands);
                 }
             }
             return CE_None;
@@ -729,7 +729,7 @@ CPLErr MEMDataset::AddBand(GDALDataType eType, char **papszOptions)
             (nTmp > INT_MAX) ? nullptr :
 #endif
                              static_cast<GByte *>(VSI_CALLOC_VERBOSE(
-                                 (size_t)nTmp, GetRasterYSize()));
+                                 static_cast<size_t>(nTmp), GetRasterYSize()));
 
         if (pData == nullptr)
         {
@@ -885,9 +885,19 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
             auto poOvrDS = std::make_unique<MEMDataset>();
             poOvrDS->eAccess = GA_Update;
             poOvrDS->nRasterXSize =
-                (nRasterXSize + panOverviewList[i] - 1) / panOverviewList[i];
+                DIV_ROUND_UP(nRasterXSize, panOverviewList[i]);
             poOvrDS->nRasterYSize =
-                (nRasterYSize + panOverviewList[i] - 1) / panOverviewList[i];
+                DIV_ROUND_UP(nRasterYSize, panOverviewList[i]);
+            poOvrDS->bGeoTransformSet = bGeoTransformSet;
+            memcpy(poOvrDS->adfGeoTransform, adfGeoTransform,
+                   6 * sizeof(double));
+            const double dfOvrXRatio =
+                static_cast<double>(nRasterXSize) / poOvrDS->nRasterXSize;
+            const double dfOvrYRatio =
+                static_cast<double>(nRasterYSize) / poOvrDS->nRasterYSize;
+            GDALRescaleGeoTransform(poOvrDS->adfGeoTransform, dfOvrXRatio,
+                                    dfOvrYRatio);
+            poOvrDS->m_oSRS = m_oSRS;
             for (int iBand = 0; iBand < nBands; iBand++)
             {
                 const GDALDataType eDT =
@@ -897,7 +907,7 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
                     return CE_Failure;
                 }
             }
-            m_apoOverviewDS.emplace_back(std::move(poOvrDS));
+            m_apoOverviewDS.emplace_back(poOvrDS.release());
         }
     }
 
@@ -987,9 +997,10 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
             poMaskBand->poMask.reset(poMaskBand, false);
             poMaskBand->nMaskFlags = 0;
             eErr = GDALRegenerateOverviewsEx(
-                (GDALRasterBandH)poMaskBand, nNewOverviews,
-                (GDALRasterBandH *)papoMaskOverviewBands, pszResampling,
-                GDALScaledProgress, pScaledProgress, papszOptions);
+                GDALRasterBand::ToHandle(poMaskBand), nNewOverviews,
+                reinterpret_cast<GDALRasterBandH *>(papoMaskOverviewBands),
+                pszResampling, GDALScaledProgress, pScaledProgress,
+                papszOptions);
             poMaskBand->InvalidateMaskBand();
             GDALDestroyScaledProgress(pScaledProgress);
         }
@@ -1001,9 +1012,10 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
                 1.0 * (iBand + (bMustGenerateMaskOvr ? 0.5 : 1)) / nBands,
                 1.0 * (iBand + 1) / nBands, pfnProgress, pProgressData);
             eErr = GDALRegenerateOverviewsEx(
-                (GDALRasterBandH)poBand, nNewOverviews,
-                (GDALRasterBandH *)papoOverviewBands, pszResampling,
-                GDALScaledProgress, pScaledProgress, papszOptions);
+                GDALRasterBand::ToHandle(poBand), nNewOverviews,
+                reinterpret_cast<GDALRasterBandH *>(papoOverviewBands),
+                pszResampling, GDALScaledProgress, pScaledProgress,
+                papszOptions);
             GDALDestroyScaledProgress(pScaledProgress);
         }
     }
@@ -1077,7 +1089,7 @@ std::unique_ptr<GDALDataset> MEMDataset::Clone(int nScopeFlags,
         for (const auto &poOvrDS : m_apoOverviewDS)
         {
             poNewDS->m_apoOverviewDS.emplace_back(
-                poOvrDS->Clone(nScopeFlags, bCanShareState));
+                poOvrDS->Clone(nScopeFlags, bCanShareState).release());
         }
 
         poNewDS->SetDescription(GetDescription());
@@ -1213,16 +1225,7 @@ GDALDataset *MEMDataset::Open(GDALOpenInfo *poOpenInfo)
             eType = static_cast<GDALDataType>(atoi(pszOption));
         else
         {
-            eType = GDT_Unknown;
-            for (int iType = 0; iType < GDT_TypeCount; iType++)
-            {
-                if (EQUAL(GDALGetDataTypeName((GDALDataType)iType), pszOption))
-                {
-                    eType = static_cast<GDALDataType>(iType);
-                    break;
-                }
-            }
-
+            eType = GDALGetDataTypeByName(pszOption);
             if (eType == GDT_Unknown)
             {
                 CPLError(CE_Failure, CPLE_AppDefined,
@@ -1342,7 +1345,8 @@ MEMDataset *MEMDataset::Create(const char * /* pszFilename */, int nXSize,
     const int nWordSize = GDALGetDataTypeSizeBytes(eType);
     if (nBandsIn > 0 && nWordSize > 0 &&
         (nBandsIn > INT_MAX / nWordSize ||
-         (GIntBig)nXSize * nYSize > GINTBIG_MAX / (nWordSize * nBandsIn)))
+         static_cast<GIntBig>(nXSize) * nYSize >
+             GINTBIG_MAX / (nWordSize * nBandsIn)))
     {
         CPLError(CE_Failure, CPLE_OutOfMemory, "Multiplication overflow");
         return nullptr;
@@ -1404,6 +1408,8 @@ MEMDataset *MEMDataset::Create(const char * /* pszFilename */, int nXSize,
 
     if (bPixelInterleaved)
         poDS->SetMetadataItem("INTERLEAVE", "PIXEL", "IMAGE_STRUCTURE");
+    else
+        poDS->SetMetadataItem("INTERLEAVE", "BAND", "IMAGE_STRUCTURE");
 
     /* -------------------------------------------------------------------- */
     /*      Create band information objects.                                */
@@ -3215,13 +3221,215 @@ static CPLErr MEMDatasetDelete(const char * /* fileName */)
 }
 
 /************************************************************************/
+/*                            CreateLayer()                             */
+/************************************************************************/
+
+OGRMemLayer *MEMDataset::CreateLayer(const OGRFeatureDefn &oDefn,
+                                     CSLConstList papszOptions)
+{
+    auto poLayer = std::make_unique<OGRMemLayer>(oDefn);
+
+    if (CPLFetchBool(papszOptions, "ADVERTIZE_UTF8", false))
+        poLayer->SetAdvertizeUTF8(true);
+
+    poLayer->SetDataset(this);
+    poLayer->SetFIDColumn(CSLFetchNameValueDef(papszOptions, "FID", ""));
+
+    // Add layer to data source layer list.
+    m_apoLayers.emplace_back(std::move(poLayer));
+    return m_apoLayers.back().get();
+}
+
+/************************************************************************/
+/*                           ICreateLayer()                             */
+/************************************************************************/
+
+OGRLayer *MEMDataset::ICreateLayer(const char *pszLayerName,
+                                   const OGRGeomFieldDefn *poGeomFieldDefn,
+                                   CSLConstList papszOptions)
+{
+    // Create the layer object.
+
+    const auto eType = poGeomFieldDefn ? poGeomFieldDefn->GetType() : wkbNone;
+    const auto poSRSIn =
+        poGeomFieldDefn ? poGeomFieldDefn->GetSpatialRef() : nullptr;
+
+    OGRSpatialReference *poSRS = nullptr;
+    if (poSRSIn)
+    {
+        poSRS = poSRSIn->Clone();
+        poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    }
+    auto poLayer = std::make_unique<OGRMemLayer>(pszLayerName, poSRS, eType);
+    if (poSRS)
+    {
+        poSRS->Release();
+    }
+
+    if (CPLFetchBool(papszOptions, "ADVERTIZE_UTF8", false))
+        poLayer->SetAdvertizeUTF8(true);
+
+    poLayer->SetDataset(this);
+    poLayer->SetFIDColumn(CSLFetchNameValueDef(papszOptions, "FID", ""));
+
+    // Add layer to data source layer list.
+    m_apoLayers.emplace_back(std::move(poLayer));
+    return m_apoLayers.back().get();
+}
+
+/************************************************************************/
+/*                            DeleteLayer()                             */
+/************************************************************************/
+
+OGRErr MEMDataset::DeleteLayer(int iLayer)
+
+{
+    if (iLayer >= 0 && iLayer < static_cast<int>(m_apoLayers.size()))
+    {
+        m_apoLayers.erase(m_apoLayers.begin() + iLayer);
+        return OGRERR_NONE;
+    }
+
+    return OGRERR_FAILURE;
+}
+
+/************************************************************************/
+/*                           TestCapability()                           */
+/************************************************************************/
+
+int MEMDataset::TestCapability(const char *pszCap)
+
+{
+    if (EQUAL(pszCap, ODsCCreateLayer))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCDeleteLayer))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCCreateGeomFieldAfterCreateLayer))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCCurveGeometries))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCMeasuredGeometries))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCZGeometries))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCRandomLayerWrite))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCAddFieldDomain))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCDeleteFieldDomain))
+        return TRUE;
+    else if (EQUAL(pszCap, ODsCUpdateFieldDomain))
+        return TRUE;
+
+    return FALSE;
+}
+
+/************************************************************************/
+/*                              GetLayer()                              */
+/************************************************************************/
+
+OGRLayer *MEMDataset::GetLayer(int iLayer)
+
+{
+    if (iLayer < 0 || iLayer >= static_cast<int>(m_apoLayers.size()))
+        return nullptr;
+
+    return m_apoLayers[iLayer].get();
+}
+
+/************************************************************************/
+/*                           AddFieldDomain()                           */
+/************************************************************************/
+
+bool MEMDataset::AddFieldDomain(std::unique_ptr<OGRFieldDomain> &&domain,
+                                std::string &failureReason)
+{
+    if (GetFieldDomain(domain->GetName()) != nullptr)
+    {
+        failureReason = "A domain of identical name already exists";
+        return false;
+    }
+    const std::string domainName(domain->GetName());
+    m_oMapFieldDomains[domainName] = std::move(domain);
+    return true;
+}
+
+/************************************************************************/
+/*                           DeleteFieldDomain()                        */
+/************************************************************************/
+
+bool MEMDataset::DeleteFieldDomain(const std::string &name,
+                                   std::string &failureReason)
+{
+    const auto iter = m_oMapFieldDomains.find(name);
+    if (iter == m_oMapFieldDomains.end())
+    {
+        failureReason = "Domain does not exist";
+        return false;
+    }
+
+    m_oMapFieldDomains.erase(iter);
+
+    for (auto &poLayer : m_apoLayers)
+    {
+        for (int j = 0; j < poLayer->GetLayerDefn()->GetFieldCount(); ++j)
+        {
+            OGRFieldDefn *poFieldDefn =
+                poLayer->GetLayerDefn()->GetFieldDefn(j);
+            if (poFieldDefn->GetDomainName() == name)
+            {
+                auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
+                poFieldDefn->SetDomainName(std::string());
+            }
+        }
+    }
+
+    return true;
+}
+
+/************************************************************************/
+/*                           UpdateFieldDomain()                        */
+/************************************************************************/
+
+bool MEMDataset::UpdateFieldDomain(std::unique_ptr<OGRFieldDomain> &&domain,
+                                   std::string &failureReason)
+{
+    const std::string domainName(domain->GetName());
+    const auto iter = m_oMapFieldDomains.find(domainName);
+    if (iter == m_oMapFieldDomains.end())
+    {
+        failureReason = "No matching domain found";
+        return false;
+    }
+    m_oMapFieldDomains[domainName] = std::move(domain);
+    return true;
+}
+
+/************************************************************************/
+/*                              ExecuteSQL()                            */
+/************************************************************************/
+
+OGRLayer *MEMDataset::ExecuteSQL(const char *pszStatement,
+                                 OGRGeometry *poSpatialFilter,
+                                 const char *pszDialect)
+{
+    if (EQUAL(pszStatement, "PRAGMA read_only=1"))  // as used by VDV driver
+    {
+        for (auto &poLayer : m_apoLayers)
+            poLayer->SetUpdatable(false);
+        return nullptr;
+    }
+    return GDALDataset::ExecuteSQL(pszStatement, poSpatialFilter, pszDialect);
+}
+
+/************************************************************************/
 /*                          GDALRegister_MEM()                          */
 /************************************************************************/
 
 void GDALRegister_MEM()
-
 {
-    if (GDALGetDriverByName("MEM") != nullptr)
+    auto poDM = GetGDALDriverManager();
+    if (poDM->GetDriverByName("MEM") != nullptr)
         return;
 
     GDALDriver *poDriver = new GDALDriver();
@@ -3229,7 +3437,9 @@ void GDALRegister_MEM()
     poDriver->SetDescription("MEM");
     poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_MULTIDIM_RASTER, "YES");
-    poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "In Memory Raster");
+    poDriver->SetMetadataItem(
+        GDAL_DMD_LONGNAME,
+        "In Memory raster, vector and multidimensional raster");
     poDriver->SetMetadataItem(
         GDAL_DMD_CREATIONDATATYPES,
         "Byte Int8 Int16 UInt16 Int32 UInt32 Int64 UInt64 Float32 Float64 "
@@ -3245,6 +3455,47 @@ void GDALRegister_MEM()
         "   </Option>"
         "</CreationOptionList>");
 
+    poDriver->SetMetadataItem(GDAL_DCAP_VECTOR, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_CREATE_LAYER, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_DELETE_LAYER, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_CREATE_FIELD, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_DELETE_FIELD, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_REORDER_FIELDS, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_CURVE_GEOMETRIES, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_MEASURED_GEOMETRIES, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_Z_GEOMETRIES, "YES");
+    poDriver->SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL SQLITE");
+
+    poDriver->SetMetadataItem(
+        GDAL_DMD_CREATIONFIELDDATATYPES,
+        "Integer Integer64 Real String Date DateTime Time IntegerList "
+        "Integer64List RealList StringList Binary");
+    poDriver->SetMetadataItem(GDAL_DMD_CREATION_FIELD_DEFN_FLAGS,
+                              "WidthPrecision Nullable Default Unique "
+                              "Comment AlternativeName Domain");
+    poDriver->SetMetadataItem(GDAL_DMD_ALTER_FIELD_DEFN_FLAGS,
+                              "Name Type WidthPrecision Nullable Default "
+                              "Unique Domain AlternativeName Comment");
+
+    poDriver->SetMetadataItem(
+        GDAL_DS_LAYER_CREATIONOPTIONLIST,
+        "<LayerCreationOptionList>"
+        "  <Option name='ADVERTIZE_UTF8' type='boolean' description='Whether "
+        "the layer will contain UTF-8 strings' default='NO'/>"
+        "  <Option name='FID' type='string' description="
+        "'Name of the FID column to create' default='' />"
+        "</LayerCreationOptionList>");
+
+    poDriver->SetMetadataItem(GDAL_DCAP_COORDINATE_EPOCH, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_MULTIPLE_VECTOR_LAYERS, "YES");
+
+    poDriver->SetMetadataItem(GDAL_DCAP_FIELD_DOMAINS, "YES");
+    poDriver->SetMetadataItem(GDAL_DMD_CREATION_FIELD_DOMAIN_TYPES,
+                              "Coded Range Glob");
+
+    poDriver->SetMetadataItem(GDAL_DMD_ALTER_GEOM_FIELD_DEFN_FLAGS,
+                              "Name Type Nullable SRS CoordinateEpoch");
+
     // Define GDAL_NO_OPEN_FOR_MEM_DRIVER macro to undefine Open() method for
     // MEM driver.  Otherwise, bad user input can trigger easily a GDAL crash
     // as random pointers can be passed as a string.  All code in GDAL tree
@@ -3258,5 +3509,5 @@ void GDALRegister_MEM()
     poDriver->pfnCreateMultiDimensional = MEMDataset::CreateMultiDimensional;
     poDriver->pfnDelete = MEMDatasetDelete;
 
-    GetGDALDriverManager()->RegisterDriver(poDriver);
+    poDM->RegisterDriver(poDriver);
 }

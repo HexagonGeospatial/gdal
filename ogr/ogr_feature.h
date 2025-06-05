@@ -15,6 +15,7 @@
 #define OGR_FEATURE_H_INCLUDED
 
 #include "cpl_atomic_ops.h"
+#include "gdal_fwd.h"
 #include "ogr_featurestyle.h"
 #include "ogr_geometry.h"
 #include "ogr_geomcoordinateprecision.h"
@@ -31,32 +32,6 @@
  *
  * Simple feature classes.
  */
-
-#ifndef DEFINE_OGRFeatureH
-/*! @cond Doxygen_Suppress */
-#define DEFINE_OGRFeatureH
-/*! @endcond */
-#if defined(DEBUG) || defined(GDAL_DEBUG)
-typedef struct OGRFieldDefnHS *OGRFieldDefnH;
-typedef struct OGRFeatureDefnHS *OGRFeatureDefnH;
-typedef struct OGRFeatureHS *OGRFeatureH;
-typedef struct OGRStyleTableHS *OGRStyleTableH;
-#else
-/** Opaque type for a field definition (OGRFieldDefn) */
-typedef void *OGRFieldDefnH;
-/** Opaque type for a feature definition (OGRFeatureDefn) */
-typedef void *OGRFeatureDefnH;
-/** Opaque type for a feature (OGRFeature) */
-typedef void *OGRFeatureH;
-/** Opaque type for a style table (OGRStyleTable) */
-typedef void *OGRStyleTableH;
-#endif
-/** Opaque type for a geometry field definition (OGRGeomFieldDefn) */
-typedef struct OGRGeomFieldDefnHS *OGRGeomFieldDefnH;
-
-/** Opaque type for a field domain definition (OGRFieldDomain) */
-typedef struct OGRFieldDomainHS *OGRFieldDomainH;
-#endif /* DEFINE_OGRFeatureH */
 
 class OGRStyleTable;
 
@@ -107,6 +82,9 @@ class CPL_DLL OGRFieldDefn
     int bNullable;
     int bUnique;
 
+    // Used by drivers (GPKG) to track generated fields
+    bool m_bGenerated = false;
+
     std::string m_osDomainName{};  // field domain name. Might be empty
 
     std::string m_osComment{};  // field comment. Might be empty
@@ -118,6 +96,12 @@ class CPL_DLL OGRFieldDefn
     OGRFieldDefn(const char *, OGRFieldType);
     explicit OGRFieldDefn(const OGRFieldDefn *);
     ~OGRFieldDefn();
+
+    // Copy constructor
+    OGRFieldDefn(const OGRFieldDefn &oOther);
+
+    // Copy assignment operator
+    OGRFieldDefn &operator=(const OGRFieldDefn &oOther);
 
     void SetName(const char *);
 
@@ -211,6 +195,29 @@ class CPL_DLL OGRFieldDefn
         return bUnique;
     }
 
+    /**
+     * @brief Return whether the field is a generated field.
+     *
+     * At time of writing, only the GeoPackage and PG drivers fill that information. Consequently,
+     * only a returned value equal to TRUE can be fully trusted.
+     * @return TRUE if the field is a generated field, FALSE otherwise.
+     * @since GDAL 3.11
+     */
+    bool IsGenerated() const
+    {
+        return m_bGenerated;
+    }
+
+    /**
+     * @brief SetGenerated set the field generated status.
+     * @param bGeneratedIn TRUE if the field is a generated field, FALSE otherwise.
+     * @since GDAL 3.11
+     */
+    void SetGenerated(bool bGeneratedIn)
+    {
+        m_bGenerated = bGeneratedIn;
+    }
+
     void SetUnique(int bUniqueIn);
 
     const std::string &GetDomainName() const
@@ -279,9 +286,6 @@ class CPL_DLL OGRFieldDefn
     /*! @endcond */
 
     TemporaryUnsealer GetTemporaryUnsealer();
-
-  private:
-    CPL_DISALLOW_COPY_ASSIGN(OGRFieldDefn)
 };
 
 #ifdef GDAL_COMPILATION
@@ -348,6 +352,12 @@ class CPL_DLL OGRGeomFieldDefn
     OGRGeomFieldDefn(const char *pszNameIn, OGRwkbGeometryType eGeomTypeIn);
     explicit OGRGeomFieldDefn(const OGRGeomFieldDefn *);
     virtual ~OGRGeomFieldDefn();
+
+    // Copy constructor
+    OGRGeomFieldDefn(const OGRGeomFieldDefn &oOther);
+
+    // Copy assignment operator
+    OGRGeomFieldDefn &operator=(const OGRGeomFieldDefn &oOther);
 
     void SetName(const char *);
 
@@ -442,9 +452,6 @@ class CPL_DLL OGRGeomFieldDefn
     /*! @endcond */
 
     TemporaryUnsealer GetTemporaryUnsealer();
-
-  private:
-    CPL_DISALLOW_COPY_ASSIGN(OGRGeomFieldDefn)
 };
 
 #ifdef GDAL_COMPILATION
@@ -643,7 +650,30 @@ class CPL_DLL OGRFeatureDefn
 
     virtual void AddFieldDefn(const OGRFieldDefn *);
     virtual OGRErr DeleteFieldDefn(int iField);
+
+    /**
+     * @brief StealFieldDefn takes ownership of the field definition at index detaching
+     *        it from the feature definition.
+     * This is an advanced method designed to be only used for driver implementations.
+     * @param iField index of the field definition to detach.
+     * @return a unique pointer to the detached field definition or nullptr if the index is out of range.
+     * @since GDAL 3.11
+     */
+    virtual std::unique_ptr<OGRFieldDefn> StealFieldDefn(int iField);
+
+    virtual void AddFieldDefn(std::unique_ptr<OGRFieldDefn> &&poFieldDefn);
+
     virtual OGRErr ReorderFieldDefns(const int *panMap);
+
+    /**
+     * @brief StealGeomFieldDefn takes ownership of the the geometry field definition at index
+     *        detaching it from the feature definition.
+     * This is an advanced method designed to be only used for driver implementations.
+     * @param iField index of the geometry field definition to detach.
+     * @return a unique pointer to the detached geometry field definition or nullptr if the index is out of range.
+     * @since GDAL 3.11
+     */
+    virtual std::unique_ptr<OGRGeomFieldDefn> StealGeomFieldDefn(int iField);
 
     virtual int GetGeomFieldCount() const;
     virtual OGRGeomFieldDefn *GetGeomFieldDefn(int i);
@@ -1154,11 +1184,20 @@ class CPL_DLL OGRFeature
     const FieldValue operator[](int iField) const;
     FieldValue operator[](int iField);
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
     /** Exception raised by operator[](const char*) when a field is not found.
      */
     class FieldNotFoundException : public std::exception
     {
     };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
     const FieldValue operator[](const char *pszFieldName) const;
     FieldValue operator[](const char *pszFieldName);
@@ -1632,7 +1671,7 @@ class CPL_DLL OGRFieldDomain
      *
      * This is the same as the C function OGR_FldDomain_Destroy().
      */
-    virtual ~OGRFieldDomain() = 0;
+    virtual ~OGRFieldDomain();
 
     /** Clone.
      *
@@ -1832,15 +1871,7 @@ class CPL_DLL OGRRangeFieldDomain final : public OGRFieldDomain
                         const OGRField &sMin, bool bMinIsInclusive,
                         const OGRField &sMax, bool bMaxIsInclusive);
 
-    OGRRangeFieldDomain *Clone() const override
-    {
-        auto poDomain = new OGRRangeFieldDomain(
-            m_osName, m_osDescription, m_eFieldType, m_eFieldSubType, m_sMin,
-            m_bMinIsInclusive, m_sMax, m_bMaxIsInclusive);
-        poDomain->SetMergePolicy(m_eMergePolicy);
-        poDomain->SetSplitPolicy(m_eSplitPolicy);
-        return poDomain;
-    }
+    OGRRangeFieldDomain *Clone() const override;
 
     /** Get the minimum value.
      *
@@ -1909,14 +1940,7 @@ class CPL_DLL OGRGlobFieldDomain final : public OGRFieldDomain
                        OGRFieldType eFieldType, OGRFieldSubType eFieldSubType,
                        const std::string &osBlob);
 
-    OGRGlobFieldDomain *Clone() const override
-    {
-        auto poDomain = new OGRGlobFieldDomain(
-            m_osName, m_osDescription, m_eFieldType, m_eFieldSubType, m_osGlob);
-        poDomain->SetMergePolicy(m_eMergePolicy);
-        poDomain->SetSplitPolicy(m_eSplitPolicy);
-        return poDomain;
-    }
+    OGRGlobFieldDomain *Clone() const override;
 
     /** Get the glob expression.
      *

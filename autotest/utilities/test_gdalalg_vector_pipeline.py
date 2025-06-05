@@ -13,15 +13,14 @@
 
 import json
 
+import ogrtest
 import pytest
 
-from osgeo import gdal
+from osgeo import gdal, ogr
 
 
 def get_pipeline_alg():
-    reg = gdal.GetGlobalAlgorithmRegistry()
-    vector = reg.InstantiateAlg("vector")
-    return vector.InstantiateSubAlgorithm("pipeline")
+    return gdal.GetGlobalAlgorithmRegistry()["vector"]["pipeline"]
 
 
 def test_gdalalg_vector_pipeline_read_and_write(tmp_vsimem):
@@ -49,6 +48,86 @@ def test_gdalalg_vector_pipeline_read_and_write(tmp_vsimem):
         )
 
 
+@pytest.mark.require_driver("OSM")
+def test_gdalalg_vector_pipeline_read_osm():
+
+    pipeline = get_pipeline_alg()
+    assert pipeline.ParseCommandLineArguments(
+        [
+            "read",
+            "../ogr/data/osm/test.pbf",
+            "!",
+            "write",
+            "--of=stream",
+            "streamed_file",
+        ]
+    )
+    assert pipeline.Run()
+
+    out_ds = pipeline["output"].GetDataset()
+    assert out_ds.TestCapability(ogr.ODsCRandomLayerRead)
+    assert out_ds.TestCapability("unknown") == 0
+
+    expected = []
+    src_ds = gdal.OpenEx("../ogr/data/osm/test.pbf")
+    while True:
+        f, _ = src_ds.GetNextFeature()
+        if not f:
+            break
+        expected.append(str(f))
+
+    got = []
+    out_ds.ResetReading()
+    while True:
+        f, _ = out_ds.GetNextFeature()
+        if not f:
+            break
+        got.append(str(f))
+
+    assert expected == got
+
+
+@pytest.mark.require_driver("OSM")
+def test_gdalalg_vector_pipeline_read_osm_subset_of_layers():
+
+    pipeline = get_pipeline_alg()
+    assert pipeline.ParseCommandLineArguments(
+        [
+            "read",
+            "../ogr/data/osm/test.pbf",
+            "--layer=points,multipolygons",
+            "!",
+            "write",
+            "--of=stream",
+            "streamed_file",
+        ]
+    )
+    assert pipeline.Run()
+
+    out_ds = pipeline["output"].GetDataset()
+    assert out_ds.TestCapability(ogr.ODsCRandomLayerRead)
+
+    expected = []
+    src_ds = gdal.OpenEx("../ogr/data/osm/test.pbf")
+    while True:
+        f, lyr = src_ds.GetNextFeature()
+        if not f:
+            break
+        if lyr.GetName() in ["points", "multipolygons"]:
+            expected.append(str(f))
+
+    got = []
+    out_ds.ResetReading()
+    while True:
+        f, _ = out_ds.GetNextFeature()
+        if not f:
+            break
+        got.append(str(f))
+
+    assert len(expected) == len(got)
+    assert expected == got
+
+
 def test_gdalalg_vector_pipeline_pipeline_arg(tmp_vsimem):
 
     out_filename = str(tmp_vsimem / "out.shp")
@@ -68,9 +147,9 @@ def test_gdalalg_vector_pipeline_as_api(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.shp")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("pipeline").Set(f"read ../ogr/data/poly.shp ! write {out_filename}")
+    pipeline["pipeline"] = f"read ../ogr/data/poly.shp ! write {out_filename}"
     assert pipeline.Run()
-    ds = pipeline.GetArg("output").Get().GetDataset()
+    ds = pipeline["output"].GetDataset()
     assert ds.GetLayer(0).GetFeatureCount() == 10
     assert pipeline.Finalize()
     ds = None
@@ -84,8 +163,8 @@ def test_gdalalg_vector_pipeline_input_through_api(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.shp")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("input").Get().SetDataset(gdal.OpenEx("../ogr/data/poly.shp"))
-    pipeline.GetArg("pipeline").Set(f"read ! write {out_filename}")
+    pipeline["input"] = gdal.OpenEx("../ogr/data/poly.shp")
+    pipeline["pipeline"] = f"read ! write {out_filename}"
     assert pipeline.Run()
     assert pipeline.Finalize()
 
@@ -98,8 +177,8 @@ def test_gdalalg_vector_pipeline_input_through_api_run_twice(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.shp")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("input").Get().SetDataset(gdal.OpenEx("../ogr/data/poly.shp"))
-    pipeline.GetArg("pipeline").Set(f"read ! write {out_filename}")
+    pipeline["input"] = gdal.OpenEx("../ogr/data/poly.shp")
+    pipeline["pipeline"] = f"read ! write {out_filename}"
     assert pipeline.Run()
     with pytest.raises(
         Exception, match=r"pipeline: Step nr 0 \(read\) has already an output dataset"
@@ -112,8 +191,8 @@ def test_gdalalg_vector_pipeline_output_through_api(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.shp")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("output").Get().SetName(out_filename)
-    pipeline.GetArg("pipeline").Set("read ../ogr/data/poly.shp ! write")
+    pipeline["output"] = out_filename
+    pipeline["pipeline"] = "read ../ogr/data/poly.shp ! write"
     assert pipeline.Run()
     assert pipeline.Finalize()
 
@@ -124,7 +203,7 @@ def test_gdalalg_vector_pipeline_output_through_api(tmp_vsimem):
 def test_gdalalg_vector_pipeline_as_api_error():
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("pipeline").Set("read")
+    pipeline["pipeline"] = "read"
     with pytest.raises(Exception, match="pipeline: At least 2 steps must be provided"):
         pipeline.Run()
 
@@ -134,6 +213,34 @@ def test_gdalalg_vector_pipeline_usage_as_json():
     pipeline = get_pipeline_alg()
     j = json.loads(pipeline.GetUsageAsJSON())
     assert "pipeline_algorithms" in j
+
+
+def test_gdalalg_vector_pipeline_help_doc():
+
+    import gdaltest
+    import test_cli_utilities
+
+    gdal_path = test_cli_utilities.get_gdal_path()
+    if gdal_path is None:
+        pytest.skip("gdal binary missing")
+
+    out = gdaltest.runexternal(f"{gdal_path} vector pipeline --help-doc=main")
+
+    assert "Usage: gdal vector pipeline [OPTIONS] <PIPELINE>" in out
+    assert (
+        "<PIPELINE> is of the form: read|concat [READ-OPTIONS] ( ! <STEP-NAME> [STEP-OPTIONS] )* ! write [WRITE-OPTIONS]"
+        in out
+    )
+
+    out = gdaltest.runexternal(f"{gdal_path} vector pipeline --help-doc=edit")
+
+    assert "* edit [OPTIONS]" in out
+
+    out, _ = gdaltest.runexternal_out_and_err(
+        f"{gdal_path} vector pipeline --help-doc=unknown"
+    )
+
+    assert "ERROR: unknown pipeline step 'unknown'" in out
 
 
 def test_gdalalg_vector_pipeline_quoted(tmp_vsimem):
@@ -184,6 +291,21 @@ def test_gdalalg_vector_easter_egg(tmp_path):
 
     with gdal.OpenEx(out_filename) as ds:
         assert ds.GetLayer(0).GetFeatureCount() == 10
+
+
+def test_gdalalg_vector_easter_egg_failed():
+
+    import gdaltest
+    import test_cli_utilities
+
+    gdal_path = test_cli_utilities.get_gdal_path()
+    if gdal_path is None:
+        pytest.skip("gdal binary missing")
+    _, err = gdaltest.runexternal_out_and_err(
+        f"{gdal_path} vector +gdal=pipeline +step +gdal=read +input=../ogr/data/poly.shp +step +gdal=unknown +step +write +output=/vsimem/out.shp"
+    )
+
+    assert "pipeline: unknown step name: unknown" in err
 
 
 def test_gdalalg_vector_pipeline_usage_as_json_bis():
@@ -240,6 +362,35 @@ def test_gdalalg_vector_pipeline_read_read():
         )
 
 
+def test_gdalalg_vector_pipeline_read_read_several_input():
+
+    pipeline = get_pipeline_alg()
+    with pytest.raises(
+        Exception,
+        match="read: Positional values starting at '../ogr/data/poly.dbf' are not expected.",
+    ):
+        pipeline.ParseRunAndFinalize(
+            [
+                "read",
+                "../ogr/data/poly.shp",
+                "../ogr/data/poly.dbf",
+                "!",
+                "write",
+                "/vsimem/poly.shp",
+            ]
+        )
+
+    pipeline = get_pipeline_alg()
+    pipeline["input"] = ["../ogr/data/poly.shp", "../ogr/data/poly.dbf"]
+    pipeline["output"] = "/vsimem/poly.shp"
+    pipeline["pipeline"] = "read ! write"
+    with pytest.raises(
+        Exception,
+        match="read: 2 values have been specified for argument 'input', whereas exactly 1 was expected.",
+    ):
+        pipeline.Run()
+
+
 def test_gdalalg_vector_pipeline_write_write():
 
     pipeline = get_pipeline_alg()
@@ -290,9 +441,7 @@ def test_gdalalg_vector_pipeline_invalid_step_during_parsing(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.shp")
 
     pipeline = get_pipeline_alg()
-    with pytest.raises(
-        Exception, match="write: Long name option '--invalid' is unknown"
-    ):
+    with pytest.raises(Exception, match="write: Option '--invalid' is unknown"):
         pipeline.ParseRunAndFinalize(
             ["read", "../ogr/data/poly.shp", "!", "write", "--invalid", out_filename]
         )
@@ -622,12 +771,12 @@ def test_gdalalg_vector_pipeline_reproject_missing_layer_crs(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.shp")
 
     pipeline = get_pipeline_alg()
-    mem_ds = gdal.GetDriverByName("Memory").Create("", 0, 0, 0, gdal.GDT_Unknown)
+    mem_ds = gdal.GetDriverByName("MEM").Create("", 0, 0, 0, gdal.GDT_Unknown)
     mem_ds.CreateLayer("layer")
-    pipeline.GetArg("input").Get().SetDataset(mem_ds)
-    pipeline.GetArg("pipeline").Set(
-        f"read ! reproject --dst-crs=EPSG:4326 ! write {out_filename}"
-    )
+    pipeline["input"] = mem_ds
+    pipeline[
+        "pipeline"
+    ] = f"read ! reproject --dst-crs=EPSG:4326 ! write {out_filename}"
     with pytest.raises(
         Exception, match="reproject: Layer 'layer' has no spatial reference system"
     ):
@@ -685,3 +834,106 @@ def test_gdalalg_vector_pipeline_reproject_with_src_crs(tmp_vsimem):
         assert f.GetGeometryRef().GetEnvelope() == pytest.approx(
             (2.750130423614134, 2.759262932833617, 43.0361359661472, 43.0429263707128)
         )
+
+
+def test_gdalalg_vector_pipeline_reproject_proj_string(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.shp")
+
+    pipeline = get_pipeline_alg()
+    assert pipeline.ParseRunAndFinalize(
+        [
+            "read",
+            "../ogr/data/poly.shp",
+            "!",
+            "reproject",
+            "--src-crs=EPSG:32631",
+            "--dst-crs",
+            "+proj=laea +lon_0=147 +lat_0=-40 +datum=WGS84",
+            "!",
+            "write",
+            "--overwrite",
+            out_filename,
+        ]
+    )
+
+    with gdal.OpenEx(out_filename) as ds:
+        lyr = ds.GetLayer(0)
+        assert "Lambert Azimuthal Equal Area" in lyr.GetSpatialRef().ExportToWkt(
+            ["FORMAT=WKT2"]
+        ), lyr.GetSpatialRef().ExportToWkt(["FORMAT=WKT2"])
+
+
+def test_gdalalg_vector_pipeline_geom_unknown_subalgorithm():
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 0, 0, 0, gdal.GDT_Unknown)
+
+    alg = get_pipeline_alg()
+
+    alg["input"] = src_ds
+    alg["output"] = ""
+    alg["output-format"] = "stream"
+
+    with pytest.raises(
+        Exception,
+        match="pipeline: 'unknown-subalgorithm' is a unknown sub-algorithm of 'geom'",
+    ):
+        alg.ParseCommandLineArguments(
+            ["read", "!", "geom", "unknown-subalgorithm", "!", "write"]
+        )
+
+
+def test_gdalalg_vector_pipeline_geom_set_type():
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 0, 0, 0, gdal.GDT_Unknown)
+    src_lyr = src_ds.CreateLayer("the_layer")
+
+    f = ogr.Feature(src_lyr.GetLayerDefn())
+    f.SetGeometry(ogr.CreateGeometryFromWkt("POINT (3 0)"))
+    src_lyr.CreateFeature(f)
+
+    alg = get_pipeline_alg()
+
+    alg["input"] = src_ds
+    alg["output"] = ""
+    alg["output-format"] = "stream"
+
+    assert alg.ParseCommandLineArguments(
+        ["read", "!", "geom", "set-type", "--geometry-type=POINTZ", "!", "write"]
+    )
+
+    assert alg.Run()
+
+    out_ds = alg["output"].GetDataset()
+    out_lyr = out_ds.GetLayer(0)
+    assert out_lyr.GetGeomType() == ogr.wkbPoint25D
+    out_f = out_lyr.GetNextFeature()
+    ogrtest.check_feature_geometry(out_f, "POINT Z (3 0 0)")
+
+
+def test_gdalalg_vector_pipeline_help():
+
+    import gdaltest
+    import test_cli_utilities
+
+    gdal_path = test_cli_utilities.get_gdal_path()
+    if gdal_path is None:
+        pytest.skip("gdal binary missing")
+
+    out = gdaltest.runexternal(f"{gdal_path} vector pipeline --help")
+    assert out.startswith("Usage: gdal vector pipeline [OPTIONS] <PIPELINE>")
+    assert "* read [OPTIONS] <INPUT>" in out
+    assert "* write [OPTIONS] <OUTPUT>" in out
+
+    out = gdaltest.runexternal(f"{gdal_path} vector pipeline --progress --help")
+    assert out.startswith("Usage: gdal vector pipeline [OPTIONS] <PIPELINE>")
+    assert "* read [OPTIONS] <INPUT>" in out
+    assert "* write [OPTIONS] <OUTPUT>" in out
+
+    out = gdaltest.runexternal(f"{gdal_path} vector pipeline read --help")
+    assert out.startswith("Usage: read [OPTIONS] <INPUT>")
+
+    out = gdaltest.runexternal(
+        f"{gdal_path} vector pipeline read foo.shp ! select --help"
+    )
+    assert out.startswith("Usage: select [OPTIONS] <FIELDS>")

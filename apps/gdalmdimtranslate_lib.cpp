@@ -38,6 +38,8 @@ struct GDALMultiDimTranslateOptions
     bool bStrict = false;
     void *pProgressData = nullptr;
     bool bUpdate = false;
+    bool bOverwrite = false;
+    bool bNoOverwrite = false;
 };
 
 /*************************************************************************/
@@ -84,7 +86,7 @@ GDALMultiDimTranslateAppOptionsGetParser(
         .action([psOptions](const std::string &s)
                 { psOptions->aosArrayOptions.AddString(s.c_str()); })
         .help(_("Option passed to GDALGroup::GetMDArrayNames() to filter "
-                "reported arrays."));
+                "arrays."));
 
     group.add_argument("-group")
         .metavar("<group_spec>")
@@ -120,6 +122,16 @@ GDALMultiDimTranslateAppOptionsGetParser(
         .flag()
         .store_into(psOptions->bStrict)
         .help(_("Turn warnings into failures."));
+
+    // Undocumented option used by gdal mdim convert
+    argParser->add_argument("--overwrite")
+        .store_into(psOptions->bOverwrite)
+        .hidden();
+
+    // Undocumented option used by gdal mdim convert
+    argParser->add_argument("--no-overwrite")
+        .store_into(psOptions->bNoOverwrite)
+        .hidden();
 
     if (psOptionsForBinary)
     {
@@ -786,7 +798,20 @@ static bool ParseArraySpec(const std::string &arraySpec, std::string &srcName,
                 CSLTokenizeString2(transposeExpr.c_str(), ",", 0));
             for (int i = 0; i < aosAxis.size(); ++i)
             {
-                anTransposedAxis.push_back(atoi(aosAxis[i]));
+                int iAxis = atoi(aosAxis[i]);
+                // check for non-integer characters
+                if (iAxis == 0)
+                {
+                    if (!EQUAL(aosAxis[i], "0"))
+                    {
+                        CPLError(CE_Failure, CPLE_AppDefined,
+                                 "Invalid value for axis in transpose: %s",
+                                 aosAxis[i]);
+                        return false;
+                    }
+                }
+
+                anTransposedAxis.push_back(iAxis);
             }
         }
         else if (STARTS_WITH(token.c_str(), "view="))
@@ -1788,18 +1813,46 @@ GDALMultiDimTranslate(const char *pszDest, GDALDatasetH hDstDS, int nSrcCount,
         pszDest = GDALGetDescription(hDstDS);
 #endif
 
+    if (psOptions && psOptions->bOverwrite && !EQUAL(pszDest, ""))
+    {
+        VSIRmdirRecursive(pszDest);
+    }
+    else if (psOptions && psOptions->bNoOverwrite && !EQUAL(pszDest, ""))
+    {
+        VSIStatBufL sStat;
+        if (VSIStatL(pszDest, &sStat) == 0)
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "File '%s' already exists. Specify the --overwrite "
+                     "option to overwrite it.",
+                     pszDest);
+            return nullptr;
+        }
+        else if (std::unique_ptr<GDALDataset>(GDALDataset::Open(pszDest)))
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Dataset '%s' already exists. Specify the --overwrite "
+                     "option to overwrite it.",
+                     pszDest);
+            return nullptr;
+        }
+    }
+
 #ifdef this_is_dead_code_for_now
     if (hDstDS == nullptr)
 #endif
     {
         if (osFormat.empty())
         {
-            if (EQUAL(CPLGetExtension(pszDest), "nc"))
+            if (EQUAL(CPLGetExtensionSafe(pszDest).c_str(), "nc"))
                 osFormat = "netCDF";
             else
                 osFormat = GetOutputDriverForRaster(pszDest);
             if (osFormat.empty())
             {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "Cannot determine output driver for dataset name '%s'",
+                         pszDest);
                 return nullptr;
             }
         }

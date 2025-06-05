@@ -17,6 +17,8 @@ Example:
 
     gdalinfo /vsizip/my.zip/my.tif
 
+The leading vsi in /vsiPREFIX/ stands for Virtual System Interface.
+
 Chaining
 --------
 
@@ -444,6 +446,11 @@ More generally options of :cpp:func:`CPLHTTPFetch` available through configurati
 Starting with GDAL 3.7, the above configuration options can also be specified
 as path-specific options with :cpp:func:`VSISetPathSpecificOption`.
 
+Starting with GDAL 3.11, the following configuration options control the number of HTTP connections:
+
+- :config:`GDAL_HTTP_MAX_CACHED_CONNECTIONS` = integer_number. Maximum amount of connections that libcurl may keep alive in its connection cache after use. Cf https://curl.se/libcurl/c/CURLMOPT_MAXCONNECTS.html
+- :config:`GDAL_HTTP_MAX_TOTAL_CONNECTIONS` = integer_number. Maximum number of simultaneously open connections in total. Cf https://curl.se/libcurl/c/CURLMOPT_MAX_TOTAL_CONNECTIONS.html
+
 The file can be cached in RAM by setting the configuration option :config:`VSI_CACHE` to ``TRUE``. The cache size defaults to 25 MB, but can be modified by setting the configuration option :config:`VSI_CACHE_SIZE` (in bytes). Content in that cache is discarded when the file handle is closed.
 
 Starting with GDAL 2.3, the :config:`CPL_VSIL_CURL_NON_CACHED` configuration option can be set to values like :file:`/vsicurl/http://example.com/foo.tif:/vsicurl/http://example.com/some_directory`, so that at file handle closing, all cached content related to the mentioned file(s) is no longer cached. This can help when dealing with resources that can be modified during execution of GDAL related code. Alternatively, :cpp:func:`VSICurlClearCache` can be used.
@@ -568,7 +575,8 @@ The following configuration options are specific to the /vsis3/ handler:
       :default: s3.amazonaws.com
 
       Allows the use of /vsis3/ with non-AWS remote object stores that use the
-      AWS S3 protocol.
+      AWS S3 protocol. Starting with GDAL 3.11, this can be a URL starting
+      with ``http://`` or ``https://``.
 
 -  .. config:: AWS_HTTPS
       :choices: YES, NO
@@ -576,6 +584,8 @@ The following configuration options are specific to the /vsis3/ handler:
 
       If ``YES``, AWS resources will be accessed using HTTPS. If ``NO``, HTTP
       will be used.
+      No longer needed starting with GDAL 3.11, because :config:`AWS_S3_ENDPOINT`
+      can include the protocol, and when doing so, this option is ignored.
 
 -  .. config:: AWS_VIRTUAL_HOSTING
       :choices: TRUE, FALSE
@@ -853,7 +863,7 @@ The following configuration options are specific to the /vsiaz/ handler:
 
      object_id of the managed identity you would like the token for, when using
      Azure Instance Metadata Service (IMDS) authentication in a Azure
-     Virtual Matchine. Required if your VM has multiple user-assigned managed identities.
+     Virtual Machine. Required if your VM has multiple user-assigned managed identities.
      This option may be set as a path-specific option with :cpp:func:`VSISetPathSpecificOption`
 
 - .. config:: AZURE_IMDS_CLIENT_ID
@@ -861,7 +871,7 @@ The following configuration options are specific to the /vsiaz/ handler:
 
      client_id of the managed identity you would like the token for, when using
      Azure Instance Metadata Service (IMDS) authentication in a Azure
-     Virtual Matchine. Required if your VM has multiple user-assigned managed identities.
+     Virtual Machine. Required if your VM has multiple user-assigned managed identities.
      This option may be set as a path-specific option with :cpp:func:`VSISetPathSpecificOption`
 
 - .. config:: AZURE_IMDS_MSI_RES_ID
@@ -869,7 +879,7 @@ The following configuration options are specific to the /vsiaz/ handler:
 
      msi_res_id (Azure Resource ID) of the managed identity you would like the token for, when using
      Azure Instance Metadata Service (IMDS) authentication in a Azure
-     Virtual Matchine. Required if your VM has multiple user-assigned managed identities.
+     Virtual Machine. Required if your VM has multiple user-assigned managed identities.
      This option may be set as a path-specific option with :cpp:func:`VSISetPathSpecificOption`
 
 Several authentication methods are possible, and are attempted in the following order:

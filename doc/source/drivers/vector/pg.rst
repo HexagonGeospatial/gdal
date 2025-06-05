@@ -417,6 +417,12 @@ The following configuration options are available:
                    mode as used by the OGR PostgreSQL driver. Thus you should
                    force PG_USE_COPY=NO when using PgPoolII.
 
+      .. warning:: It is not always possible to use COPY. In particular if
+                   the input layer has columns with a DEFAULT value specified
+                   and that the feature has no value set for that given field,
+                   the driver will default to INSERT even if instructed to use
+                   COPY via this option.
+
 -  .. config:: PGSQL_OGR_FID
 
       Set name of primary key instead of 'ogc_fid'. Only
@@ -499,17 +505,6 @@ Examples
    ::
 
       ogr2ogr -f PostgreSQL PG:dbname=warmerda abc.shp
-
--  This second example loads a political boundaries layer from VPF (via
-   the :ref:`OGDI driver <vector.ogdi>`), and renames the layer from the
-   cryptic OGDI layer name to something more sensible. If an existing
-   table of the desired name exists it is overwritten.
-
-   ::
-
-      ogr2ogr -f PostgreSQL PG:dbname=warmerda \
-              gltp:/vrf/usr4/mpp1/v0eur/vmaplv0/eurnasia \
-              -lco OVERWRITE=yes -nln polbndl_bnd 'polbndl@bnd(*)_line'
 
 - Export a single Postgres table to GeoPackage:
 

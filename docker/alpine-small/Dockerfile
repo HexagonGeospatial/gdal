@@ -7,7 +7,7 @@
 # Public domain
 # or licensed under MIT (LICENSE.TXT) Copyright 2019 Even Rouault <even.rouault@spatialys.com>
 
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.22
 FROM alpine:${ALPINE_VERSION} AS builder
 
 # Derived from osgeo/proj by Howard Butler <howard@hobu.co>
@@ -28,7 +28,8 @@ RUN apk add --no-cache \
     libjpeg-turbo-dev libpng-dev libwebp-dev expat-dev \
     postgresql-dev \
     rsync \
-    openjpeg-dev
+    openjpeg-dev \
+    muparser-dev
 
 # Ninja is not in the default path on Alpine.
 ENV PATH=/usr/lib/ninja-build/bin:$PATH
@@ -176,7 +177,7 @@ RUN apk add --no-cache \
         sqlite-libs \
         libcurl tiff \
         zlib zstd-libs lz4-libs libdeflate libarchive \
-        libjpeg-turbo libpng openjpeg libwebp expat libpq \
+        libjpeg-turbo libpng openjpeg libwebp expat libpq muparser \
     # libturbojpeg.so is not used by GDAL. Only libjpeg.so*
     && rm -f /usr/lib/libturbojpeg.so* \
     # Only libwebp.so is used by GDAL

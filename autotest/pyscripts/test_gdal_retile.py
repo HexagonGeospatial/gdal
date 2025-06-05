@@ -14,6 +14,7 @@
 import glob
 import os
 
+import gdaltest
 import pytest
 import test_py_scripts
 
@@ -351,6 +352,7 @@ def test_gdal_retile_4(script_path, tmp_path):
 
 def test_gdal_retile_5(script_path, tmp_path):
 
+    gdaltest.importorskip_gdal_array()
     np = pytest.importorskip("numpy")
 
     nodata_value = -3.4028234663852886e38

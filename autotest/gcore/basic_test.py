@@ -1005,3 +1005,31 @@ def test_ComputeMinMaxLocation():
     ds.GetRasterBand(1).Fill(float("nan"))
     ret = ds.GetRasterBand(1).ComputeMinMaxLocation()
     assert ret is None
+
+
+def test_create_numpy_types():
+    np = pytest.importorskip("numpy")
+    gdaltest.importorskip_gdal_array()
+
+    drv = gdal.GetDriverByName("MEM")
+
+    with drv.Create("", 1, 1, eType=np.int16) as ds:
+        assert ds.GetRasterBand(1).DataType == gdal.GDT_Int16
+
+    with drv.Create("", 1, 1, eType=np.dtype("float32")) as ds:
+        assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
+
+    with pytest.raises(Exception, match="must be a GDAL data type code or NumPy type"):
+        drv.Create("", 1, 1, eType=str)
+
+    with pytest.raises(Exception, match="must be a GDAL data type code or NumPy type"):
+        drv.Create("", 1, 1, eType=[1, 2, 3])
+
+
+@pytest.mark.require_curl()
+@gdaltest.enable_exceptions()
+def test_gdal_open_non_accessible_object_on_cloud_storage():
+
+    with gdal.config_option("OSS_SECRET_ACCESS_KEY", ""):
+        with pytest.raises(Exception, match="InvalidCredentials"):
+            gdal.Open("/vsioss/i_do_not/exist.bin")

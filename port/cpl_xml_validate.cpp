@@ -46,6 +46,7 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunknown-pragmas"
 #pragma clang diagnostic ignored "-Wdocumentation"
+#pragma clang diagnostic ignored "-Wdocumentation-unknown-command"
 #pragma clang diagnostic ignored "-Wzero-as-null-pointer-constant"
 #endif
 
@@ -425,8 +426,10 @@ static CPLXMLNode *CPLLoadSchemaStrInternal(CPLHashSet *hSetSchemas,
             strcmp(psIter->psChild->pszValue, "schemaLocation") == 0)
         {
             const char *pszIncludeSchema = psIter->psChild->psChild->pszValue;
-            char *pszFullFilename = CPLStrdup(CPLFormFilename(
-                CPLGetPath(pszFile), pszIncludeSchema, nullptr));
+            char *pszFullFilename =
+                CPLStrdup(CPLFormFilenameSafe(CPLGetPathSafe(pszFile).c_str(),
+                                              pszIncludeSchema, nullptr)
+                              .c_str());
 
             CPLFixPath(pszFullFilename);
 
@@ -503,8 +506,9 @@ static CPLXMLNode *CPLLoadSchemaStrInternal(CPLHashSet *hSetSchemas,
                     strstr(pszFile, "/vsimem/CPLValidateXML_") == nullptr)
                 {
                     char *pszFullFilename = CPLStrdup(
-                        CPLFormFilename(CPLGetPath(pszFile),
-                                        psIter2->psChild->pszValue, nullptr));
+                        CPLFormFilenameSafe(CPLGetPathSafe(pszFile).c_str(),
+                                            psIter2->psChild->pszValue, nullptr)
+                            .c_str());
                     CPLFixPath(pszFullFilename);
                     CPLFree(psIter2->psChild->pszValue);
                     psIter2->psChild->pszValue = pszFullFilename;
@@ -600,15 +604,6 @@ static char *CPLLoadSchemaStr(const char *pszXSDFilename)
     }
     CPLHashSetDestroy(hSetSchemas);
     return pszStr;
-}
-
-/************************************************************************/
-/*                     CPLLibXMLInputStreamCPLFree()                    */
-/************************************************************************/
-
-static void CPLLibXMLInputStreamCPLFree(xmlChar *pszBuffer)
-{
-    CPLFree(pszBuffer);
 }
 
 /************************************************************************/
@@ -875,16 +870,15 @@ static xmlParserInputPtr CPLExternalEntityLoader(const char *URL,
         osModURL = URL;
     }
 
-    xmlChar *pszBuffer =
-        reinterpret_cast<xmlChar *>(CPLLoadSchemaStr(osModURL));
-    if (pszBuffer == nullptr)
+    char *pszSchema = CPLLoadSchemaStr(osModURL);
+    if (!pszSchema)
         return nullptr;
 
-    xmlParserInputPtr poInputStream =
-        xmlNewStringInputStream(context, pszBuffer);
-    if (poInputStream != nullptr)
-        poInputStream->free = CPLLibXMLInputStreamCPLFree;
-    return poInputStream;
+    xmlParserInputPtr parser = xmlNewStringInputStream(
+        context, reinterpret_cast<const xmlChar *>(pszSchema));
+    CPLFree(pszSchema);
+
+    return parser;
 }
 
 /************************************************************************/

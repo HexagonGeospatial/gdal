@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
 #include <queue>
 #include <string>
@@ -47,6 +48,7 @@
 
 #include "cpl_conv.h"
 #include "cpl_error.h"
+#include "cpl_float.h"
 #include "cpl_json.h"
 #include "cpl_minixml.h"
 #include "cpl_multiproc.h"
@@ -4152,22 +4154,55 @@ void netCDFDataset::SetProjectionFromVar(
     }  // end if(has dims)
 
     // Process custom GeoTransform GDAL value.
-    if (!EQUAL(pszGridMappingValue, "") && !bGotCfGT)
+    if (!EQUAL(pszGridMappingValue, ""))
     {
-        // TODO: Read the GT values and detect for conflict with CF.
-        // This could resolve the GT precision loss issue.
-
         if (pszGeoTransform != nullptr)
         {
-            char **papszGeoTransform =
-                CSLTokenizeString2(pszGeoTransform, " ", CSLT_HONOURSTRINGS);
-            if (CSLCount(papszGeoTransform) == 6)
+            CPLStringList aosGeoTransform(
+                CSLTokenizeString2(pszGeoTransform, " ", CSLT_HONOURSTRINGS));
+            if (aosGeoTransform.size() == 6)
             {
-                bGotGdalGT = true;
+                std::array<double, 6> adfGeoTransformFromAttribute;
                 for (int i = 0; i < 6; i++)
-                    adfTempGeoTransform[i] = CPLAtof(papszGeoTransform[i]);
+                {
+                    adfGeoTransformFromAttribute[i] =
+                        CPLAtof(aosGeoTransform[i]);
+                }
+
+                if (bGotCfGT)
+                {
+                    constexpr double GT_RELERROR_WARN_THRESHOLD = 1e-6;
+                    double dfMaxAbsoluteError = 0.0;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        double dfAbsoluteError =
+                            std::abs(adfTempGeoTransform[i] -
+                                     adfGeoTransformFromAttribute[i]);
+                        if (dfAbsoluteError >
+                            std::abs(adfGeoTransformFromAttribute[i] *
+                                     GT_RELERROR_WARN_THRESHOLD))
+                        {
+                            dfMaxAbsoluteError =
+                                std::max(dfMaxAbsoluteError, dfAbsoluteError);
+                        }
+                    }
+
+                    if (dfMaxAbsoluteError > 0)
+                    {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "GeoTransform read from attribute of %s "
+                                 "variable differs from value calculated from "
+                                 "dimension variables (max diff = %g). Using "
+                                 "value from attribute.",
+                                 pszGridMappingValue, dfMaxAbsoluteError);
+                    }
+                }
+
+                std::copy(adfGeoTransformFromAttribute.begin(),
+                          adfGeoTransformFromAttribute.end(),
+                          adfTempGeoTransform);
+                bGotGdalGT = true;
             }
-            CSLDestroy(papszGeoTransform);
         }
         else
         {
@@ -5276,7 +5311,7 @@ std::string NCDFGetProjectedCFUnit(const OGRSpatialReference *poSRS)
 {
     char *pszUnitsToWrite = nullptr;
     poSRS->exportToCF1(nullptr, nullptr, &pszUnitsToWrite, nullptr);
-    const std::string osRet = pszUnitsToWrite ? pszUnitsToWrite : std::string();
+    std::string osRet = pszUnitsToWrite ? pszUnitsToWrite : std::string();
     CPLFree(pszUnitsToWrite);
     return osRet;
 }
@@ -5560,7 +5595,7 @@ CPLErr netCDFDataset::AddProjectionVars(bool bDefsOnly,
                 for (int i = 0; i < 6; i++)
                 {
                     osGeoTransform +=
-                        CPLSPrintf("%.16g ", m_adfGeoTransform[i]);
+                        CPLSPrintf("%.17g ", m_adfGeoTransform[i]);
                 }
                 CPLDebug("GDAL_netCDF", "szGeoTransform = %s",
                          osGeoTransform.c_str());
@@ -6465,13 +6500,16 @@ void netCDFDataset::CreateSubDatasetList(int nGroupId)
     int nVarCount;
     nc_inq_nvars(nGroupId, &nVarCount);
 
+    const bool bListAllArrays = CPLTestBool(
+        CSLFetchNameValueDef(papszOpenOptions, "LIST_ALL_ARRAYS", "NO"));
+
     for (int nVar = 0; nVar < nVarCount; nVar++)
     {
 
         int nDims;
         nc_inq_varndims(nGroupId, nVar, &nDims);
 
-        if (nDims >= 2)
+        if ((bListAllArrays && nDims > 0) || nDims >= 2)
         {
             ponDimIds = static_cast<int *>(CPLCalloc(nDims, sizeof(int)));
             nc_inq_vardimid(nGroupId, nVar, ponDimIds);
@@ -6482,14 +6520,14 @@ void netCDFDataset::CreateSubDatasetList(int nGroupId)
             {
                 size_t nDimLen;
                 nc_inq_dimlen(nGroupId, ponDimIds[i], &nDimLen);
-                osDim += CPLSPrintf("%dx", (int)nDimLen);
+                if (!osDim.empty())
+                    osDim += 'x';
+                osDim += CPLSPrintf("%d", (int)nDimLen);
             }
             CPLFree(ponDimIds);
 
             nc_type nVarType;
             nc_inq_vartype(nGroupId, nVar, &nVarType);
-            // Get rid of the last "x" character.
-            osDim.pop_back();
             const char *pszType = "";
             switch (nVarType)
             {
@@ -6662,8 +6700,8 @@ OGRLayer *netCDFDataset::ICreateLayer(const char *pszName,
         papszDatasetOptions = CSLSetNameValue(
             papszDatasetOptions, "WRITE_GDAL_TAGS",
             CSLFetchNameValue(papszCreationOptions, "WRITE_GDAL_TAGS"));
-        CPLString osLayerFilename(
-            CPLFormFilename(osFilename, osNetCDFLayerName, "nc"));
+        const CPLString osLayerFilename(
+            CPLFormFilenameSafe(osFilename, osNetCDFLayerName, "nc"));
         CPLAcquireMutex(hNCMutex, 1000.0);
         poLayerDataset =
             CreateLL(osLayerFilename, 0, 0, 0, papszDatasetOptions);
@@ -8058,7 +8096,7 @@ GDALDataset *netCDFDataset::Open(GDALOpenInfo *poOpenInfo)
         if (poDS->osFilename.empty())
         {
             poDS->bFileToDestroyAtClosing = true;
-            poDS->osFilename = CPLGenerateTempFilename("netcdf_tmp");
+            poDS->osFilename = CPLGenerateTempFilenameSafe("netcdf_tmp");
         }
         if (!netCDFDatasetCreateTempFile(eTmpFormat, poDS->osFilename,
                                          poOpenInfo->fpL))
@@ -8486,7 +8524,9 @@ GDALDataset *netCDFDataset::Open(GDALOpenInfo *poOpenInfo)
     // We have more than one variable with 2 dimensions in the
     // file, then treat this as a subdataset container dataset.
     bool bSeveralVariablesAsBands = false;
-    if ((nRasterVars > 1) && !bTreatAsSubdataset)
+    const bool bListAllArrays = CPLTestBool(
+        CSLFetchNameValueDef(poDS->papszOpenOptions, "LIST_ALL_ARRAYS", "NO"));
+    if (bListAllArrays || ((nRasterVars > 1) && !bTreatAsSubdataset))
     {
         if (CPLFetchBool(poOpenInfo->papszOpenOptions, "VARIABLES_AS_BANDS",
                          false) &&
@@ -8861,40 +8901,33 @@ GDALDataset *netCDFDataset::Open(GDALOpenInfo *poOpenInfo)
                         // dimension in its NETCDF_DIM_xxxx band metadata item
                         // Addresses use case of
                         // https://lists.osgeo.org/pipermail/gdal-dev/2023-May/057209.html
+                        const bool bIsLocal =
+                            VSIIsLocal(osFilenameForNCOpen.c_str());
                         bool bListDimValues =
-                            lev_count == 1 ||
+                            bIsLocal || lev_count == 1 ||
                             !NCDFIsUnlimitedDim(poDS->eFormat ==
                                                     NCDF_FORMAT_NC4,
                                                 cdfid, poDS->m_anDimIds[j]);
-                        if (!bListDimValues &&
-                            !VSIIsLocal(osFilenameForNCOpen.c_str()))
+                        const char *pszGDAL_NETCDF_REPORT_EXTRA_DIM_VALUES =
+                            CPLGetConfigOption(
+                                "GDAL_NETCDF_REPORT_EXTRA_DIM_VALUES", nullptr);
+                        if (pszGDAL_NETCDF_REPORT_EXTRA_DIM_VALUES)
                         {
-                            const char *pszGDAL_NETCDF_REPORT_EXTRA_DIM_VALUES =
-                                CPLGetConfigOption(
-                                    "GDAL_NETCDF_REPORT_EXTRA_DIM_VALUES",
-                                    nullptr);
-                            if (!pszGDAL_NETCDF_REPORT_EXTRA_DIM_VALUES)
-                            {
-                                if (!bREPORT_EXTRA_DIM_VALUESWarningEmitted)
-                                {
-                                    bREPORT_EXTRA_DIM_VALUESWarningEmitted =
-                                        true;
-                                    CPLDebug(
-                                        "GDAL_netCDF",
-                                        "Listing extra dimension values is "
-                                        "skipped because this dataset is "
-                                        "hosted on a network file system, and "
-                                        "such an operation could be slow. If "
-                                        "you still want to proceed, set the "
-                                        "GDAL_NETCDF_REPORT_EXTRA_DIM_VALUES "
-                                        "configuration option to YES");
-                                }
-                            }
-                            else
-                            {
-                                bListDimValues = CPLTestBool(
-                                    pszGDAL_NETCDF_REPORT_EXTRA_DIM_VALUES);
-                            }
+                            bListDimValues = CPLTestBool(
+                                pszGDAL_NETCDF_REPORT_EXTRA_DIM_VALUES);
+                        }
+                        else if (!bListDimValues && !bIsLocal &&
+                                 !bREPORT_EXTRA_DIM_VALUESWarningEmitted)
+                        {
+                            bREPORT_EXTRA_DIM_VALUESWarningEmitted = true;
+                            CPLDebug(
+                                "GDAL_netCDF",
+                                "Listing extra dimension values is skipped "
+                                "because this dataset is hosted on a network "
+                                "file system, and such an operation could be "
+                                "slow. If you still want to proceed, set the "
+                                "GDAL_NETCDF_REPORT_EXTRA_DIM_VALUES "
+                                "configuration option to YES");
                         }
                         if (bListDimValues)
                         {
@@ -9174,8 +9207,8 @@ netCDFDataset *netCDFDataset::CreateLL(const char *pszFilename, int nXSize,
     poDS->nBlockXSize = nXSize;
     poDS->nBlockYSize = 1;
     poDS->nBlocksPerBand =
-        ((nYSize + poDS->nBlockYSize - 1) / poDS->nBlockYSize)
-        * ((nXSize + poDS->nBlockXSize - 1) / poDS->nBlockXSize);
+        DIV_ROUND_UP((nYSize, poDS->nBlockYSize))
+        * DIV_ROUND_UP((nXSize, poDS->nBlockXSize));
         */
 
     // process options.
@@ -9230,8 +9263,9 @@ netCDFDataset *netCDFDataset::CreateLL(const char *pszFilename, int nXSize,
         // Works around bug of msys2 netCDF 4.9.0 package where nc_create()
         // crashes
         VSIStatBuf sStat;
-        const char *pszDir = CPLGetDirname(osFilenameForNCCreate.c_str());
-        if (VSIStat(pszDir, &sStat) != 0)
+        const std::string osDirname =
+            CPLGetDirnameSafe(osFilenameForNCCreate.c_str());
+        if (VSIStat(osDirname.c_str(), &sStat) != 0)
         {
             CPLError(CE_Failure, CPLE_OpenFailed,
                      "Unable to create netCDF file %s: non existing output "
@@ -10173,22 +10207,17 @@ class GDALnetCDFDriver final : public GDALDriver
     GDALnetCDFDriver() = default;
 
     const char *GetMetadataItem(const char *pszName,
-                                const char *pszDomain) override
-    {
-        if (EQUAL(pszName, GDAL_DCAP_VIRTUALIO))
-        {
-            InitializeDCAPVirtualIO();
-        }
-        return GDALDriver::GetMetadataItem(pszName, pszDomain);
-    }
+                                const char *pszDomain) override;
 
     char **GetMetadata(const char *pszDomain) override
     {
+        std::lock_guard oLock(m_oMutex);
         InitializeDCAPVirtualIO();
         return GDALDriver::GetMetadata(pszDomain);
     }
 
   private:
+    std::mutex m_oMutex{};
     bool m_bInitialized = false;
 
     void InitializeDCAPVirtualIO()
@@ -10206,6 +10235,17 @@ class GDALnetCDFDriver final : public GDALDriver
         }
     }
 };
+
+const char *GDALnetCDFDriver::GetMetadataItem(const char *pszName,
+                                              const char *pszDomain)
+{
+    std::lock_guard oLock(m_oMutex);
+    if (EQUAL(pszName, GDAL_DCAP_VIRTUALIO))
+    {
+        InitializeDCAPVirtualIO();
+    }
+    return GDALDriver::GetMetadataItem(pszName, pszDomain);
+}
 
 void GDALRegister_netCDF()
 
@@ -11807,7 +11847,8 @@ static CPLErr NCDFOpenSubDataset(int nCdfId, const char *pszSubdatasetName,
     *pnVarId = -1;
 
     // Open group.
-    char *pszGroupFullName = CPLStrdup(CPLGetPath(pszSubdatasetName));
+    char *pszGroupFullName =
+        CPLStrdup(CPLGetPathSafe(pszSubdatasetName).c_str());
     // Add a leading slash if needed.
     if (pszGroupFullName[0] != '/')
     {
@@ -12379,7 +12420,7 @@ CPLErr netCDFDataset::CreateGrpVectorLayers(
     if (pszGroupName == nullptr || pszGroupName[0] == '\0')
     {
         CPLFree(pszGroupName);
-        pszGroupName = CPLStrdup(CPLGetBasename(osFilename));
+        pszGroupName = CPLStrdup(CPLGetBasenameSafe(osFilename).c_str());
     }
     OGRwkbGeometryType eGType = wkbUnknown;
     CPLString osLayerName = CSLFetchNameValueDef(

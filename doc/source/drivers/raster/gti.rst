@@ -277,7 +277,7 @@ mentioned in the previous section.
 .. code-block:: xml
 
     <GDALTileIndexDataset>
-        <IndexDataset>PG:dbname=my_db</IndexDataset>   <!-- required for stanalone XML GTI files. Ignored if embedded in the xml:GTI metadata domain of the layer  -->
+        <IndexDataset>PG:dbname=my_db</IndexDataset>   <!-- required for standalone XML GTI files. Ignored if embedded in the xml:GTI metadata domain of the layer  -->
         <IndexLayer>my_layer</IndexLayer>              <!-- optional, but required if there are multiple layers in IndexDataset -->
         <Filter>pub_date >= '2023/12/01'</Filter>      <!-- optional -->
         <SortField>pub_date</SortField>                <!-- optional -->
@@ -384,7 +384,8 @@ their syntax and semantics.
 How to build a GTI compatible index ?
 ----------------------------------------
 
-The :ref:`gdaltindex` program may be used to generate both a vector tile index,
+The :ref:`gdaltindex` program, or starting with GDAL 3.11,
+:ref:`gdal_driver_gti_create`, may be used to generate both a vector tile index,
 and optionally a wrapping .gti XML file.
 
 A GTI compatible index may also be created by any programmatic means, provided

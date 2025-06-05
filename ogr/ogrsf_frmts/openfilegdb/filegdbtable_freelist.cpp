@@ -74,7 +74,7 @@ void FileGDBTable::AddEntryToFreelist(uint64_t nOffset, uint32_t nSize)
         return;
 
     const std::string osFilename =
-        CPLResetExtension(m_osFilename.c_str(), "freelist");
+        CPLResetExtensionSafe(m_osFilename.c_str(), "freelist");
     VSILFILE *fp = VSIFOpenL(osFilename.c_str(), "rb+");
     if (fp == nullptr)
     {
@@ -239,7 +239,7 @@ uint64_t FileGDBTable::GetOffsetOfFreeAreaFromFreeList(uint32_t nSize)
         return OFFSET_MINUS_ONE;
 
     const std::string osFilename =
-        CPLResetExtension(m_osFilename.c_str(), "freelist");
+        CPLResetExtensionSafe(m_osFilename.c_str(), "freelist");
     VSILFILE *fp = VSIFOpenL(osFilename.c_str(), "rb+");
     m_nHasFreeList = fp != nullptr;
     if (fp == nullptr)
@@ -270,6 +270,7 @@ uint64_t FileGDBTable::GetOffsetOfFreeAreaFromFreeList(uint32_t nSize)
         VSIFCloseL(fp);
         return OFFSET_MINUS_ONE;
     }
+    assert(iSlot + 1 < static_cast<int>(CPL_ARRAYSIZE(anHoleSizes)));
     assert(iSlot < 100);
 
     // Read the last page index of the identified slot
@@ -529,7 +530,7 @@ uint64_t FileGDBTable::GetOffsetOfFreeAreaFromFreeList(uint32_t nSize)
 bool FileGDBTable::CheckFreeListConsistency()
 {
     const std::string osFilename =
-        CPLResetExtension(m_osFilename.c_str(), "freelist");
+        CPLResetExtensionSafe(m_osFilename.c_str(), "freelist");
     VSILFILE *fp = VSIFOpenL(osFilename.c_str(), "rb");
     if (fp == nullptr)
         return true;
@@ -744,7 +745,7 @@ void FileGDBTable::DeleteFreeList()
 {
     m_bFreelistCanBeDeleted = false;
     m_nHasFreeList = -1;
-    VSIUnlink(CPLResetExtension(m_osFilename.c_str(), "freelist"));
+    VSIUnlink(CPLResetExtensionSafe(m_osFilename.c_str(), "freelist").c_str());
 }
 
 } /* namespace OpenFileGDB */

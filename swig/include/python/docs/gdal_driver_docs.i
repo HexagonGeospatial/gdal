@@ -35,7 +35,7 @@ ysize : int
    Height of created raster in pixels. Set to zero for vector datasets.
 bands : int, default = 1
     Number of bands. Set to zero for vector datasets.
-eType : int, default = :py:const:`GDT_Byte`
+eType : int/NumPy dtype, default = :py:const:`GDT_Byte`
     Raster data type. Set to :py:const:`GDT_Unknown` for vector datasets.
 options : list/dict
     List of driver-specific options
@@ -122,6 +122,29 @@ Examples
 ...     gdal.MultiDimInfo(ds)
 ...
 {'type': 'group', 'driver': 'netCDF', 'name': '/', 'attributes': {'Conventions': 'CF-1.6'}, 'structural_info': {'NC_FORMAT': 'NETCDF4'}}
+
+";
+
+%feature("docstring") CreateVector "
+
+Create a new vector :py:class:`Dataset` with this driver.
+This method is an alias for ``Create(name, 0, 0, 0, gdal.GDT_Unknown)``.
+
+Parameters
+----------
+utf8_path : str
+   Path of the dataset to create.
+
+Returns
+-------
+Dataset
+
+Examples
+--------
+>>> with gdal.GetDriverByName('ESRI Shapefile').CreateVector('test.shp') as ds:
+...     print(ds.GetLayerCount())
+... 
+0
 
 ";
 

@@ -34,6 +34,7 @@ advertizing
 AdviseRead
 advized
 AES
+affine
 Affine
 ahArrays
 airphotos
@@ -45,6 +46,7 @@ Alamos
 Albers
 Alessandro
 alg
+AlgorithmArg
 Alibaba
 Alicante
 allCountries
@@ -106,6 +108,7 @@ Astrogeology
 Astun
 AStyle
 astylename
+astype
 async
 atable
 athematic
@@ -267,6 +270,7 @@ bPixelIsPoint
 bpw
 branche
 Brashear
+bRelativeToReferencePath
 Bresenham
 bReversed
 Brezenham
@@ -326,6 +330,7 @@ cass
 Cassini
 casted
 cb
+CBMTILE
 CCache
 ceil
 celldepth
@@ -364,6 +369,7 @@ checksums
 Cheeseman
 Christoph
 Chroma
+chrominance
 chs
 chSep
 cid
@@ -437,6 +443,7 @@ ComplexSource
 compoundcurves
 compressiblity
 compressions
+concat
 conceptualhelp
 cond
 conda
@@ -451,6 +458,7 @@ connectedness
 const
 constexpr
 contensts
+ContourOptions
 Contrarty
 conv
 Convair
@@ -521,6 +529,8 @@ cvs
 Cxx
 Cygwin
 dall
+dan
+DanB
 DanielM
 danlittle
 dat
@@ -639,6 +649,8 @@ dfCutlineBlendDist
 dfCxtX
 dfDistance
 dfErrorThreshold
+dfGeolocX
+dfGeolocY
 dfInvisibleVal
 dfLLX
 dfMax
@@ -729,6 +741,7 @@ dstSRS
 dstType
 dt
 dT
+dtype
 DUnits
 dValue
 dve
@@ -794,6 +807,7 @@ Erdas
 eRequestedInputDT
 erer
 eResampleAlg
+Errno
 erroring
 errorMsg
 ers
@@ -826,6 +840,7 @@ executables
 Exif
 explodeCollections
 eXploration
+exponentialBase
 exportToESRI
 ExportToIsoWkb
 ExportToIsoWkt
@@ -895,6 +910,7 @@ FindFile
 finition
 fiona
 fipszone
+fixedLevels
 fixup
 flatbuffers
 flatgeobuf
@@ -941,6 +957,7 @@ fs
 fSecond
 fseek
 fsiz
+fsspec
 ftell
 FTimesBold
 FTimesRoman
@@ -990,8 +1007,10 @@ gdaldata
 GDALDataset
 gdaldem
 gdaldriver
+GDALEDTComponent
 gdalenhance
 gdalframework
+gdalg
 gdalgmlcoverage
 GDALGridDataMetricsOptions
 GDALGridInverseDistanceToAPowerNearestNeighborOptions
@@ -1065,6 +1084,8 @@ geoloc
 geolocated
 geolocation
 Geolocation
+geolocX
+geolocY
 Géologiques
 Geomatics
 Geomedia
@@ -1228,7 +1249,6 @@ GTiff
 GTO
 gtrnctr
 gtype
-Guildlines
 Gusev
 gusevmihs
 gxt
@@ -1280,8 +1300,6 @@ hibase
 hicover
 hidensity
 hiduff
-hiearchical
-Hiearchical
 hieast
 hielev
 hifuel
@@ -1302,6 +1320,10 @@ hobu
 hoc
 holded
 Homebrew
+homographies
+Homographies
+homography
+Homography
 Homolosine
 honour
 honoured
@@ -1389,6 +1411,7 @@ importFromEPSGA
 importFromURN
 importFromWkb
 ImportFromWKB
+importFromWkt
 ImportFromWKT
 Impots
 imtem
@@ -1442,6 +1465,7 @@ iSubGeom
 ISurface
 itemtypes
 iterable
+iteratively
 itf
 itopen
 iTXt
@@ -1487,6 +1511,7 @@ julian
 Julien
 Jupyter
 Jürgen
+Ka
 Kadaster
 kak
 kakadu
@@ -1746,6 +1771,7 @@ md
 mdb
 mdbtools
 mdd
+mdim
 megt
 Melero
 mem
@@ -1826,6 +1852,7 @@ mscale
 msg
 msi
 msk
+msmitherdc
 mssql
 mssqlspatial
 MSVC
@@ -1873,6 +1900,7 @@ multithreaded
 multithreading
 Multithreading
 mundialis
+muparser
 Mutatie
 mutex
 Mutex
@@ -1899,6 +1927,7 @@ Namespaces
 namespacing
 nan
 NaN
+nanometer
 nArgc
 nArray
 nArrays
@@ -2106,6 +2135,7 @@ Nummeraanduiding
 numnorth
 numpy
 Numpy
+NumPy
 numslope
 numwoodies
 nUpdatedFieldsCount
@@ -2127,12 +2157,14 @@ nYSize
 nYStride
 nz
 nZStride
+OAMS
 oauth
 OAuth
 objdir
 objectclasses
 OBJECTID
 objektkoordinaten
+observability
 oci
 OCI
 odbc
@@ -2208,6 +2240,7 @@ orthocorrection
 orthorectification
 Orthorectified
 orthorectifying
+os
 osAfter
 osBefore
 osgeo
@@ -2237,6 +2270,7 @@ OverviewCount
 ovf
 ovr
 ozi
+pabSuccess
 pabyData
 pabyDstData
 pabyHeader
@@ -2251,6 +2285,7 @@ padfDstNoDataImag
 padfDstNoDataReal
 padfGeoTransformOut
 padfGT
+padfH
 padfLayerBurnValues
 padfM
 padfPrjParams
@@ -2273,6 +2308,7 @@ panBandList
 panBandMap
 pand
 panDstBands
+panErrorCodes
 panHistogram
 panMap
 panOffsets
@@ -2333,6 +2369,7 @@ passthrough
 pathname
 PAux
 pauxdataset
+pbCannotBeExactlyRepresented
 pbf
 pbHasNoData
 pbHasNoDataValue
@@ -2395,6 +2432,7 @@ pgRouting
 pgsql
 pgw
 phGeometry
+phLockFileHandle
 Photogrammetric
 photometric
 photooverlay
@@ -2406,6 +2444,8 @@ Pirmin
 pixelfunction
 pixelfunctions
 pixelsize
+pixi
+Pixi
 Pixmap
 pkgconfig
 pkid
@@ -2475,6 +2515,7 @@ poOtherGeom
 poppler
 Poppler
 poRootGroup
+pos
 positionName
 posix
 Posix
@@ -2634,6 +2675,7 @@ pszPath
 pszPreferredAuthority
 pszPrefix
 pszProj
+pszReferencePath
 pszRequest
 pszSource
 pszSrc
@@ -2910,6 +2952,7 @@ ServerUrl
 setAccessControl
 setAccessControlRecursive
 setargv
+SetAxisMappingStrategy
 setCoordinateDimension
 setfeature
 SetFeature
@@ -3121,7 +3164,7 @@ subsetted
 subsetting
 Subsetting
 subsettings
-substituable
+substitutable
 substring
 subsubgroup
 subtelty
@@ -3235,6 +3278,7 @@ TileY
 tim
 timePosition
 timesheet
+timezones
 TinZ
 tippecanoe
 tm
@@ -3403,6 +3447,7 @@ utf
 UTF
 utils
 utm
+utmsmall
 va
 Vaisala
 valgrind
@@ -3440,6 +3485,7 @@ vetoers
 vetos
 Vexcel
 vfk
+vfs
 Viersen
 viewshed
 Viewshed
@@ -3456,6 +3502,7 @@ vrf
 vrt
 VRT
 VRTDataset
+VRTDerivedRasterBand
 VRTPansharpenedDataset
 VRTWarpedDataset
 vsgis

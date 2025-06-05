@@ -7,7 +7,7 @@
 # Public domain
 # or licensed under MIT (LICENSE.TXT) Copyright 2019 Even Rouault <even.rouault@spatialys.com>
 
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.22
 FROM alpine:${ALPINE_VERSION} AS builder
 
 # Derived from osgeo/proj by Howard Butler <howard@hobu.co>
@@ -65,10 +65,10 @@ RUN apk add --no-cache \
     lz4-dev \
     make \
     mariadb-connector-c-dev \
+    muparser-dev \
     netcdf-dev \
     ninja-build \
     odbc-cpp-wrapper-dev \
-    ogdi-dev \
     openexr-dev \
     openjpeg-dev \
     openssl-dev \
@@ -230,6 +230,10 @@ RUN --mount=type=cache,id=alpine-normal-spatialite,target=$HOME/.cache \
         mkdir -p /build_spatialite/usr/lib; \
     fi
 
+# Download exprtk
+RUN curl -LO -fsS https://github.com/ArashPartow/exprtk/raw/refs/heads/release/exprtk.hpp \
+    && mv exprtk.hpp /usr/include
+
 # Build GDAL
 ARG GDAL_VERSION=master
 ARG GDAL_RELEASE_DATE
@@ -280,6 +284,7 @@ RUN --mount=type=cache,id=alpine-normal-gdal,target=$HOME/.cache \
         -DBUILD_TESTING=OFF \
         -DOpenDrive_DIR=/usr/lib/ \
         -DOGR_ENABLE_DRIVER_XODR_PLUGIN=TRUE \
+        -DGDAL_USE_EXPRTK:BOOL=ON \
     && ninja \
     && DESTDIR="/build" ninja install \
     && (ninja multireadtest && cp apps/multireadtest /build/usr/bin) \
@@ -364,11 +369,11 @@ RUN apk add --no-cache \
         libxml2 \
         lz4-libs \
         mariadb-connector-c \
+        muparser \
         netcdf \
         minizip \
         musl \
         odbc-cpp-wrapper \
-        ogdi \
         openexr-libopenexr \
         openjpeg \
         pcre2 \
@@ -398,9 +403,6 @@ RUN apk add --no-cache \
 RUN if test "$(uname -m)" = "x86_64"; then ( \
     apk add --no-cache librasterlite2 \
     ); fi
-
-# Install Pillow for -antialias option of gdal2tiles
-RUN apk add --no-cache py3-pillow
 
 # Order layers starting with less frequently varying ones
 COPY --from=builder  /build_thirdparty/usr/ /usr/

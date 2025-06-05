@@ -1307,10 +1307,11 @@ CPLErr MrSIDDataset::OpenZoomLevel(lt_int32 iZoom)
     /*      projection                                                      */
     /* -------------------------------------------------------------------- */
     if (iZoom == 0 && m_oSRS.IsEmpty() &&
-        EQUAL(CPLGetExtension(GetDescription()), "sid"))
+        EQUAL(CPLGetExtensionSafe(GetDescription()).c_str(), "sid"))
     {
-        const char *pszMETFilename = CPLResetExtension(GetDescription(), "met");
-        VSILFILE *fp = VSIFOpenL(pszMETFilename, "rb");
+        const std::string l_osMETFilename =
+            CPLResetExtensionSafe(GetDescription(), "met");
+        VSILFILE *fp = VSIFOpenL(l_osMETFilename.c_str(), "rb");
         if (fp)
         {
             const char *pszLine = nullptr;
@@ -1338,7 +1339,7 @@ CPLErr MrSIDDataset::OpenZoomLevel(lt_int32 iZoom)
             /* UTM SRS for consistency */
             if (nUTMZone >= 1 && nUTMZone <= 60 && bWGS84 && bUnitsMeter)
             {
-                osMETFilename = pszMETFilename;
+                osMETFilename = l_osMETFilename;
 
                 m_oSRS.importFromEPSG(32600 + nUTMZone);
                 m_oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
@@ -1560,7 +1561,7 @@ GDALDataset *MrSIDDataset::Open(GDALOpenInfo *poOpenInfo, int bIsJP2)
         lt_uint8 minor;
         char letter;
         MrSIDImageReader *poMrSIDImageReader =
-            (MrSIDImageReader *)poDS->poImageReader;
+            static_cast<MrSIDImageReader *>(poDS->poImageReader);
         poMrSIDImageReader->getVersion(major, minor, minor, letter);
         if (major < 2)
             major = 2;
@@ -1576,11 +1577,12 @@ GDALDataset *MrSIDDataset::Open(GDALOpenInfo *poOpenInfo, int bIsJP2)
 #ifdef MRSID_J2K
     if (bIsJP2)
         poDS->nOverviewCount =
-            ((J2KImageReader *)(poDS->poImageReader))->getNumLevels();
+            static_cast<J2KImageReader *>(poDS->poImageReader)->getNumLevels();
     else
 #endif
         poDS->nOverviewCount =
-            ((MrSIDImageReader *)(poDS->poImageReader))->getNumLevels();
+            static_cast<MrSIDImageReader *>(poDS->poImageReader)
+                ->getNumLevels();
 
     if (poDS->nOverviewCount > 0)
     {

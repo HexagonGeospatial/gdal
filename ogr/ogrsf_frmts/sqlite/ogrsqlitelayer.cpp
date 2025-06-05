@@ -45,6 +45,12 @@
 #include "ogrsf_frmts.h"
 #include "sqlite3.h"
 
+OGRSQLiteGeomFieldDefn::~OGRSQLiteGeomFieldDefn() = default;
+
+OGRSQLiteFeatureDefn::~OGRSQLiteFeatureDefn() = default;
+
+IOGRSQLiteGetSpatialWhere::~IOGRSQLiteGetSpatialWhere() = default;
+
 /************************************************************************/
 /*                           OGRSQLiteLayer()                           */
 /************************************************************************/
@@ -565,9 +571,10 @@ void OGRSQLiteLayer::BuildFeatureDefn(const char *pszLayerName, bool bIsSelect,
                 {
                     OGRSQLiteGeomFormat eGeomFormat = OSGF_None;
                     CPLPushErrorHandler(CPLQuietErrorHandler);
-                    OGRGeometry *poGeometry = nullptr;
-                    if (OGRGeometryFactory::createFromWkt(
-                            pszText, nullptr, &poGeometry) == OGRERR_NONE)
+
+                    auto [poGeometry, eErr] =
+                        OGRGeometryFactory::createFromWkt(pszText);
+                    if (eErr == OGRERR_NONE)
                     {
                         eGeomFormat = OSGF_WKT;
                         auto poGeomFieldDefn =
@@ -579,7 +586,6 @@ void OGRSQLiteLayer::BuildFeatureDefn(const char *pszLayerName, bool bIsSelect,
                     }
                     CPLPopErrorHandler();
                     CPLErrorReset();
-                    delete poGeometry;
                     if (eGeomFormat != OSGF_None)
                         continue;
                 }
@@ -3535,7 +3541,6 @@ int OGRSQLiteLayer::TestCapability(const char *pszCap)
 /************************************************************************/
 
 OGRErr OGRSQLiteLayer::StartTransaction()
-
 {
     return m_poDS->StartTransaction();
 }
@@ -3545,7 +3550,6 @@ OGRErr OGRSQLiteLayer::StartTransaction()
 /************************************************************************/
 
 OGRErr OGRSQLiteLayer::CommitTransaction()
-
 {
     return m_poDS->CommitTransaction();
 }
@@ -3555,7 +3559,6 @@ OGRErr OGRSQLiteLayer::CommitTransaction()
 /************************************************************************/
 
 OGRErr OGRSQLiteLayer::RollbackTransaction()
-
 {
     return m_poDS->RollbackTransaction();
 }

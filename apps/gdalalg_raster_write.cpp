@@ -33,11 +33,18 @@ GDALRasterWriteAlgorithm::GDALRasterWriteAlgorithm()
 /*                  GDALRasterWriteAlgorithm::RunStep()                 */
 /************************************************************************/
 
-bool GDALRasterWriteAlgorithm::RunStep(GDALProgressFunc pfnProgress,
-                                       void *pProgressData)
+bool GDALRasterWriteAlgorithm::RunStep(GDALRasterPipelineStepRunContext &ctxt)
 {
+    auto pfnProgress = ctxt.m_pfnProgress;
+    auto pProgressData = ctxt.m_pProgressData;
     CPLAssert(m_inputDataset.GetDatasetRef());
     CPLAssert(!m_outputDataset.GetDatasetRef());
+
+    if (m_format == "stream")
+    {
+        m_outputDataset.Set(m_inputDataset.GetDatasetRef());
+        return true;
+    }
 
     CPLStringList aosOptions;
     if (!m_overwrite)
@@ -59,10 +66,23 @@ bool GDALRasterWriteAlgorithm::RunStep(GDALProgressFunc pfnProgress,
         GDALTranslateOptionsNew(aosOptions.List(), nullptr);
     GDALTranslateOptionsSetProgress(psOptions, pfnProgress, pProgressData);
 
+    // Backup error state since GDALTranslate() resets it multiple times
+    const auto nLastErrorNum = CPLGetLastErrorNo();
+    const auto nLastErrorType = CPLGetLastErrorType();
+    const std::string osLastErrorMsg = CPLGetLastErrorMsg();
+    const auto nLastErrorCounter = CPLGetErrorCounter();
+
     GDALDatasetH hSrcDS = GDALDataset::ToHandle(m_inputDataset.GetDatasetRef());
     auto poRetDS = GDALDataset::FromHandle(GDALTranslate(
         m_outputDataset.GetName().c_str(), hSrcDS, psOptions, nullptr));
     GDALTranslateOptionsFree(psOptions);
+
+    if (nLastErrorCounter > 0 && CPLGetErrorCounter() == 0)
+    {
+        CPLErrorSetState(nLastErrorType, nLastErrorNum, osLastErrorMsg.c_str(),
+                         &nLastErrorCounter);
+    }
+
     if (!poRetDS)
         return false;
 

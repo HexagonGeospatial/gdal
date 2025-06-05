@@ -13,7 +13,7 @@
 
 #include "ogr_adbc.h"
 #include "ogradbcdrivercore.h"
-#include "ogr_mem.h"
+#include "memdataset.h"
 #include "ogr_p.h"
 #include "cpl_error.h"
 #include "cpl_json.h"
@@ -195,6 +195,16 @@ OGRLayer *OGRADBCDataset::ExecuteSQL(const char *pszStatement,
 }
 
 /************************************************************************/
+/*                       IsParquetExtension()                           */
+/************************************************************************/
+
+static bool IsParquetExtension(const char *pszStr)
+{
+    const std::string osExt = CPLGetExtensionSafe(pszStr);
+    return EQUAL(osExt.c_str(), "parquet") || EQUAL(osExt.c_str(), "parq");
+}
+
+/************************************************************************/
 /*                                Open()                                */
 /************************************************************************/
 
@@ -218,8 +228,8 @@ bool OGRADBCDataset::Open(const GDALOpenInfo *poOpenInfo)
     const bool bIsSQLite3 =
         (pszADBCDriverName && EQUAL(pszADBCDriverName, "adbc_driver_sqlite")) ||
         OGRADBCDriverIsSQLite3(poOpenInfo);
-    bool bIsParquet = OGRADBCDriverIsParquet(poOpenInfo) ||
-                      EQUAL(CPLGetExtension(pszFilename), "parquet");
+    bool bIsParquet =
+        OGRADBCDriverIsParquet(poOpenInfo) || IsParquetExtension(pszFilename);
     const char *pszSQL = CSLFetchNameValue(poOpenInfo->papszOpenOptions, "SQL");
     if (!bIsParquet && pszSQL)
     {
@@ -231,10 +241,10 @@ bool OGRADBCDataset::Open(const GDALOpenInfo *poOpenInfo)
             const auto iPos2 = osSQL.find("'", iPos);
             if (iPos2 != std::string::npos)
             {
-                const std::string osFilename = osSQL.substr(iPos, iPos2 - iPos);
-                if (EQUAL(CPLGetExtension(osFilename.c_str()), "parquet"))
+                std::string osFilename = osSQL.substr(iPos, iPos2 - iPos);
+                if (IsParquetExtension(osFilename.c_str()))
                 {
-                    m_osParquetFilename = osFilename;
+                    m_osParquetFilename = std::move(osFilename);
                     bIsParquet = true;
                 }
             }
@@ -402,14 +412,14 @@ bool OGRADBCDataset::Open(const GDALOpenInfo *poOpenInfo)
     {
         if (m_osParquetFilename.empty())
             m_osParquetFilename = pszFilename;
-        osLayerName = CPLGetBasename(m_osParquetFilename.c_str());
+        osLayerName = CPLGetBasenameSafe(m_osParquetFilename.c_str());
         if (osLayerName == "*")
-            osLayerName =
-                CPLGetBasename(CPLGetDirname(m_osParquetFilename.c_str()));
+            osLayerName = CPLGetBasenameSafe(
+                CPLGetDirnameSafe(m_osParquetFilename.c_str()).c_str());
         if (!pszSQL)
         {
             osSQL =
-                CPLSPrintf("SELECT * FROM '%s'",
+                CPLSPrintf("SELECT * FROM read_parquet('%s')",
                            OGRDuplicateCharacter(pszFilename, '\'').c_str());
             pszSQL = osSQL.c_str();
             bIsParquetLayer = true;
@@ -516,10 +526,9 @@ bool OGRADBCDataset::Open(const GDALOpenInfo *poOpenInfo)
             const std::string osStatement =
                 CPLSPrintf("SELECT * FROM \"%s\"",
                            OGRDuplicateCharacter(pszLayerName, '"').c_str());
-            CPLTurnFailureIntoWarning(true);
+            CPLTurnFailureIntoWarningBackuper oErrorsToWarnings{};
             auto poLayer =
                 CreateLayer(osStatement.c_str(), pszLayerName, false);
-            CPLTurnFailureIntoWarning(false);
             if (poLayer)
             {
                 m_apoLayers.emplace_back(std::move(poLayer));
@@ -548,11 +557,10 @@ bool OGRADBCDataset::Open(const GDALOpenInfo *poOpenInfo)
                            OGRDuplicateCharacter(pszNamespace, '"').c_str(),
                            OGRDuplicateCharacter(pszTableName, '"').c_str());
 
-            CPLTurnFailureIntoWarning(true);
+            CPLTurnFailureIntoWarningBackuper oErrorsToWarnings{};
             auto poLayer = CreateLayer(
                 osStatement.c_str(),
                 CPLSPrintf("%s.%s", pszNamespace, pszTableName), false);
-            CPLTurnFailureIntoWarning(false);
             if (poLayer)
             {
                 m_apoLayers.emplace_back(std::move(poLayer));

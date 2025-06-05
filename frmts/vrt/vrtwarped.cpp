@@ -631,8 +631,12 @@ CPLErr VRTWarpedDataset::Initialize(void *psWO)
 
 class GDALWarpCoordRescaler : public OGRCoordinateTransformation
 {
-    double m_dfRatioX;
-    double m_dfRatioY;
+    const double m_dfRatioX;
+    const double m_dfRatioY;
+
+    GDALWarpCoordRescaler &operator=(const GDALWarpCoordRescaler &) = delete;
+    GDALWarpCoordRescaler(GDALWarpCoordRescaler &&) = delete;
+    GDALWarpCoordRescaler &operator=(GDALWarpCoordRescaler &&) = delete;
 
   public:
     GDALWarpCoordRescaler(double dfRatioX, double dfRatioY)
@@ -640,9 +644,9 @@ class GDALWarpCoordRescaler : public OGRCoordinateTransformation
     {
     }
 
-    virtual ~GDALWarpCoordRescaler()
-    {
-    }
+    GDALWarpCoordRescaler(const GDALWarpCoordRescaler &) = default;
+
+    ~GDALWarpCoordRescaler() override;
 
     virtual const OGRSpatialReference *GetSourceCS() const override
     {
@@ -677,6 +681,8 @@ class GDALWarpCoordRescaler : public OGRCoordinateTransformation
         return nullptr;
     }
 };
+
+GDALWarpCoordRescaler::~GDALWarpCoordRescaler() = default;
 
 /************************************************************************/
 /*                        RescaleDstGeoTransform()                      */
@@ -1417,7 +1423,8 @@ CPLErr VRTWarpedDataset::XMLInit(const CPLXMLNode *psTree,
 
     if (bRelativeToVRT)
         pszAbsolutePath = CPLStrdup(
-            CPLProjectRelativeFilename(pszVRTPathIn, pszRelativePath));
+            CPLProjectRelativeFilenameSafe(pszVRTPathIn, pszRelativePath)
+                .c_str());
     else
         pszAbsolutePath = CPLStrdup(pszRelativePath);
 
@@ -1727,15 +1734,15 @@ CPLXMLNode *VRTWarpedDataset::SerializeToXML(const char *pszVRTPathIn)
                 !CPLIsFilenameRelative(osVRTFilename.c_str()) &&
                 pszCurDir != nullptr)
             {
-                osSourceDataset = CPLFormFilename(
+                osSourceDataset = CPLFormFilenameSafe(
                     pszCurDir, osSourceDataset.c_str(), nullptr);
             }
             else if (!CPLIsFilenameRelative(osSourceDataset.c_str()) &&
                      CPLIsFilenameRelative(osVRTFilename.c_str()) &&
                      pszCurDir != nullptr)
             {
-                osVRTFilename =
-                    CPLFormFilename(pszCurDir, osVRTFilename.c_str(), nullptr);
+                osVRTFilename = CPLFormFilenameSafe(
+                    pszCurDir, osVRTFilename.c_str(), nullptr);
             }
             CPLFree(pszCurDir);
             char *pszRelativePath = CPLStrdup(CPLExtractRelativePath(
@@ -2283,6 +2290,26 @@ CPLErr VRTWarpedRasterBand::IWriteBlock(int nBlockXOff, int nBlockYOff,
     }
 
     return CE_None;
+}
+
+/************************************************************************/
+/*                   EmitErrorMessageIfWriteNotSupported()              */
+/************************************************************************/
+
+bool VRTWarpedRasterBand::EmitErrorMessageIfWriteNotSupported(
+    const char *pszCaller) const
+{
+    VRTWarpedDataset *poWDS = static_cast<VRTWarpedDataset *>(poDS);
+    // Cf comment in IWriteBlock()
+    if (poWDS->m_poWarper->GetOptions()->nDstAlphaBand != nBand)
+    {
+        ReportError(CE_Failure, CPLE_NoWriteAccess,
+                    "%s: attempt to write to a VRTWarpedRasterBand.",
+                    pszCaller);
+
+        return true;
+    }
+    return false;
 }
 
 /************************************************************************/

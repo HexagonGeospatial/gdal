@@ -118,6 +118,12 @@ public:
   }
 %clear char **;
 
+%apply (char **CSL) {char **};
+  char **GetMetadataItem(const char* item) {
+    return GDALAlgorithmArgGetMetadataItem( self, item );
+  }
+%clear char **;
+
   bool IsExplicitlySet() {
     return GDALAlgorithmArgIsExplicitlySet(self);
   }
@@ -142,6 +148,19 @@ public:
     return GDALAlgorithmArgIsOutput(self);
   }
 
+  int GetDatasetType()
+  {
+    return GDALAlgorithmArgGetDatasetType(self);
+  }
+
+  int GetDatasetInputFlags() {
+    return GDALAlgorithmArgGetDatasetInputFlags(self);
+  }
+
+  int GetDatasetOutputFlags() {
+    return GDALAlgorithmArgGetDatasetOutputFlags(self);
+  }
+
   const char* GetMutualExclusionGroup() {
     return GDALAlgorithmArgGetMutualExclusionGroup(self);
   }
@@ -158,11 +177,11 @@ public:
     return GDALAlgorithmArgGetAsInteger(self);
   }
 
-  int GetAsDouble() {
+  double GetAsDouble() {
     return GDALAlgorithmArgGetAsDouble(self);
   }
 
-%newobject GetAsDataset;
+%newobject GetAsDatasetValue;
   GDALArgDatasetValueHS* GetAsDatasetValue() {
     return GDALAlgorithmArgGetAsDatasetValue(self);
   }
@@ -381,15 +400,6 @@ public:
     GDALArgDatasetValueRelease( self );
   }
 
-#if defined(SWIGCSHARP)
-  int GetType_()
-#else
-  int GetType()
-#endif
-  {
-    return GDALArgDatasetValueGetType(self);
-  }
-
   const char* GetName() {
     return GDALArgDatasetValueGetName(self);
   }
@@ -397,14 +407,6 @@ public:
 %newobject GetDataset;
   GDALDatasetShadow* GetDataset() {
     return GDALArgDatasetValueGetDatasetIncreaseRefCount(self);
-  }
-
-  int GetInputFlags() {
-    return GDALArgDatasetValueGetInputFlags(self);
-  }
-
-  int GetOutputFlags() {
-    return GDALArgDatasetValueGetOutputFlags(self);
   }
 
   void SetName(const char* name) {

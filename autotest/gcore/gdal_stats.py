@@ -30,6 +30,7 @@ import math
 import os
 import shutil
 import struct
+import sys
 
 import gdaltest
 import pytest
@@ -809,12 +810,13 @@ def test_stats_all_nodata():
     with pytest.raises(Exception):
         ds.GetRasterBand(1).ComputeRasterMinMax()
 
-    with pytest.raises(Exception):
-        ds.GetRasterBand(1).ComputeRasterMinMax(can_return_none=True)
+    assert ds.GetRasterBand(1).ComputeRasterMinMax(can_return_none=True) is None
 
-    with pytest.raises(Exception):
-        # can_return_null also accepted for similarity with other methods
-        ds.GetRasterBand(1).ComputeRasterMinMax(can_return_null=True)
+    with gdaltest.disable_exceptions(), gdal.quiet_errors():
+        assert ds.GetRasterBand(1).ComputeRasterMinMax(can_return_none=True) is None
+
+    # can_return_null also accepted for similarity with other methods
+    assert ds.GetRasterBand(1).ComputeRasterMinMax(can_return_null=True) is None
 
     approx_ok = 1
     force = 1
@@ -925,3 +927,18 @@ def test_stats_mask_band():
     assert src_ds.GetRasterBand(1).ComputeRasterMinMax(False) == (2, 3)
     assert src_ds.GetRasterBand(1).ComputeStatistics(False) == [2, 3, 2.5, 0.5]
     assert src_ds.GetRasterBand(1).GetHistogram(False) == [0, 0, 1, 1] + ([0] * 252)
+
+
+###############################################################################
+# Test statistics on a band with all values to large values
+
+
+@pytest.mark.parametrize(
+    "value", [sys.float_info.max, -sys.float_info.max, float("inf"), -float("inf")]
+)
+def test_stats_all_large_values(value):
+
+    src_ds = gdal.GetDriverByName("MEM").Create("", 2, 1, 1, gdal.GDT_Float64)
+    src_ds.WriteRaster(0, 0, 2, 1, struct.pack("d" * 2, value, value))
+    assert src_ds.GetRasterBand(1).ComputeRasterMinMax(False) == (value, value)
+    assert src_ds.GetRasterBand(1).ComputeStatistics(False) == [value, value, value, 0]

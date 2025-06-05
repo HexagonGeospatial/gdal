@@ -21,6 +21,11 @@
 
 #include "ogr_include_arrow.h"
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 enum class OGRArrowGeomEncoding
 {
     WKB,
@@ -298,19 +303,14 @@ class OGRArrowLayer CPL_NON_FINAL
         return m_osFIDColumn.c_str();
     }
     DEFINE_GET_NEXT_FEATURE_THROUGH_RAW(OGRArrowLayer)
-    OGRErr GetExtent(OGREnvelope *psExtent, int bForce = TRUE) override;
-    OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                     int bForce = TRUE) override;
-    OGRErr GetExtent3D(int iGeomField, OGREnvelope3D *psExtent,
-                       int bForce = TRUE) override;
+    OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                      bool bForce) override;
+    OGRErr IGetExtent3D(int iGeomField, OGREnvelope3D *psExtent,
+                        bool bForce) override;
     OGRErr SetAttributeFilter(const char *pszFilter) override;
 
-    void SetSpatialFilter(OGRGeometry *poGeom) override
-    {
-        SetSpatialFilter(0, poGeom);
-    }
-
-    void SetSpatialFilter(int iGeomField, OGRGeometry *poGeom) override;
+    OGRErr ISetSpatialFilter(int iGeomField,
+                             const OGRGeometry *poGeom) override;
 
     int TestCapability(const char *pszCap) override;
 
@@ -545,5 +545,9 @@ class OGRArrowWriterLayer CPL_NON_FINAL : public OGRLayer
 
     bool FlushFeatures();
 };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #endif  // OGR_ARROW_H

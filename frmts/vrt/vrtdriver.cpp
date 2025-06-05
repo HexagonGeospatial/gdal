@@ -70,6 +70,7 @@ char **VRTDriver::GetMetadataDomainList()
 char **VRTDriver::GetMetadata(const char *pszDomain)
 
 {
+    std::lock_guard oLock(m_oMutex);
     if (pszDomain && EQUAL(pszDomain, "SourceParsers"))
         return papszSourceParsers;
 
@@ -83,6 +84,7 @@ char **VRTDriver::GetMetadata(const char *pszDomain)
 CPLErr VRTDriver::SetMetadata(char **papszMetadata, const char *pszDomain)
 
 {
+    std::lock_guard oLock(m_oMutex);
     if (pszDomain && EQUAL(pszDomain, "SourceParsers"))
     {
         m_oMapSourceParser.clear();
@@ -187,7 +189,7 @@ static GDALDataset *VRTCreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
         /*      Convert tree to a single block of XML text. */
         /* --------------------------------------------------------------------
          */
-        char *pszVRTPath = CPLStrdup(CPLGetPath(pszFilename));
+        char *pszVRTPath = CPLStrdup(CPLGetPathSafe(pszFilename).c_str());
         poSrcVRTDS->UnsetPreservedRelativeFilenames();
         CPLXMLNode *psDSTree = poSrcVRTDS->SerializeToXML(pszVRTPath);
 
@@ -260,9 +262,9 @@ static GDALDataset *VRTCreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
     /* -------------------------------------------------------------------- */
     /*      Create the virtual dataset.                                     */
     /* -------------------------------------------------------------------- */
-    VRTDataset *poVRTDS = static_cast<VRTDataset *>(VRTDataset::Create(
+    auto poVRTDS = VRTDataset::CreateVRTDataset(
         pszFilename, poSrcDS->GetRasterXSize(), poSrcDS->GetRasterYSize(), 0,
-        GDT_Byte, papszOptions));
+        GDT_Byte, papszOptions);
     if (poVRTDS == nullptr)
         return nullptr;
 
@@ -444,7 +446,7 @@ static GDALDataset *VRTCreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
              (GMF_PER_DATASET | GMF_ALL_VALID | GMF_NODATA)) == 0)
         {
             VRTSourcedRasterBand *poVRTMaskBand = new VRTSourcedRasterBand(
-                poVRTDS, 0, poSrcBand->GetMaskBand()->GetRasterDataType(),
+                poVRTDS.get(), 0, poSrcBand->GetMaskBand()->GetRasterDataType(),
                 poSrcDS->GetRasterXSize(), poSrcDS->GetRasterYSize());
             poVRTMaskBand->AddMaskBandSource(poSrcBand);
             poVRTBand->SetMaskBand(poVRTMaskBand);
@@ -460,7 +462,7 @@ static GDALDataset *VRTCreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
     {
         GDALRasterBand *poSrcBand = poSrcDS->GetRasterBand(1);
         VRTSourcedRasterBand *poVRTMaskBand = new VRTSourcedRasterBand(
-            poVRTDS, 0, poSrcBand->GetMaskBand()->GetRasterDataType(),
+            poVRTDS.get(), 0, poSrcBand->GetMaskBand()->GetRasterDataType(),
             poSrcDS->GetRasterXSize(), poSrcDS->GetRasterYSize());
         poVRTMaskBand->AddMaskBandSource(poSrcBand);
         poVRTDS->SetMaskBand(poVRTMaskBand);
@@ -472,12 +474,11 @@ static GDALDataset *VRTCreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
         poVRTDS->FlushCache(true);
         if (CPLGetLastErrorType() != CE_None)
         {
-            delete poVRTDS;
-            poVRTDS = nullptr;
+            poVRTDS.reset();
         }
     }
 
-    return poVRTDS;
+    return poVRTDS.release();
 }
 
 /************************************************************************/
@@ -512,8 +513,8 @@ void GDALRegister_VRT()
     poDriver->SetMetadataItem(
         GDAL_DMD_CREATIONDATATYPES,
         "Byte Int8 Int16 UInt16 Int32 UInt32 Int64 UInt64 "
-        "Float32 Float64 "
-        "CInt16 CInt32 CFloat32 CFloat64");
+        "Float16 Float32 Float64 "
+        "CInt16 CInt32 CFloat16 CFloat32 CFloat64");
     poDriver->SetMetadataItem(
         GDAL_DMD_CREATIONOPTIONLIST,
         "<CreationOptionList>\n"
@@ -551,6 +552,23 @@ void GDALRegister_VRT()
 
     poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_COORDINATE_EPOCH, "YES");
+
+    poDriver->SetMetadataItem(GDAL_DCAP_UPDATE, "YES");
+    poDriver->SetMetadataItem(GDAL_DMD_UPDATE_ITEMS,
+                              "GeoTransform SRS GCPs NoData "
+                              "ColorInterpretation "
+                              "DatasetMetadata BandMetadata");
+
+    const char *pszExpressionDialects = "ExpressionDialects";
+#if defined(GDAL_VRT_ENABLE_MUPARSER) && defined(GDAL_VRT_ENABLE_EXPRTK)
+    poDriver->SetMetadataItem(pszExpressionDialects, "muparser,exprtk");
+#elif defined(GDAL_VRT_ENABLE_MUPARSER)
+    poDriver->SetMetadataItem(pszExpressionDialects, "muparser");
+#elif defined(GDAL_VRT_ENABLE_EXPRTK)
+    poDriver->SetMetadataItem(pszExpressionDialects, "exprtk");
+#else
+    poDriver->SetMetadataItem(pszExpressionDialects, "none");
+#endif
 
     poDriver->AddSourceParser("SimpleSource", VRTParseCoreSources);
     poDriver->AddSourceParser("ComplexSource", VRTParseCoreSources);

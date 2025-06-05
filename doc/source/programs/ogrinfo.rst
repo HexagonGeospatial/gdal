@@ -14,19 +14,7 @@ ogrinfo
 Synopsis
 --------
 
-.. code-block::
-
-    ogrinfo [--help] [--help-general]
-            [-if <driver_name>] [-json] [-ro] [-q] [-where <restricted_where>|@<filename>]
-            [-spat <xmin> <ymin> <xmax> <ymax>] [-geomfield <field>] [-fid <fid>]
-            [-sql <statement>|@<filename>] [-dialect <sql_dialect>] [-al] [-rl]
-            [-so|-features] [-limit <nb_features>] [-fields={YES|NO}]]
-            [-geom={YES|NO|SUMMARY|WKT|ISO_WKT}] [-oo <NAME>=<VALUE>]...
-            [-nomd] [-listmdd] [-mdd <domain>|all]...
-            [-nocount] [-nogeomtype] [[-noextent] | [-extent3D]]
-            [-wkt_format WKT1|WKT2|<other_values>]
-            [-fielddomain <name>]
-            <datasource_name> [<layer> [<layer> ...]]
+.. program-output:: ogrinfo --help-doc
 
 Description
 -----------
@@ -44,7 +32,7 @@ edit data.
 .. option:: -json
 
     Display the output in json format, conforming to the
-    `ogrinfo_output.schema.json <https://github.com/OSGeo/gdal/blob/master/apps/data/ogrinfo_output.schema.json>`__
+    ogrinfo_output.schema.json :source_file:`apps/data/ogrinfo_output.schema.json`
     schema.
 
     .. versionadded:: 3.7
@@ -114,6 +102,7 @@ edit data.
 
         -where "\"Corner Point Identifier\" LIKE '%__00_00'"
 
+    Note: -dialect is ignored with -where. Use -sql instead of -where if you want to use -dialect.
 
 .. option:: -sql <statement>|@<filename>
 

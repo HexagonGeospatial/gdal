@@ -1195,6 +1195,10 @@ def test_ogr_parquet_polygon_orientation(option_value, written_wkt, expected_wkt
     try:
         import numpy
 
+        from osgeo import gdal_array
+
+        str(gdal_array)
+
         numpy.zeros
 
         has_numpy = True
@@ -1242,7 +1246,7 @@ def test_ogr_parquet_statistics():
             sql += ", "
         else:
             sql = "SELECT "
-        sql += "MIN(" + name + "), MAX(" + name + ")"
+        sql += "MIN(" + name + "), MAX(" + name + ") AS my_max_" + name
     sql += ", COUNT(int32)"
     sql += " FROM test"
     sql_lyr = ds.ExecuteSQL(sql)
@@ -1258,7 +1262,7 @@ def test_ogr_parquet_statistics():
             i += 1
 
             fld_defn = sql_lyr.GetLayerDefn().GetFieldDefn(i)
-            assert fld_defn.GetName() == "MAX_" + name
+            assert fld_defn.GetName() == "my_max_" + name
             assert ogr.GetFieldTypeName(fld_defn.GetType()) == type, name
             assert ogr.GetFieldSubTypeName(fld_defn.GetSubType()) == subtype, name
             assert f[fld_defn.GetName()] == maxval, name
@@ -1831,7 +1835,7 @@ def test_ogr_parquet_write_crs_without_id_in_datum_ensemble_members():
 
 
 def test_ogr_parquet_arrow_stream_numpy():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     numpy = pytest.importorskip("numpy")
 
     ds = ogr.Open("data/parquet/test.parquet")
@@ -2036,7 +2040,7 @@ def test_ogr_parquet_arrow_stream_empty_file():
 
 
 def test_ogr_parquet_arrow_stream_numpy_with_fid_column():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     filename = "/vsimem/test_ogr_parquet_arrow_stream_numpy_with_fid_column.parquet"
@@ -2066,7 +2070,7 @@ def test_ogr_parquet_arrow_stream_numpy_with_fid_column():
 
 
 def test_ogr_parquet_arrow_stream_numpy_fast_spatial_filter():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     numpy = pytest.importorskip("numpy")
     import datetime
 
@@ -2181,7 +2185,7 @@ def test_ogr_parquet_arrow_stream_numpy_fast_spatial_filter():
 
 
 def test_ogr_parquet_arrow_stream_numpy_detailed_spatial_filter(tmp_vsimem):
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     filename = str(
@@ -2327,7 +2331,7 @@ def test_ogr_parquet_arrow_stream_numpy_detailed_spatial_filter(tmp_vsimem):
     ],
 )
 def test_ogr_parquet_arrow_stream_numpy_fast_attribute_filter(filter):
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     ds = ogr.Open("data/parquet/test.parquet")
@@ -2355,7 +2359,7 @@ def test_ogr_parquet_arrow_stream_numpy_fast_attribute_filter(filter):
 
 
 def test_ogr_parquet_arrow_stream_numpy_attribute_filter_on_fid_without_fid_column():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     ds = ogr.Open("data/parquet/test.parquet")
@@ -2402,7 +2406,7 @@ def test_ogr_parquet_arrow_stream_numpy_attribute_filter_on_fid_without_fid_colu
 
 
 def test_ogr_parquet_arrow_stream_numpy_attribute_filter_on_fid_with_fid_column():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     filename = "/vsimem/test_ogr_parquet_arrow_stream_numpy_attribute_filter_on_fid_with_fid_column.parquet"
@@ -2574,7 +2578,7 @@ def test_ogr_parquet_arrow_stream_fast_attribute_filter_on_decimal128():
 
 
 def test_ogr_parquet_arrow_stream_numpy_fast_spatial_and_attribute_filter():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     ds = ogr.Open("data/parquet/test.parquet")
@@ -2682,7 +2686,7 @@ def test_ogr_parquet_field_alternative_name_comment():
 def test_ogr_parquet_read_wkt_as_wkt_arrow_array(
     nullable_geom, ignore_geom_field, ignore_geom_before
 ):
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     outfilename = "/vsimem/out.parquet"
@@ -2800,7 +2804,7 @@ def test_ogr_parquet_read_wkt_as_wkt_arrow_array(
 
 
 def test_ogr_parquet_read_wkt_with_dict_as_wkt_arrow_array():
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     ds = ogr.Open("data/parquet/wkt_with_dict.parquet")
@@ -3438,7 +3442,7 @@ def test_ogr_parquet_IsArrowSchemaSupported_float16(tmp_vsimem):
 @gdaltest.enable_exceptions()
 def test_ogr_parquet_write_arrow_rewind_polygon(tmp_vsimem):
 
-    src_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+    src_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
     src_lyr = src_ds.CreateLayer("test")
     f = ogr.Feature(src_lyr.GetLayerDefn())
     f.SetGeometryDirectly(ogr.CreateGeometryFromWkt("POLYGON ((0 0,0 1,1 1,0 0))"))
@@ -3541,7 +3545,7 @@ def test_ogr_parquet_write_from_wkb_large_binary(tmp_vsimem):
 def test_ogr_parquet_write_to_mem(tmp_vsimem, where):
 
     src_ds = gdal.OpenEx("data/parquet/test.parquet")
-    ds = gdal.VectorTranslate("", src_ds, format="Memory", where=where)
+    ds = gdal.VectorTranslate("", src_ds, format="MEM", where=where)
     lyr = ds.GetLayer(0)
     if where is None:
         f = lyr.GetNextFeature()
@@ -4196,7 +4200,7 @@ def test_ogr_parquet_ogr2ogr_reprojection(tmp_vsimem):
 
 
 def test_ogr_parquet_arrow_stream_numpy_datetime_as_string(tmp_vsimem):
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     with gdal.OpenEx(

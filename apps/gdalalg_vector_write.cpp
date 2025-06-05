@@ -38,10 +38,18 @@ GDALVectorWriteAlgorithm::GDALVectorWriteAlgorithm()
 /*                  GDALVectorWriteAlgorithm::RunStep()                 */
 /************************************************************************/
 
-bool GDALVectorWriteAlgorithm::RunStep(GDALProgressFunc pfnProgress,
-                                       void *pProgressData)
+bool GDALVectorWriteAlgorithm::RunStep(GDALVectorPipelineStepRunContext &ctxt)
 {
-    CPLAssert(m_inputDataset.GetDatasetRef());
+    auto pfnProgress = ctxt.m_pfnProgress;
+    auto pProgressData = ctxt.m_pProgressData;
+    auto poSrcDS = m_inputDataset[0].GetDatasetRef();
+    CPLAssert(poSrcDS);
+
+    if (m_format == "stream")
+    {
+        m_outputDataset.Set(poSrcDS);
+        return true;
+    }
 
     CPLStringList aosOptions;
     aosOptions.AddString("--invoked-from-gdal-vector-convert");
@@ -89,7 +97,7 @@ bool GDALVectorWriteAlgorithm::RunStep(GDALProgressFunc pfnProgress,
 
     GDALDatasetH hOutDS =
         GDALDataset::ToHandle(m_outputDataset.GetDatasetRef());
-    GDALDatasetH hSrcDS = GDALDataset::ToHandle(m_inputDataset.GetDatasetRef());
+    GDALDatasetH hSrcDS = GDALDataset::ToHandle(poSrcDS);
     auto poRetDS = GDALDataset::FromHandle(
         GDALVectorTranslate(m_outputDataset.GetName().c_str(), hOutDS, 1,
                             &hSrcDS, psOptions, nullptr));

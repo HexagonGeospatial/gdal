@@ -1,7 +1,7 @@
-.. _gdal_raster_command:
+.. _gdal_raster:
 
 ================================================================================
-"gdal raster" command
+``gdal raster``
 ================================================================================
 
 .. versionadded:: 3.11
@@ -15,24 +15,45 @@
 Synopsis
 --------
 
-.. code-block::
-
-    Usage: gdal raster <SUBCOMMAND>
-    where <SUBCOMMAND> is one of:
-      - buildvrt:  Build a virtual dataset (VRT).
-      - convert: Convert a raster dataset.
-      - info:    Return information on a raster dataset.
-      - pipeline:  Process a raster dataset.
-      - reproject: Reproject a raster dataset.
+.. program-output:: gdal raster --help-doc
 
 Available sub-commands
 ----------------------
 
-- :ref:`gdal_raster_buildvrt_subcommand`
-- :ref:`gdal_raster_info_subcommand`
-- :ref:`gdal_raster_convert_subcommand`
-- :ref:`gdal_raster_pipeline_subcommand`
-- :ref:`gdal_raster_reproject_subcommand`
+- :ref:`gdal_raster_info`
+- :ref:`gdal_raster_aspect`
+- :ref:`gdal_raster_calc`
+- :ref:`gdal_raster_clean_collar`
+- :ref:`gdal_raster_clip`
+- :ref:`gdal_raster_color_map`
+- :ref:`gdal_raster_color_merge`
+- :ref:`gdal_raster_convert`
+- :ref:`gdal_raster_create`
+- :ref:`gdal_raster_footprint`
+- :ref:`gdal_raster_fill_nodata`
+- :ref:`gdal_raster_hillshade`
+- :ref:`gdal_raster_index`
+- :ref:`gdal_raster_mosaic`
+- :ref:`gdal_raster_overview`
+- :ref:`gdal_raster_pipeline`
+- :ref:`gdal_raster_pixel_info`
+- :ref:`gdal_raster_polygonize`
+- :ref:`gdal_raster_proximity`
+- :ref:`gdal_raster_reproject`
+- :ref:`gdal_raster_resize`
+- :ref:`gdal_raster_rgb_to_palette`
+- :ref:`gdal_raster_roughness`
+- :ref:`gdal_raster_scale`
+- :ref:`gdal_raster_select`
+- :ref:`gdal_raster_sieve`
+- :ref:`gdal_raster_slope`
+- :ref:`gdal_raster_stack`
+- :ref:`gdal_raster_tile`
+- :ref:`gdal_raster_tpi`
+- :ref:`gdal_raster_tri`
+- :ref:`gdal_raster_unscale`
+- :ref:`gdal_raster_update`
+- :ref:`gdal_raster_viewshed`
 
 Examples
 --------
@@ -50,3 +71,10 @@ Examples
    .. code-block:: console
 
        $ gdal raster convert utm.tif utm.gpkg
+
+.. example::
+   :title: Getting the list of raster drivers (with JSON output)
+
+   .. code-block:: console
+
+       $ gdal raster --drivers

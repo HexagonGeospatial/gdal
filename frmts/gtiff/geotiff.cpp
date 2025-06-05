@@ -93,16 +93,11 @@ void GTIFFGetOverviewBlockSize(GDALRasterBandH hBand, int *pnBlockXSize,
         if (nOvrBlockSize < 64 || nOvrBlockSize > 4096 ||
             !CPLIsPowerOfTwo(nOvrBlockSize))
         {
-            static bool bHasWarned = false;
-            if (!bHasWarned)
-            {
-                CPLError(CE_Warning, CPLE_NotSupported,
+            CPLErrorOnce(CE_Warning, CPLE_NotSupported,
                          "Wrong value for GDAL_TIFF_OVR_BLOCKSIZE : %s. "
                          "Should be a power of 2 between 64 and 4096. "
                          "Defaulting to 128",
                          pszVal);
-                bHasWarned = true;
-            }
             nOvrBlockSize = 128;
         }
 
@@ -651,11 +646,13 @@ void GTiffWriteJPEGTables(TIFF *hTIFF, const char *pszPhotometric,
     papszLocalParameters =
         CSLSetNameValue(papszLocalParameters, "WRITE_JPEGTABLE_TAG", "NO");
 
+    bool bTileInterleaving;
     TIFF *hTIFFTmp =
         GTiffDataset::CreateLL(osTmpFilenameIn, nInMemImageWidth,
                                nInMemImageHeight, (nBands <= 4) ? nBands : 1,
                                (l_nBitsPerSample <= 8) ? GDT_Byte : GDT_UInt16,
-                               0.0, 0, papszLocalParameters, &fpTmp, osTmp);
+                               0.0, 0, papszLocalParameters, &fpTmp, osTmp,
+                               /* bCreateCopy=*/false, bTileInterleaving);
     CSLDestroy(papszLocalParameters);
     if (hTIFFTmp)
     {
@@ -965,8 +962,10 @@ static const struct
     {COMPRESSION_LERC, "LERC_DEFLATE", true},
     {COMPRESSION_LERC, "LERC_ZSTD", true},
     COMPRESSION_ENTRY(WEBP, true),
-    COMPRESSION_ENTRY(JXL, true),
-    COMPRESSION_ENTRY(JXL_DNG_1_7, true),
+    // COMPRESSION_JXL_DNG_1_7 must be *before* COMPRESSION_JXL
+    {COMPRESSION_JXL_DNG_1_7, "JXL", true},
+    {COMPRESSION_JXL, "JXL",
+     true},  // deprecated. No longer used for writing since GDAL 3.11
 
     // Compression methods in read-only
     COMPRESSION_ENTRY(OJPEG, false),
@@ -1145,50 +1144,52 @@ struct GTiffDriverSubdatasetInfo : public GDALSubdatasetInfo
 
     // GDALSubdatasetInfo interface
   private:
-    void parseFileName() override
-    {
-        if (!STARTS_WITH_CI(m_fileName.c_str(), "GTIFF_DIR:"))
-        {
-            return;
-        }
-
-        CPLStringList aosParts{CSLTokenizeString2(m_fileName.c_str(), ":", 0)};
-        const int iPartsCount{CSLCount(aosParts)};
-
-        if (iPartsCount == 3 || iPartsCount == 4)
-        {
-
-            m_driverPrefixComponent = aosParts[0];
-
-            const bool hasDriveLetter{
-                strlen(aosParts[2]) == 1 &&
-                std::isalpha(static_cast<unsigned char>(aosParts[2][0]))};
-
-            // Check for drive letter
-            if (iPartsCount == 4)
-            {
-                // Invalid
-                if (!hasDriveLetter)
-                {
-                    return;
-                }
-                m_pathComponent = aosParts[2];
-                m_pathComponent.append(":");
-                m_pathComponent.append(aosParts[3]);
-            }
-            else  // count is 3
-            {
-                if (hasDriveLetter)
-                {
-                    return;
-                }
-                m_pathComponent = aosParts[2];
-            }
-
-            m_subdatasetComponent = aosParts[1];
-        }
-    }
+    void parseFileName() override;
 };
+
+void GTiffDriverSubdatasetInfo::parseFileName()
+{
+    if (!STARTS_WITH_CI(m_fileName.c_str(), "GTIFF_DIR:"))
+    {
+        return;
+    }
+
+    CPLStringList aosParts{CSLTokenizeString2(m_fileName.c_str(), ":", 0)};
+    const int iPartsCount{CSLCount(aosParts)};
+
+    if (iPartsCount == 3 || iPartsCount == 4)
+    {
+
+        m_driverPrefixComponent = aosParts[0];
+
+        const bool hasDriveLetter{
+            strlen(aosParts[2]) == 1 &&
+            std::isalpha(static_cast<unsigned char>(aosParts[2][0]))};
+
+        // Check for drive letter
+        if (iPartsCount == 4)
+        {
+            // Invalid
+            if (!hasDriveLetter)
+            {
+                return;
+            }
+            m_pathComponent = aosParts[2];
+            m_pathComponent.append(":");
+            m_pathComponent.append(aosParts[3]);
+        }
+        else  // count is 3
+        {
+            if (hasDriveLetter)
+            {
+                return;
+            }
+            m_pathComponent = aosParts[2];
+        }
+
+        m_subdatasetComponent = aosParts[1];
+    }
+}
 
 static GDALSubdatasetInfo *GTiffDriverGetSubdatasetInfo(const char *pszFileName)
 {
@@ -1241,7 +1242,8 @@ void GDALRegister_GTiff()
         osOptions += ""
                      "   <Option name='PREDICTOR' type='int' "
                      "description='Predictor Type (1=default, 2=horizontal "
-                     "differencing, 3=floating point prediction)'/>";
+                     "differencing, 3=floating point prediction)' "
+                     "default='1'/>";
     osOptions +=
         ""
         "   <Option name='DISCARD_LSB' type='string' description='Number of "
@@ -1343,14 +1345,15 @@ void GDALRegister_GTiff()
         "       <Value>PIXEL</Value>"
         "   </Option>"
         "   <Option name='TILED' type='boolean' description='Switch to tiled "
-        "format'/>"
+        "format' default='NO'/>"
         "   <Option name='TFW' type='boolean' description='Write out world "
         "file'/>"
         "   <Option name='RPB' type='boolean' description='Write out .RPB "
         "(RPC) file'/>"
         "   <Option name='RPCTXT' type='boolean' description='Write out "
         "_RPC.TXT file'/>"
-        "   <Option name='BLOCKXSIZE' type='int' description='Tile Width'/>"
+        "   <Option name='BLOCKXSIZE' type='int' description='Tile Width' "
+        "default='256'/>"
         "   <Option name='BLOCKYSIZE' type='int' description='Tile/Strip "
         "Height'/>"
         "   <Option name='PHOTOMETRIC' type='string-select'>"
@@ -1385,7 +1388,7 @@ void GDALRegister_GTiff()
         "       <Value>SIGNEDBYTE</Value>"
         "   </Option>"
         "   <Option name='BIGTIFF' type='string-select' description='Force "
-        "creation of BigTIFF file'>"
+        "creation of BigTIFF file' default='IF_NEEDED'>"
         "     <Value>YES</Value>"
         "     <Value>NO</Value>"
         "     <Value>IF_NEEDED</Value>"
@@ -1494,7 +1497,14 @@ void GDALRegister_GTiff()
         "   </Option>"
         "</OpenOptionList>");
     poDriver->SetMetadataItem(GDAL_DMD_SUBDATASETS, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_CREATE_SUBDATASETS, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
+
+    poDriver->SetMetadataItem(GDAL_DCAP_UPDATE, "YES");
+    poDriver->SetMetadataItem(GDAL_DMD_UPDATE_ITEMS,
+                              "GeoTransform SRS GCPs NoData "
+                              "ColorInterpretation RasterValues "
+                              "DatasetMetadata BandMetadata");
 
 #ifdef INTERNAL_LIBTIFF
     poDriver->SetMetadataItem("LIBTIFF", "INTERNAL");

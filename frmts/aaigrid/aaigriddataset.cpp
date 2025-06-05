@@ -781,43 +781,42 @@ int ISGDataset::ParseHeader(const char *pszHeader, const char *)
         CPLStringList aosTokens(CSLTokenizeString2(aosLines[iLine], ":=", 0));
         if (aosTokens.size() == 2)
         {
-            CPLString osLeft(aosTokens[0]);
-            osLeft.Trim();
-            const CPLString osRight(CPLString(aosTokens[1]).Trim());
+            const CPLString osLeft(CPLString(aosTokens[0]).Trim());
+            CPLString osRight(CPLString(aosTokens[1]).Trim());
             if (osLeft == "lat min")
-                osLatMin = osRight;
+                osLatMin = std::move(osRight);
             else if (osLeft == "lat max")
-                osLatMax = osRight;
+                osLatMax = std::move(osRight);
             else if (osLeft == "lon min")
-                osLonMin = osRight;
+                osLonMin = std::move(osRight);
             else if (osLeft == "lon max")
-                osLonMax = osRight;
+                osLonMax = std::move(osRight);
             else if (osLeft == "delta lat")
-                osDeltaLat = osRight;
+                osDeltaLat = std::move(osRight);
             else if (osLeft == "delta lon")
-                osDeltaLon = osRight;
+                osDeltaLon = std::move(osRight);
             else if (osLeft == "nrows")
-                osRows = osRight;
+                osRows = std::move(osRight);
             else if (osLeft == "ncols")
-                osCols = osRight;
+                osCols = std::move(osRight);
             else if (osLeft == "nodata")
-                osNodata = osRight;
+                osNodata = std::move(osRight);
             else if (osLeft == "model name")
                 SetMetadataItem("MODEL_NAME", osRight);
             else if (osLeft == "model type")
                 SetMetadataItem("MODEL_TYPE", osRight);
             else if (osLeft == "units" || osLeft == "data units")
-                osUnits = osRight;
+                osUnits = std::move(osRight);
             else if (osLeft == "ISG format")
-                osISGFormat = osRight;
+                osISGFormat = std::move(osRight);
             else if (osLeft == "data format")
-                osDataFormat = osRight;
+                osDataFormat = std::move(osRight);
             else if (osLeft == "data ordering")
-                osDataOrdering = osRight;
+                osDataOrdering = std::move(osRight);
             else if (osLeft == "coord type")
-                osCoordType = osRight;
+                osCoordType = std::move(osRight);
             else if (osLeft == "coord units")
-                osCoordUnits = osRight;
+                osCoordUnits = std::move(osRight);
         }
     }
     const double dfVersion =
@@ -1218,11 +1217,12 @@ GDALDataset *AAIGDataset::CommonOpen(GDALOpenInfo *poOpenInfo,
     }
 
     // Try to read projection file.
-    char *const pszDirname = CPLStrdup(CPLGetPath(poOpenInfo->pszFilename));
+    char *const pszDirname =
+        CPLStrdup(CPLGetPathSafe(poOpenInfo->pszFilename).c_str());
     char *const pszBasename =
-        CPLStrdup(CPLGetBasename(poOpenInfo->pszFilename));
+        CPLStrdup(CPLGetBasenameSafe(poOpenInfo->pszFilename).c_str());
 
-    poDS->osPrjFilename = CPLFormFilename(pszDirname, pszBasename, "prj");
+    poDS->osPrjFilename = CPLFormFilenameSafe(pszDirname, pszBasename, "prj");
     int nRet = 0;
     {
         VSIStatBufL sStatBuf;
@@ -1230,7 +1230,8 @@ GDALDataset *AAIGDataset::CommonOpen(GDALOpenInfo *poOpenInfo,
     }
     if (nRet != 0 && VSIIsCaseSensitiveFS(poDS->osPrjFilename))
     {
-        poDS->osPrjFilename = CPLFormFilename(pszDirname, pszBasename, "PRJ");
+        poDS->osPrjFilename =
+            CPLFormFilenameSafe(pszDirname, pszBasename, "PRJ");
 
         VSIStatBufL sStatBuf;
         nRet = VSIStatL(poDS->osPrjFilename, &sStatBuf);
@@ -1557,10 +1558,10 @@ GDALDataset *AAIGDataset::CreateCopy(const char *pszFilename,
     const char *pszOriginalProjection = poSrcDS->GetProjectionRef();
     if (!EQUAL(pszOriginalProjection, ""))
     {
-        char *pszDirname = CPLStrdup(CPLGetPath(pszFilename));
-        char *pszBasename = CPLStrdup(CPLGetBasename(pszFilename));
-        char *pszPrjFilename =
-            CPLStrdup(CPLFormFilename(pszDirname, pszBasename, "prj"));
+        char *pszDirname = CPLStrdup(CPLGetPathSafe(pszFilename).c_str());
+        char *pszBasename = CPLStrdup(CPLGetBasenameSafe(pszFilename).c_str());
+        char *pszPrjFilename = CPLStrdup(
+            CPLFormFilenameSafe(pszDirname, pszBasename, "prj").c_str());
         VSILFILE *fp = VSIFOpenL(pszPrjFilename, "wt");
         if (fp != nullptr)
         {

@@ -661,7 +661,7 @@ OGRFeature *OGRWFSJoinLayer::GetNextFeature()
             CPLMD5Final((unsigned char *)osDigest.c_str(), &sMD5Context);
             if (aoSetMD5.find(osDigest) == aoSetMD5.end())
             {
-                aoSetMD5.insert(osDigest);
+                aoSetMD5.insert(std::move(osDigest));
                 return poNewFeature;
             }
             else
@@ -779,15 +779,19 @@ int OGRWFSJoinLayer::TestCapability(const char *)
 }
 
 /************************************************************************/
-/*                          SetSpatialFilter()                          */
+/*                          ISetSpatialFilter()                         */
 /************************************************************************/
 
-void OGRWFSJoinLayer::SetSpatialFilter(OGRGeometry *poGeom)
+OGRErr OGRWFSJoinLayer::ISetSpatialFilter(int, const OGRGeometry *poGeom)
 {
     if (poGeom != nullptr)
+    {
         CPLError(CE_Failure, CPLE_NotSupported,
                  "Setting a spatial filter on a layer resulting from a WFS "
                  "join is unsupported");
+        return OGRERR_FAILURE;
+    }
+    return OGRERR_NONE;
 }
 
 /************************************************************************/

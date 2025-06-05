@@ -359,10 +359,6 @@ class VSIGZipFilesystemHandler final : public VSIFilesystemHandler
                                     const char *pszAccess);
     int Stat(const char *pszFilename, VSIStatBufL *pStatBuf,
              int nFlags) override;
-    int Unlink(const char *pszFilename) override;
-    int Rename(const char *oldpath, const char *newpath) override;
-    int Mkdir(const char *pszDirname, long nMode) override;
-    int Rmdir(const char *pszDirname) override;
     char **ReadDirEx(const char *pszDirname, int nMaxFiles) override;
 
     const char *GetOptions() override;
@@ -3263,44 +3259,6 @@ int VSIGZipFilesystemHandler::Stat(const char *pszFilename,
 }
 
 /************************************************************************/
-/*                               Unlink()                               */
-/************************************************************************/
-
-int VSIGZipFilesystemHandler::Unlink(const char * /* pszFilename */)
-{
-    return -1;
-}
-
-/************************************************************************/
-/*                               Rename()                               */
-/************************************************************************/
-
-int VSIGZipFilesystemHandler::Rename(const char * /* oldpath */,
-                                     const char * /* newpath */)
-{
-    return -1;
-}
-
-/************************************************************************/
-/*                               Mkdir()                                */
-/************************************************************************/
-
-int VSIGZipFilesystemHandler::Mkdir(const char * /* pszDirname */,
-                                    long /* nMode */)
-{
-    return -1;
-}
-
-/************************************************************************/
-/*                               Rmdir()                                */
-/************************************************************************/
-
-int VSIGZipFilesystemHandler::Rmdir(const char * /* pszDirname */)
-{
-    return -1;
-}
-
-/************************************************************************/
 /*                             ReadDirEx()                                */
 /************************************************************************/
 
@@ -3370,7 +3328,11 @@ class VSIZipEntryFileOffset final : public VSIArchiveEntryFileOffset
         m_file_pos.pos_in_zip_directory = file_pos.pos_in_zip_directory;
         m_file_pos.num_of_file = file_pos.num_of_file;
     }
+
+    ~VSIZipEntryFileOffset() override;
 };
+
+VSIZipEntryFileOffset::~VSIZipEntryFileOffset() = default;
 
 /************************************************************************/
 /* ==================================================================== */

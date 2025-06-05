@@ -16,6 +16,7 @@ API
        :maxdepth: 1
 
        cpl
+       gdal_fwd
        raster_c_api
        vector_c_api
        gdal_alg
@@ -45,6 +46,7 @@ API
        ogrfeature_cpp
        ogrfeaturestyle_cpp
        ogrgeometry_cpp
+       ogrgeomcoordinateprecision_cpp
        ogrlayer_cpp
 
    Spatial reference system API

@@ -54,6 +54,8 @@ From the build directory you can now configure CMake, build and install the bina
     cmake --build .
     cmake --build . --target install
 
+.. _minimal_build:
+
 .. note::
 
     For a minimal build, add these options to the initial ``cmake`` command: ``-DGDAL_BUILD_OPTIONAL_DRIVERS=OFF -DOGR_BUILD_OPTIONAL_DRIVERS=OFF``.
@@ -142,6 +144,19 @@ Similarly, recent versions of Homebrew no longer bundle `Boost <https://www.boos
 
     cmake -DGDAL_USE_LIBKML=OFF ..
 
+The following commands have been used to successfully build GDAL using dependencies fetched
+from Conda that supports unit tests.  They assume that you have git, cmake and ninja installed
+and that you're building from a `build` directory that you've created in the main directory
+of the cloned GDAL repository.
+
+.. code-block:: bash
+
+    conda create -c conda-forge --only-deps -n gdal libgdal-core
+    conda activate gdal
+    conda install -c conda-forge setuptools swig pytest filelock numpy
+    cmake -G Ninja -DCMAKE_PREFIX_PATH=$CONDA_PREFIX -DGDAL_USE_LIBKML=OFF ..
+    . ../scripts/setdevenv.sh
+    ninja
 
 CMake general configure options
 +++++++++++++++++++++++++++++++
@@ -277,7 +292,7 @@ CMake package dependent options
 .. Put packages in alphabetic order.
 
 Generally speaking, packages (external dependencies) will be automatically found if
-they are in default locations used by CMake. This can be also tuned for example
+they are in default locations used by CMake. This can also be tuned for example
 with the ``CMAKE_PREFIX_PATH`` variable.
 
 Starting with CMake 3.12, it is also possible to use a
@@ -292,6 +307,8 @@ following option:
 .. option:: GDAL_USE_<Packagename_in_upper_case>:BOOL=ON/OFF
 
     Control whether a found dependency can be used for the GDAL build.
+
+    Note that CMake will still attempt to detect a package even if it has been disabled.
 
 It is also possible to ask GDAL to disable the use of any external dependency
 (besides the required one, PROJ) by default by setting the following option to
@@ -615,6 +632,22 @@ the XercesC library.
 
     Control whether to use EXPAT. Defaults to ON when EXPAT is found.
 
+
+ExprTk
+******
+
+`ExprTk <https://www.partow.net/programming/exprtk/index.html>`__ is a
+mathematical expression parser and evaluation engine. It can be used by the
+:ref:`raster.vrt` driver. Building with ExprTk may increase the size of the
+GDAL library by several megabytes.
+
+.. option:: GDAL_USE_EXPRTK=ON/OFF
+
+   Control whether to use ExprTk. Defaults to OFF even if ExprTk is found.
+
+.. option:: EXPRTK_INCLUDE_DIR
+
+    Path to the include directory with the :file:`exprtk.hpp` header file.
 
 FileGDB
 *******
@@ -1378,6 +1411,24 @@ The library is normally found if installed in standard location, and at version 
     Control whether to use MSSQL_ODBC. Defaults to ON when MSSQL_ODBC is found.
 
 
+muparser
+********
+
+`muparser <https://beltoforion.de/en/muparser/>`__ is a mathematical expression
+parser and evaluation engine. It can be used by the :ref:`raster.vrt` driver.
+
+.. option:: GDAL_USE_MUPARSER=ON/OFF
+
+   Control whether to use muparser. Defaults to ON when muparser is found.
+
+.. option:: MUPARSER_INCLUDE_DIR
+
+   Path to directory with muparser headers.
+
+.. option:: MUPARSER_LIBRARY
+
+   Path to library to be linked.
+
 MYSQL
 *****
 
@@ -1456,25 +1507,6 @@ the :ref:`vector.hana` driver.
     Control whether to use ODBC-CPP. Defaults to ON when ODBC-CPP is found.
 
 
-OGDI
-****
-
-The `OGDI <https://github.com/libogdi/ogdi/>`_ library is required for the :ref:`vector.ogdi`
-driver. It can be detected with pkg-config.
-
-.. option:: OGDI_INCLUDE_DIR
-
-    Path to an include directory with the ``ecs.h`` header file.
-
-.. option:: OGDI_LIBRARY
-
-    Path to a shared or static library file.
-
-.. option:: GDAL_USE_OGDI=ON/OFF
-
-    Control whether to use OGDI. Defaults to ON when OGDI is found.
-
-
 OpenCAD
 *******
 
@@ -1497,32 +1529,6 @@ driver. If not found, an internal copy can be used.
 
     Control whether to use internal libopencad copy. Defaults depends on GDAL_USE_INTERNAL_LIBS. When set
     to ON, has precedence over GDAL_USE_OPENCAD=ON
-
-
-
-OpenCL
-******
-
-The OpenCL library may be used to accelerate warping computations, typically
-with a GPU.
-
-.. note:: (GDAL 3.5 and 3.6) It is disabled by default even when detected, since the current OpenCL
-          warping implementation lags behind the generic implementation.
-          Starting with GDAL 3.7, build support is enabled by default when OpenCL is detected,
-          but it is disabled by default at runtime. The warping option USE_OPENCL
-          or the configuration option GDAL_USE_OPENCL must be set to YES to enable it.
-
-.. option:: OpenCL_INCLUDE_DIR
-
-    Path to an include directory with the ``CL/cl.h`` header file.
-
-.. option:: OpenCL_LIBRARY
-
-    Path to a shared or static library file.
-
-.. option:: GDAL_USE_OPENCL=ON/OFF
-
-    Control whether to use OPENCL. Defaults to *OFF* when OPENCL is found.
 
 
 OpenEXR
@@ -1813,18 +1819,6 @@ It can be detected with pkg-config.
 .. option:: GDAL_USE_RASTERLITE2=ON/OFF
 
     Control whether to use RasterLite2. Defaults to ON when RasterLite2 is found.
-
-
-rdb
-***
-
-The `RDB <https://repository.riegl.com/software/libraries/rdblib>`
-(closed source/proprietary) library is required for the :ref:`raster.rdb` driver.
-Specify install prefix in the ``CMAKE_PREFIX_PATH`` variable.
-
-.. option:: GDAL_USE_RDB=ON/OFF
-
-    Control whether to use rdb. Defaults to ON when rdb is found.
 
 
 SPATIALITE

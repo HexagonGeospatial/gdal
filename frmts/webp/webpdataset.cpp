@@ -339,9 +339,8 @@ CPLErr WEBPDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
     if ((eRWFlag == GF_Read) && (nBandCount == nBands) && (nXOff == 0) &&
         (nYOff == 0) && (nXSize == nBufXSize) && (nXSize == nRasterXSize) &&
         (nYSize == nBufYSize) && (nYSize == nRasterYSize) &&
-        (eBufType == GDT_Byte) && (pData != nullptr) && (panBandMap[0] == 1) &&
-        (panBandMap[1] == 2) && (panBandMap[2] == 3) &&
-        (nBands == 3 || panBandMap[3] == 4))
+        (eBufType == GDT_Byte) && (pData != nullptr) &&
+        IsAllBands(nBandCount, panBandMap))
     {
         if (Uncompress() != CE_None)
             return CE_Failure;
@@ -547,9 +546,7 @@ GDALPamDataset *WEBPDataset::OpenPAM(GDALOpenInfo *poOpenInfo)
 
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The WEBP driver does not support update access to existing"
-                 " datasets.\n");
+        ReportUpdateNotSupportedByDriver("WEBP");
         return nullptr;
     }
 

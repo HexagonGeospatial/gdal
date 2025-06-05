@@ -5,6 +5,7 @@ repos:
         -   id: black
             exclude: >
               (?x)^(
+                swig/python/setup.py.in|
                 swig/python/osgeo/__init__.py|
                 swig/python/osgeo/gdalnumeric.py|
                 doc/source/_extensions/sphinxcontrib_programoutput_gdal.py|
@@ -16,6 +17,7 @@ repos:
         -   id: isort
             exclude: >
               (?x)^(
+                swig/python/setup.py.in|
                 swig/python/osgeo/__init__.py|
                 swig/python/osgeo/gdalnumeric.py|
                 doc/source/_extensions/sphinxcontrib_programoutput_gdal.py|
@@ -27,6 +29,7 @@ repos:
         -   id: flake8
             exclude: >
               (?x)^(
+                swig/python/setup.py.in|
                 swig/python/osgeo/__init__.py|
                 swig/python/osgeo/gdalnumeric.py|
                 doc/source/_extensions/sphinxcontrib_programoutput_gdal.py|
@@ -42,7 +45,9 @@ repos:
                 autotest/cpp/data/|
                 autotest/gdrivers/data/|
                 swig/|
+                third_party/exprtk/|
                 third_party/fast_float/|
+                third_party/muparser/|
                 third_party/LercLib/|
                 autotest/ogr/data/|
                 alg/internal_libqhull/|

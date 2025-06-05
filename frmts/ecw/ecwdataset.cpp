@@ -20,7 +20,7 @@
 #include "ogr_spatialref.h"
 #include "ogr_api.h"
 
-#include "../mem/memdataset.h"
+#include "memdataset.h"
 
 #include "ecwdrivercore.h"
 
@@ -1780,13 +1780,15 @@ CPLErr ECWDataset::RunDeferredAdviseRead()
     /* -------------------------------------------------------------------- */
     /*      Adjust band numbers to be zero based.                           */
     /* -------------------------------------------------------------------- */
-    int *panAdjustedBandList = (int *)CPLMalloc(sizeof(int) * nBandCount);
+    UINT32 *panAdjustedBandList =
+        (UINT32 *)CPLMalloc(sizeof(UINT32) * nBandCount);
     nBandIndexToPromoteTo8Bit = -1;
     for (int ii = 0; ii < nBandCount; ii++)
     {
-        panAdjustedBandList[ii] =
-            (panBandList != nullptr) ? panBandList[ii] - 1 : ii;
-        if (((ECWRasterBand *)GetRasterBand(panAdjustedBandList[ii] + 1))
+        const int nIdx = (panBandList != nullptr) ? panBandList[ii] - 1 : ii;
+        ;
+        panAdjustedBandList[ii] = nIdx;
+        if (cpl::down_cast<ECWRasterBand *>(GetRasterBand(nIdx + 1))
                 ->bPromoteTo8Bit)
             nBandIndexToPromoteTo8Bit = ii;
     }
@@ -1800,8 +1802,8 @@ CPLErr ECWDataset::RunDeferredAdviseRead()
     /*      Set the new requested window.                                   */
     /* -------------------------------------------------------------------- */
     CNCSError oErr = poFileView->SetView(
-        nBandCount, (UINT32 *)panAdjustedBandList, nXOff, nYOff,
-        nXOff + nXSize - 1, nYOff + nYSize - 1, nBufXSize, nBufYSize);
+        nBandCount, panAdjustedBandList, nXOff, nYOff, nXOff + nXSize - 1,
+        nYOff + nYSize - 1, nBufXSize, nBufYSize);
 
     CPLFree(panAdjustedBandList);
     if (oErr.GetErrorNumber() != NCS_SUCCESS)
@@ -2334,7 +2336,8 @@ CPLErr ECWDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             nBandIndexToPromoteTo8Bit = -1;
             for (i = 0; i < nBands; i++)
             {
-                if (((ECWRasterBand *)GetRasterBand(i + 1))->bPromoteTo8Bit)
+                if (cpl::down_cast<ECWRasterBand *>(GetRasterBand(i + 1))
+                        ->bPromoteTo8Bit)
                     nBandIndexToPromoteTo8Bit = i;
                 anBandIndices[i] = i;
             }
@@ -2762,7 +2765,7 @@ GDALDataset *ECWDataset::Open(GDALOpenInfo *poOpenInfo, int bIsJPEG2000)
     {
 #if ECWSDK_VERSION < 50
         /* Detect what is apparently the ECW v3 file format signature */
-        if (EQUAL(CPLGetExtension(osFilename), "ECW") &&
+        if (EQUAL(CPLGetExtensionSafe(osFilename).c_str(), "ECW") &&
             poOpenInfo->nHeaderBytes > 0x30 &&
             STARTS_WITH_CI((const char *)(poOpenInfo->pabyHeader + 0x20),
                            "ecw ECW3"))

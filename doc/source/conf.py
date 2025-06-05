@@ -15,44 +15,51 @@ import os
 import shutil
 import sys
 
+build_dir = os.environ.get("BUILDDIR", "../build")
+if build_dir == "build":
+    build_dir = "../build"
+
 sys.path.insert(0, os.path.abspath("_extensions"))
 
-# -- Check we can load the GDAL Python bindings
 
-import traceback
+def check_python_bindings():
+    # -- Check we can load the GDAL Python bindings
 
-from sphinx.util import logging
+    import traceback
 
-logger = logging.getLogger(__name__)
-try:
-    from osgeo import gdal
-except ImportError as e:
-    logger.warn(
-        "Failed to load GDAL Python bindings. The Python bindings must be accessible to build Python API documentation."
-    )
-    if sys.version_info < (3, 10):
-        exc_info = sys.exc_info()
-        for line in traceback.format_exception(*exc_info):
-            logger.info(line[:-1])
-    else:
-        for line in traceback.format_exception(e):
-            logger.info(line[:-1])
-else:
-    version_file = os.path.join(
-        os.path.dirname(__file__), os.pardir, os.pardir, "VERSION"
-    )
-    doc_version = open(version_file).read().strip()
-    gdal_version = gdal.__version__
-    gdal_version_stripped = gdal_version
-    for suffix in ["dev", "beta"]:
-        pos_suffix = gdal_version_stripped.find(suffix)
-        if pos_suffix > 0:
-            gdal_version_stripped = gdal_version_stripped[0:pos_suffix]
+    from sphinx.util import logging
 
-    if doc_version.strip() != gdal_version_stripped:
+    logger = logging.getLogger(__name__)
+    try:
+        from osgeo import gdal
+    except ImportError as e:
         logger.warn(
-            f"Building documentation for GDAL {doc_version} but osgeo.gdal module has version {gdal_version}. Python API documentation may be incorrect."
+            "Failed to load GDAL Python bindings. The Python bindings must be accessible to build Python API documentation."
         )
+        if sys.version_info < (3, 10):
+            exc_info = sys.exc_info()
+            for line in traceback.format_exception(*exc_info):
+                logger.info(line[:-1])
+        else:
+            for line in traceback.format_exception(e):
+                logger.info(line[:-1])
+    else:
+        version_file = os.path.join(
+            os.path.dirname(__file__), os.pardir, os.pardir, "VERSION"
+        )
+        doc_version = open(version_file).read().strip()
+        gdal_version = gdal.__version__
+        gdal_version_stripped = gdal_version
+        for suffix in ["dev", "beta"]:
+            pos_suffix = gdal_version_stripped.find(suffix)
+            if pos_suffix > 0:
+                gdal_version_stripped = gdal_version_stripped[0:pos_suffix]
+
+        if doc_version.strip() != gdal_version_stripped:
+            logger.warn(
+                f"Building documentation for GDAL {doc_version} but osgeo.gdal module has version {gdal_version}. Python API documentation may be incorrect."
+            )
+
 
 # -- Project information -----------------------------------------------------
 
@@ -76,6 +83,7 @@ extensions = [
     "sphinxcontrib_programoutput_gdal",
     "sphinxcontrib.spelling",
     "myst_nb",
+    "sphinx_tabs.tabs",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -164,7 +172,7 @@ html_theme_options = {
 html_static_path = ["_static"]
 
 # For generated content and robots.txt
-html_extra_path = ["../build/html_extra", "extra_path"]
+html_extra_path = [os.path.join(build_dir, "html_extra"), "extra_path"]
 
 # If true, links to the reST sources are added to the pages.
 html_show_sourcelink = False
@@ -181,8 +189,10 @@ html_favicon = "../images/favicon.png"
 author_frankw = "Frank Warmerdam <warmerdam@pobox.com>"
 author_silker = "Silke Reimer <silke@intevation.de>"
 author_mikhailg = "Mikhail Gusev <gusevmihs@gmail.com>"
+author_dbaston = "Dan Baston <dbaston@gmail.com>"
 author_dmitryb = "Dmitry Baryshnikov <polimax@mail.ru>"
 author_evenr = "Even Rouault <even.rouault@spatialys.com>"
+author_elpaso = "Alessandro Pasotti <elpaso@itopen.it>"
 author_tamass = "Tamas Szekeres <szekerest@gmail.com>"
 
 man_pages = [
@@ -209,16 +219,65 @@ man_pages = [
         1,
     ),
     (
-        "programs/gdal_raster",
-        "gdal-raster",
-        "Entry point for raster commands",
+        "programs/gdal_dataset",
+        "gdal-dataset",
+        "Entry point for dataset management commands",
         [author_evenr],
         1,
     ),
     (
-        "programs/gdal_raster_buildvrt",
-        "gdal-raster-buildvrt",
-        "Build a virtual dataset (VRT)",
+        "programs/gdal_dataset_identify",
+        "gdal-dataset-identify",
+        "Identify driver opening dataset(s)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_dataset_copy",
+        "gdal-dataset-copy",
+        "Copy files of a dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_dataset_rename",
+        "gdal-dataset-rename",
+        "Rename files of a dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_dataset_delete",
+        "gdal-dataset-delete",
+        "Delete dataset(s)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim",
+        "gdal-mdim",
+        "Entry point for multidimensional commands",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim_info",
+        "gdal-mdim-info",
+        "Get information on a multidimensional dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim_convert",
+        "gdal-mdim-convert",
+        "Convert a multidimensional dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster",
+        "gdal-raster",
+        "Entry point for raster commands",
         [author_evenr],
         1,
     ),
@@ -230,9 +289,65 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_raster_set_type",
+        "gdal-raster-set-type",
+        "Modify the data type of bands of a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_calc",
+        "gdal-raster-calc",
+        "Perform pixel-wise calculations on a raster",
+        [author_dbaston],
+        1,
+    ),
+    (
+        "programs/gdal_raster_clean_collar",
+        "gdal-raster-clean-collar",
+        "Clean the collar of a raster dataset, removing noise",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_clip",
+        "gdal-raster-clip",
+        "Clip a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_color_map",
+        "gdal-raster-color-map",
+        "Generate a RGB or RGBA dataset from a single band, using a color map",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_color_merge",
+        "gdal-raster-color-merge",
+        "Use a grayscale raster to replace the intensity of a RGB/RGBA dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_contour",
+        "gdal-raster-contour",
+        "Creates a vector contour from a raster elevation model (DEM)",
+        [author_elpaso],
+        1,
+    ),
+    (
         "programs/gdal_raster_convert",
         "gdal-raster-convert",
         "Convert a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_create",
+        "gdal-raster-create",
+        "Create a new raster dataset",
         [author_evenr],
         1,
     ),
@@ -244,6 +359,69 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_raster_footprint",
+        "gdal-raster-footprint",
+        "Compute the footprint of a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_fill_nodata",
+        "gdal-raster-fill-nodata",
+        "Fill nodata values in a raster dataset",
+        [author_elpaso],
+        1,
+    ),
+    (
+        "programs/gdal_raster_hillshade",
+        "gdal-raster-hillshade",
+        "Generate a shaded relief map",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_index",
+        "gdal-raster-index",
+        "Create a vector index of raster datasets",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_mosaic",
+        "gdal-raster-mosaic",
+        "Build a mosaic",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_overview_add",
+        "gdal-raster-overview-add",
+        "Add overviews to a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_overview_delete",
+        "gdal-raster-overview-delete",
+        "Delete overviews of a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_overview_refresh",
+        "gdal-raster-overview-refresh",
+        "Refresh overviews",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_pansharpen",
+        "gdal-raster-pansharpen",
+        "Perform a pansharpen operation",
+        [author_evenr],
+        1,
+    ),
+    (
         "programs/gdal_raster_pipeline",
         "gdal-raster-pipeline",
         "Process a raster dataset",
@@ -251,9 +429,135 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_raster_polygonize",
+        "gdal-raster-polygonize",
+        "Create a polygon feature dataset from a raster band",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_pixel_info",
+        "gdal-raster-pixel-info",
+        "Return information on a pixel of a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_proximity",
+        "gdal-raster-proximity",
+        "Produces a raster proximity map",
+        [author_elpaso],
+        1,
+    ),
+    (
+        "programs/gdal_raster_reclassify",
+        "gdal-raster-reclassify",
+        "Reclassify a raster dataset",
+        [author_dbaston],
+        1,
+    ),
+    (
         "programs/gdal_raster_reproject",
         "gdal-raster-reproject",
         "Reproject a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_resize",
+        "gdal-raster-resize",
+        "Resize a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_rgb_to_palette",
+        "gdal-raster-rgb-to-palette",
+        "Convert a RGB image into a pseudo-color / paletted image.",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_roughness",
+        "gdal-raster-roughness",
+        "Generate a roughness map",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_scale",
+        "gdal-raster-scale",
+        "Scale the values of the bands of a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_sieve",
+        "gdal-raster-sieve",
+        "Remove small raster polygons",
+        [author_elpaso],
+        1,
+    ),
+    (
+        "programs/gdal_raster_select",
+        "gdal-raster-select",
+        "Select a subset of bands from a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_slope",
+        "gdal-raster-slope",
+        "Generate a slope map",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_stack",
+        "gdal-raster-stack",
+        "Combine together input bands into a multi-band output, either virtual (VRT) or materialized",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_tile",
+        "gdal-raster-tile",
+        "Generate tiles in separate files from a raster dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_tpi",
+        "gdal-raster-tpi",
+        "Generate a Topographic Position Index (TPI) map",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_tri",
+        "gdal-raster-tri",
+        "Generate a Terrain Ruggedness Index (TRI) map",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_unscale",
+        "gdal-raster-unscale",
+        "Convert scaled values of a raster dataset into unscaled values",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_update",
+        "gdal-raster-update",
+        "Update the destination raster with the content of the input one.",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_raster_viewshed",
+        "gdal-raster-viewshed",
+        "Compute the viewshed of a raster dataset.",
         [author_evenr],
         1,
     ),
@@ -272,6 +576,20 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_vector_clip",
+        "gdal-vector-clip",
+        "Clip a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_concat",
+        "gdal-vector_concat",
+        "Concatenate vector datasets",
+        [author_evenr],
+        1,
+    ),
+    (
         "programs/gdal_vector_convert",
         "gdal-vector-convert",
         "Convert a vector dataset",
@@ -279,9 +597,163 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_vector_edit",
+        "gdal-vector-edit",
+        "Edit metadata of a vetor dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_filter",
+        "gdal-vector-filter",
+        "Filter a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_set_geom_type",
+        "gdal-vector-set-geom-type",
+        "Modify the geometry type of a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_explode_collections",
+        "gdal-vector-explode-collections",
+        "Explode geometries of type collection of a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_make_valid",
+        "gdal-vector-make-valid",
+        "Fix validity of geometries of a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_segmentize",
+        "gdal-vector-segmentize",
+        "Segmentize geometries of a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_simplify",
+        "gdal-vector-simplify",
+        "Simplify geometries of a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_buffer",
+        "gdal-vector-buffer",
+        "Compute a buffer around geometries of a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_swap_xy",
+        "gdal-vector-swap-xy",
+        "Swap X and Y coordinates of geometries of a vector datasett",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_grid",
+        "gdal-vector-grid",
+        "Create a regular grid from scattered points",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_index_index",
+        "gdal-index-index",
+        "Create a vector index of index datasets",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_layer_algebra",
+        "gdal-vector-layer-algebra",
+        "Perform algebraic operation between 2 layers",
+        [author_evenr],
+        1,
+    ),
+    (
         "programs/gdal_vector_pipeline",
         "gdal-vector-pipeline",
         "Process a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_rasterize",
+        "gdal-vector-rasterize",
+        "Burn vector geometries into a raster",
+        [author_elpaso],
+        1,
+    ),
+    (
+        "programs/gdal_vector_select",
+        "gdal-vector-select",
+        "Select a subset of fields from a vector dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_sql",
+        "gdal-vector-sql",
+        "Apply SQL statement(s) to a dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi",
+        "gdal-vsi",
+        "Entry point for GDAL Virtual System Interface (VSI) commands",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi_copy",
+        "gdal-vsi-copy",
+        "Copy files located on GDAL Virtual System Interface (VSI)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi_delete",
+        "gdal-vsi-delete",
+        "Delete files located on GDAL Virtual System Interface (VSI)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi_list",
+        "gdal-vsi-list",
+        "List files of one of the GDAL Virtual System Interface (VSI)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi_move",
+        "gdal-vsi-move",
+        "Move/rename a file/directory located on GDAL Virtual System Interface (VSI)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi_sync",
+        "gdal-vsi-sync",
+        "Synchronize source and target file/directory located on GDAL Virtual System Interface (VSI)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vsi_sozip",
+        "gdal-vsi-sozip",
+        "SOZIP (Seek-Optimized ZIP) related commands.",
         [author_evenr],
         1,
     ),
@@ -653,9 +1125,6 @@ latex_logo = "../images/gdalicon_big.png"
 
 # Setup the breathe extension
 
-build_dir = os.environ.get("BUILDDIR", "../build")
-if build_dir == "build":
-    build_dir = "../build"
 breathe_projects = {"api": os.path.join(build_dir, "xml")}
 breathe_default_project = "api"
 
@@ -715,3 +1184,13 @@ shutil.copy(
     os.path.join(os.path.dirname(__file__), "../../autotest/gcore/data/utmsmall.tif"),
     target_filename,
 )
+
+
+def builder_inited(app):
+
+    if app.builder.name == "html":
+        check_python_bindings()
+
+
+def setup(app):
+    app.connect("builder-inited", builder_inited)

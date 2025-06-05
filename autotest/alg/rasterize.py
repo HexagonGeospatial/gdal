@@ -36,7 +36,7 @@ def test_rasterize_1():
 
     # Create a memory layer to rasterize from.
 
-    rast_ogr_ds = ogr.GetDriverByName("Memory").CreateDataSource("wrk")
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
     rast_mem_lyr = rast_ogr_ds.CreateLayer("poly", srs=sr)
 
     # Add a polygon.
@@ -141,7 +141,7 @@ def test_rasterize_3():
 
     # Create a memory layer to rasterize from.
 
-    rast_ogr_ds = ogr.GetDriverByName("Memory").CreateDataSource("wrk")
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
     rast_mem_lyr = rast_ogr_ds.CreateLayer("poly")
 
     # Add polygons and linestrings.
@@ -197,7 +197,7 @@ def test_rasterize_4():
     target_ds.SetProjection(sr_wkt)
 
     # Create a memory layer to rasterize from.
-    rast_ogr_ds = ogr.GetDriverByName("Memory").CreateDataSource("wrk")
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
     rast_mem_lyr = rast_ogr_ds.CreateLayer("poly", srs=sr)
     # Setup Schema
     ogrtest.quick_create_layer_def(rast_mem_lyr, [("CELSIUS", ogr.OFTReal)])
@@ -254,7 +254,7 @@ def test_rasterize_5():
 
     # Create a memory layer to rasterize from.
 
-    rast_ogr_ds = ogr.GetDriverByName("Memory").CreateDataSource("wrk")
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
     rast_mem_lyr = rast_ogr_ds.CreateLayer("poly", srs=sr)
 
     # Add polygons.
@@ -487,7 +487,7 @@ def test_rasterize_all_touched_issue_7523():
     target_ds.SetGeoTransform((475435, 5, 0, 424145, 0, -5))
     target_ds.SetProjection(sr_wkt)
 
-    vect_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+    vect_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
     lyr = vect_ds.CreateLayer("test", sr)
     f = ogr.Feature(lyr.GetLayerDefn())
     f.SetGeometryDirectly(
@@ -923,7 +923,7 @@ def test_rasterize_bugfix_gh8437(wkt, options, nbands):
     target_ds.SetProjection(sr_wkt)
 
     # Create a memory layer to rasterize from.
-    rast_ogr_ds = ogr.GetDriverByName("Memory").CreateDataSource("wrk")
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
     rast_mem_lyr = rast_ogr_ds.CreateLayer("poly", srs=sr)
 
     # Add a polygon.
@@ -979,7 +979,7 @@ def test_rasterize_bugfix_gh8918(wkt):
     target_ds.SetProjection(sr_wkt)
 
     # Create a memory layer to rasterize from.
-    rast_ogr_ds = ogr.GetDriverByName("Memory").CreateDataSource("wrk")
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
     rast_mem_lyr = rast_ogr_ds.CreateLayer("poly", srs=sr)
 
     # Add a polygon.
@@ -998,3 +998,44 @@ def test_rasterize_bugfix_gh8918(wkt):
     )
 
     assert target_ds.GetRasterBand(1).Checksum() == 36
+
+
+###############################################################################
+
+
+def test_rasterize_bugfix_gh12129():
+    # Setup working spatial reference
+    sr_wkt = 'LOCAL_CS["arbitrary"]'
+    sr = osr.SpatialReference(sr_wkt)
+
+    # Create a memory raster to rasterize into.
+    target_ds = gdal.GetDriverByName("MEM").Create("", 20, 16, 1, gdal.GDT_Byte)
+    target_ds.SetGeoTransform((163600, 20, 0, 168000, 0, -20))
+
+    target_ds.SetProjection(sr_wkt)
+
+    # Create a memory layer to rasterize from.
+    rast_ogr_ds = ogr.GetDriverByName("MEM").CreateDataSource("wrk")
+    rast_mem_lyr = rast_ogr_ds.CreateLayer("poly", srs=sr)
+
+    # Add a polygon.
+    feat = ogr.Feature(rast_mem_lyr.GetLayerDefn())
+    feat.SetGeometryDirectly(
+        ogr.Geometry(
+            wkt="POLYGON ((163899.27734375 167988.154296875,163909.339662057 167743.621912878,163628.300781257 167745.908203129,163661.337890632 167785.683593765,163700 167880,163780.000000007 167860.000000011,163835.751953125 167942.617187511,163899.27734375 167988.154296875))"
+        )
+    )
+
+    rast_mem_lyr.CreateFeature(feat)
+
+    # Run the algorithm.
+    gdal.RasterizeLayer(
+        target_ds,
+        [1],
+        rast_mem_lyr,
+        burn_values=[1],
+        options=["ALL_TOUCHED=YES"],
+    )
+
+    # 121 on s390x
+    assert target_ds.GetRasterBand(1).Checksum() in (120, 121)

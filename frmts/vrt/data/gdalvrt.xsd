@@ -198,6 +198,16 @@
                 <xs:element name="VRTDataset" type="VRTDatasetType"/>
             </xs:choice>
         </xs:sequence>
+        <xs:attribute name="unscale" type="xs:string"> <!-- added in GDAL 3.11 -->
+            <xs:annotation>
+                <xs:documentation>
+                    YES, NO, or AUTO.
+                    If not specified, AUTO is the default and will result in
+                    unscaling all input bands to Float64 if any input band has
+                    a defined scale/offset.
+                </xs:documentation>
+            </xs:annotation>
+        </xs:attribute>
     </xs:complexType>
 
     <xs:complexType name="OutputBandsType">
@@ -249,7 +259,7 @@
             <xs:extension base="xs:string">
                 <xs:attribute name="name" type="xs:string" use="required">
                     <xs:annotation>
-                        <xs:documentation>Allowed names are specific of each processing function</xs:documentation>
+                        <xs:documentation>Allowed names are specific to each processing function</xs:documentation>
                     </xs:annotation>
                 </xs:attribute>
             </xs:extension>
@@ -415,16 +425,19 @@
     <xs:simpleType name="DataTypeType">
         <xs:restriction base="xs:string">
             <xs:enumeration value="Byte"/>
+            <xs:enumeration value="Int8"/>
             <xs:enumeration value="UInt16"/>
             <xs:enumeration value="Int16"/>
             <xs:enumeration value="UInt32"/>
             <xs:enumeration value="Int32"/>
             <xs:enumeration value="UInt64"/>
             <xs:enumeration value="Int64"/>
+            <xs:enumeration value="Float16"/>
             <xs:enumeration value="Float32"/>
             <xs:enumeration value="Float64"/>
             <xs:enumeration value="CInt16"/>
             <xs:enumeration value="CInt32"/>
+            <xs:enumeration value="CFloat16"/>
             <xs:enumeration value="CFloat32"/>
             <xs:enumeration value="CFloat64"/>
         </xs:restriction>
@@ -516,6 +529,7 @@
                 <xs:element name="SrcMax" type="xs:double"/>
                 <xs:element name="DstMin" type="xs:double"/>
                 <xs:element name="DstMax" type="xs:double"/>
+                <xs:element name="Clip" type="xs:boolean"/> <!-- added in 3.11 -->
                 <xs:element name="NODATA" type="DoubleOrNanType"/> <!-- NODATA and UseMaskBand are mutually exclusive -->
                 <xs:element name="UseMaskBand" type="xs:boolean"/> <!-- NODATA and UseMaskBand are mutually exclusive -->
                 <xs:element name="LUT" type="xs:string"/>

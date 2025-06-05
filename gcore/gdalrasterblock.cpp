@@ -184,14 +184,9 @@ int CPL_STDCALL GDALGetCacheMax()
     GIntBig nRes = GDALGetCacheMax64();
     if (nRes > INT_MAX)
     {
-        static bool bHasWarned = false;
-        if (!bHasWarned)
-        {
-            CPLError(CE_Warning, CPLE_AppDefined,
+        CPLErrorOnce(CE_Warning, CPLE_AppDefined,
                      "Cache max value doesn't fit on a 32 bit integer. "
                      "Call GDALGetCacheMax64() instead");
-            bHasWarned = true;
-        }
         nRes = INT_MAX;
     }
     return static_cast<int>(nRes);
@@ -280,14 +275,9 @@ int CPL_STDCALL GDALGetCacheUsed()
 {
     if (nCacheUsed > INT_MAX)
     {
-        static bool bHasWarned = false;
-        if (!bHasWarned)
-        {
-            CPLError(CE_Warning, CPLE_AppDefined,
+        CPLErrorOnce(CE_Warning, CPLE_AppDefined,
                      "Cache used value doesn't fit on a 32 bit integer. "
                      "Call GDALGetCacheUsed64() instead");
-            bHasWarned = true;
-        }
         return INT_MAX;
     }
     return static_cast<int>(nCacheUsed);
@@ -407,27 +397,33 @@ int GDALRasterBlock::FlushCacheBlock(int bDirtyBlocksOnly)
 
         if (poTarget == nullptr)
             return FALSE;
+#ifndef __COVERITY__
+        // Disabled to avoid complains about sleeping under locks, that
+        // are only true for debug/testing code
         if (bSleepsForBockCacheDebug)
         {
-            // coverity[tainted_data]
             const double dfDelay = CPLAtof(CPLGetConfigOption(
                 "GDAL_RB_FLUSHBLOCK_SLEEP_AFTER_DROP_LOCK", "0"));
             if (dfDelay > 0)
                 CPLSleep(dfDelay);
         }
+#endif
 
         poTarget->Detach_unlocked();
         poTarget->GetBand()->UnreferenceBlock(poTarget);
     }
 
+#ifndef __COVERITY__
+    // Disabled to avoid complains about sleeping under locks, that
+    // are only true for debug/testing code
     if (bSleepsForBockCacheDebug)
     {
-        // coverity[tainted_data]
         const double dfDelay = CPLAtof(
             CPLGetConfigOption("GDAL_RB_FLUSHBLOCK_SLEEP_AFTER_RB_LOCK", "0"));
         if (dfDelay > 0)
             CPLSleep(dfDelay);
     }
+#endif
 
     if (poTarget->GetDirty())
     {
@@ -977,14 +973,17 @@ CPLErr GDALRasterBlock::Internalize()
 
                 if (poTarget != nullptr)
                 {
+#ifndef __COVERITY__
+                    // Disabled to avoid complains about sleeping under locks,
+                    // that are only true for debug/testing code
                     if (bSleepsForBockCacheDebug)
                     {
-                        // coverity[tainted_data]
                         const double dfDelay = CPLAtof(CPLGetConfigOption(
                             "GDAL_RB_INTERNALIZE_SLEEP_AFTER_DROP_LOCK", "0"));
                         if (dfDelay > 0)
                             CPLSleep(dfDelay);
                     }
+#endif
 
                     GDALRasterBlock *_poPrevious = poTarget->poPrevious;
 
@@ -1032,15 +1031,18 @@ CPLErr GDALRasterBlock::Internalize()
 
             if (poBlock->GetDirty())
             {
+#ifndef __COVERITY__
+                // Disabled to avoid complains about sleeping under locks, that
+                // are only true for debug/testing code
                 if (bSleepsForBockCacheDebug)
                 {
-                    // coverity[tainted_data]
                     const double dfDelay = CPLAtof(CPLGetConfigOption(
                         "GDAL_RB_INTERNALIZE_SLEEP_AFTER_DETACH_BEFORE_WRITE",
                         "0"));
                     if (dfDelay > 0)
                         CPLSleep(dfDelay);
                 }
+#endif
 
                 CPLErr eErr = poBlock->Write();
                 if (eErr != CE_None)
@@ -1154,14 +1156,18 @@ int GDALRasterBlock::TakeLock()
 {
     const int nLockVal = AddLock();
     CPLAssert(nLockVal >= 0);
+#ifndef __COVERITY__
+    // Disabled to avoid complains about sleeping under locks, that
+    // are only true for debug/testing code
     if (bSleepsForBockCacheDebug)
     {
-        // coverity[tainted_data]
         const double dfDelay = CPLAtof(
             CPLGetConfigOption("GDAL_RB_TRYGET_SLEEP_AFTER_TAKE_LOCK", "0"));
         if (dfDelay > 0)
             CPLSleep(dfDelay);
     }
+#endif
+
     if (nLockVal == 0)
     {
         // The block is being evicted by GDALRasterBlock::Internalize()

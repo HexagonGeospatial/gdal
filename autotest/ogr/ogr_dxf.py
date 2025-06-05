@@ -423,7 +423,7 @@ def test_ogr_dxf_11():
 
 
 ###############################################################################
-# Write a simple file with a polygon and a line, and read back.
+# Write a simple file with a few geometries of different types, and read back.
 
 
 def test_ogr_dxf_12(tmp_path):
@@ -463,6 +463,14 @@ def test_ogr_dxf_12(tmp_path):
     dst_feat = ogr.Feature(feature_def=lyr.GetLayerDefn())
     dst_feat.SetGeometryDirectly(
         ogr.CreateGeometryFromWkt("LINESTRING(1 2 -10,3 4 10)")
+    )
+    lyr.CreateFeature(dst_feat)
+    dst_feat = None
+
+    # Test multipoint
+    dst_feat = ogr.Feature(feature_def=lyr.GetLayerDefn())
+    dst_feat.SetGeometryDirectly(
+        ogr.CreateGeometryFromWkt("MULTIPOINT((10 40),(40 30))")
     )
     lyr.CreateFeature(dst_feat)
     dst_feat = None
@@ -514,8 +522,23 @@ def test_ogr_dxf_12(tmp_path):
     ), feat.GetGeometryRef().ExportToWkt()
     feat = None
 
+    # Check 5th feature (1st multipoint part)
+    feat = lyr.GetNextFeature()
+
+    ogrtest.check_feature_geometry(
+        feat, "POINT(10 40)"
+    ), feat.GetGeometryRef().ExportToWkt()
+    feat = None
+
+    # Check 6th feature (2nd multipoint part)
+    feat = lyr.GetNextFeature()
+
+    ogrtest.check_feature_geometry(
+        feat, "POINT(40 30)"
+    ), feat.GetGeometryRef().ExportToWkt()
+    feat = None
+
     lyr = None
-    ds = None
     ds = None
 
 
@@ -1304,6 +1327,28 @@ def test_ogr_dxf_26():
     )
 
     ds = None
+
+
+###############################################################################
+# WIPEOUT (#11022)
+
+
+def test_ogr_dxf_read_wipeout():
+
+    ds = ogr.Open("data/dxf/wipeout.dxf")
+    lyr = ds.GetLayer(0)
+
+    feat = lyr.GetNextFeature()
+    ogrtest.check_feature_geometry(
+        feat,
+        "POLYGON ((448381.028869725 6913933.17804321,448381.232017696 6913933.39891582,448380.807997101 6913933.38119118,448381.028869725 6913933.17804321,448381.011145071 6913933.6020638,448381.232017696 6913933.39891582,448381.028869725 6913933.17804321))",
+    )
+
+    feat = lyr.GetNextFeature()
+    ogrtest.check_feature_geometry(
+        feat,
+        "POLYGON ((448380.538954307 6913930.73282502,448380.538954307 6913930.73282502,448380.538954307 6913931.73282502,448381.538954307 6913931.73282502,448381.538954307 6913930.73282502,448380.538954307 6913930.73282502))",
+    )
 
 
 ###############################################################################
@@ -3858,7 +3903,7 @@ def test_ogr_dxf_53():
 # Test frozen and off layers
 
 
-def test_ogr_dxf_54():
+def test_ogr_dxf_54(tmp_vsimem):
 
     with gdal.config_option("DXF_MERGE_BLOCK_GEOMETRIES", "FALSE"):
         ds = ogr.Open("data/dxf/frozen-off.dxf")
@@ -3874,7 +3919,36 @@ def test_ogr_dxf_54():
         )
         if isFeatureVisible == (h == "h"):
             f.DumpReadable()
-            pytest.fail("Wrong visibility on feature %d" % number)
+            pytest.fail(
+                "Wrong visibility on feature %d (testing with layer 0 thawed)" % number
+            )
+
+    # Rewrite the test file, this time with layer 0 set as frozen
+    with open("data/dxf/frozen-off.dxf", "r") as file:
+        gdal.FileFromMemBuffer(
+            tmp_vsimem / "frozen-off-with-layer0-frozen.dxf",
+            file.read().replace(
+                "0\nLAYER\n  2\n0\n 70\n     0", "0\nLAYER\n  2\n0\n 70\n     1"
+            ),
+        )
+
+    with gdal.config_option("DXF_MERGE_BLOCK_GEOMETRIES", "FALSE"):
+        ds = ogr.Open(
+            tmp_vsimem / "frozen-off-with-layer0-frozen.dxf",
+        )
+    lyr = ds.GetLayer(0)
+
+    # Repeat test - outcome should be the same
+    for number, h in enumerate(featureVisibility):
+        f = lyr.GetNextFeature()
+        isFeatureVisible = (
+            "#000000)" in f.GetStyleString() or "#ff0000)" in f.GetStyleString()
+        )
+        if isFeatureVisible == (h == "h"):
+            f.DumpReadable()
+            pytest.fail(
+                "Wrong visibility on feature %d (testing with layer 0 frozen)" % number
+            )
 
 
 ###############################################################################
@@ -4124,3 +4198,22 @@ def test_ogr_dxf_write_MEASUREMENT(tmp_vsimem):
             pass
     with ogr.Open(filename) as ds:
         assert ds.GetMetadataItem("$MEASUREMENT", "DXF_HEADER_VARIABLES") == "     0"
+
+
+###############################################################################
+# Use case of https://github.com/OSGeo/gdal/issues/11591
+# Test reading a INSERT block whose column count is zero.
+# Interpretating it as 1, as AutoCAD does
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_dxf_insert_col_count_zero():
+
+    with ogr.Open("data/dxf/insert_only_col_count_zero.dxf") as ds:
+        lyr = ds.GetLayer(0)
+        assert lyr.GetFeatureCount() == 1
+
+    with gdal.config_option("DXF_INLINE_BLOCKS", "NO"):
+        with ogr.Open("data/dxf/insert_only_col_count_zero.dxf") as ds:
+            lyr = ds.GetLayerByName("blocks")
+            assert lyr.GetFeatureCount() == 1

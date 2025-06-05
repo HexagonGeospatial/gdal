@@ -15,6 +15,7 @@
 #include "gdal.h"
 #include "gdal_priv.h"
 #include "gdal_rat.h"
+#include "gdalalgorithm.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -1071,7 +1072,8 @@ CPLErr GDALDriver::QuietDeleteForCreateCopy(const char *pszFilename,
                     osFilename.replaceAll('\\', '/');
                     if (cpl::contains(oSetExistingDestFiles, osFilename))
                     {
-                        oSetExistingDestFilesFoundInSource.insert(osFilename);
+                        oSetExistingDestFilesFoundInSource.insert(
+                            std::move(osFilename));
                     }
                 }
             }
@@ -1577,13 +1579,6 @@ CPLErr GDALDriver::QuietDelete(const char *pszName,
         return CE_None;
 #endif
 
-    if (bExists && VSI_ISDIR(sStat.st_mode))
-    {
-        // It is not desirable to remove directories quietly.  Necessary to
-        // avoid ogr_mitab_12 to destroy file created at ogr_mitab_7.
-        return CE_None;
-    }
-
     GDALDriver *poDriver = nullptr;
     if (papszAllowedDrivers)
     {
@@ -1616,6 +1611,16 @@ CPLErr GDALDriver::QuietDelete(const char *pszName,
 
     if (poDriver == nullptr)
         return CE_None;
+
+    if (bExists && VSI_ISDIR(sStat.st_mode) &&
+        (EQUAL(poDriver->GetDescription(), "MapInfo File") ||
+         EQUAL(poDriver->GetDescription(), "ESRI Shapefile")))
+    {
+        // Those drivers are a bit special and handle directories as container
+        // of layers, but it is quite common to found other files too, and
+        // removing the directory might be non-desirable.
+        return CE_None;
+    }
 
     CPLDebug("GDAL", "QuietDelete(%s) invoking Delete()", pszName);
 
@@ -2867,6 +2872,85 @@ CPLErr GDALDriver::SetMetadataItem(const char *pszName, const char *pszValue,
 }
 
 /************************************************************************/
+/*                         InstantiateAlgorithm()                       */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+
+GDALAlgorithm *
+GDALDriver::InstantiateAlgorithm(const std::vector<std::string> &aosPath)
+{
+    pfnInstantiateAlgorithm = GetInstantiateAlgorithmCallback();
+    if (pfnInstantiateAlgorithm)
+        return pfnInstantiateAlgorithm(aosPath);
+    return nullptr;
+}
+
+/************************************************************************/
+/*                        DeclareAlgorithm()                            */
+/************************************************************************/
+
+void GDALDriver::DeclareAlgorithm(const std::vector<std::string> &aosPath)
+{
+    const std::string osDriverName = GetDescription();
+    auto &singleton = GDALGlobalAlgorithmRegistry::GetSingleton();
+
+    if (!singleton.HasDeclaredSubAlgorithm({"driver"}))
+    {
+        singleton.DeclareAlgorithm(
+            {"driver"},
+            []() -> std::unique_ptr<GDALAlgorithm>
+            {
+                return std::make_unique<GDALContainerAlgorithm>(
+                    "driver", "Command for driver specific operations.");
+            });
+    }
+
+    std::vector<std::string> path = {"driver",
+                                     CPLString(osDriverName).tolower()};
+    if (!singleton.HasDeclaredSubAlgorithm(path))
+    {
+        // coverity[copy_constructor_call]
+        auto lambda = [osDriverName]() -> std::unique_ptr<GDALAlgorithm>
+        {
+            auto poDriver =
+                GetGDALDriverManager()->GetDriverByName(osDriverName.c_str());
+            if (poDriver)
+            {
+                const char *pszHelpTopic =
+                    poDriver->GetMetadataItem(GDAL_DMD_HELPTOPIC);
+                return std::make_unique<GDALContainerAlgorithm>(
+                    CPLString(osDriverName).tolower(),
+                    std::string("Command for ")
+                        .append(osDriverName)
+                        .append(" driver specific operations."),
+                    pszHelpTopic ? std::string("/").append(pszHelpTopic)
+                                 : std::string());
+            }
+            return nullptr;
+        };
+        singleton.DeclareAlgorithm(path, std::move(lambda));
+    }
+
+    path.insert(path.end(), aosPath.begin(), aosPath.end());
+
+    // coverity[copy_constructor_call]
+    auto lambda = [osDriverName, aosPath]() -> std::unique_ptr<GDALAlgorithm>
+    {
+        auto poDriver =
+            GetGDALDriverManager()->GetDriverByName(osDriverName.c_str());
+        if (poDriver)
+            return std::unique_ptr<GDALAlgorithm>(
+                poDriver->InstantiateAlgorithm(aosPath));
+        return nullptr;
+    };
+
+    singleton.DeclareAlgorithm(path, std::move(lambda));
+}
+
+//! @endcond
+
+/************************************************************************/
 /*                   DoesDriverHandleExtension()                        */
 /************************************************************************/
 
@@ -2889,6 +2973,23 @@ static bool DoesDriverHandleExtension(GDALDriverH hDriver, const char *pszExt)
         }
     }
     return bRet;
+}
+
+/************************************************************************/
+/*                     IsOnlyExpectedGDBDrivers()                       */
+/************************************************************************/
+
+static bool IsOnlyExpectedGDBDrivers(const CPLStringList &aosDriverNames)
+{
+    for (const char *pszDrvName : aosDriverNames)
+    {
+        if (!EQUAL(pszDrvName, "OpenFileGDB") &&
+            !EQUAL(pszDrvName, "FileGDB") && !EQUAL(pszDrvName, "GPSBabel"))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 /************************************************************************/
@@ -2918,8 +3019,9 @@ char **GDALGetOutputDriversForDatasetName(const char *pszDestDataset,
                                           bool bSingleMatch, bool bEmitWarning)
 {
     CPLStringList aosDriverNames;
+    CPLStringList aosMissingDriverNames;
 
-    std::string osExt = CPLGetExtension(pszDestDataset);
+    std::string osExt = CPLGetExtensionSafe(pszDestDataset);
     if (EQUAL(osExt.c_str(), "zip"))
     {
         const CPLString osLower(CPLString(pszDestDataset).tolower());
@@ -2932,27 +3034,31 @@ char **GDALGetOutputDriversForDatasetName(const char *pszDestDataset,
             osExt = "gpkg.zip";
         }
     }
+    else if (EQUAL(osExt.c_str(), "json"))
+    {
+        const CPLString osLower(CPLString(pszDestDataset).tolower());
+        if (osLower.endsWith(".gdalg.json"))
+            return nullptr;
+    }
 
-    const int nDriverCount = GDALGetDriverCount();
+    auto poDM = GetGDALDriverManager();
+    const int nDriverCount = poDM->GetDriverCount(true);
+    GDALDriver *poMissingPluginDriver = nullptr;
+    std::string osMatchingPrefix;
     for (int i = 0; i < nDriverCount; i++)
     {
-        GDALDriverH hDriver = GDALGetDriver(i);
+        GDALDriver *poDriver = poDM->GetDriver(i, true);
         bool bOk = false;
-        if ((GDALGetMetadataItem(hDriver, GDAL_DCAP_CREATE, nullptr) !=
-                 nullptr ||
-             GDALGetMetadataItem(hDriver, GDAL_DCAP_CREATECOPY, nullptr) !=
-                 nullptr) &&
+        if ((poDriver->GetMetadataItem(GDAL_DCAP_CREATE) != nullptr ||
+             poDriver->GetMetadataItem(GDAL_DCAP_CREATECOPY) != nullptr) &&
             (((nFlagRasterVector & GDAL_OF_RASTER) &&
-              GDALGetMetadataItem(hDriver, GDAL_DCAP_RASTER, nullptr) !=
-                  nullptr) ||
+              poDriver->GetMetadataItem(GDAL_DCAP_RASTER) != nullptr) ||
              ((nFlagRasterVector & GDAL_OF_VECTOR) &&
-              GDALGetMetadataItem(hDriver, GDAL_DCAP_VECTOR, nullptr) !=
-                  nullptr)))
+              poDriver->GetMetadataItem(GDAL_DCAP_VECTOR) != nullptr)))
         {
             bOk = true;
         }
-        else if (GDALGetMetadataItem(hDriver, GDAL_DCAP_VECTOR_TRANSLATE_FROM,
-                                     nullptr) &&
+        else if (poDriver->GetMetadataItem(GDAL_DCAP_VECTOR_TRANSLATE_FROM) &&
                  (nFlagRasterVector & GDAL_OF_VECTOR) != 0)
         {
             bOk = true;
@@ -2960,17 +3066,32 @@ char **GDALGetOutputDriversForDatasetName(const char *pszDestDataset,
         if (bOk)
         {
             if (!osExt.empty() &&
-                DoesDriverHandleExtension(hDriver, osExt.c_str()))
+                DoesDriverHandleExtension(GDALDriver::ToHandle(poDriver),
+                                          osExt.c_str()))
             {
-                aosDriverNames.AddString(GDALGetDriverShortName(hDriver));
+                if (poDriver->GetMetadataItem("MISSING_PLUGIN_FILENAME"))
+                {
+                    poMissingPluginDriver = poDriver;
+                    aosMissingDriverNames.AddString(poDriver->GetDescription());
+                }
+                else
+                    aosDriverNames.AddString(poDriver->GetDescription());
             }
             else
             {
-                const char *pszPrefix = GDALGetMetadataItem(
-                    hDriver, GDAL_DMD_CONNECTION_PREFIX, nullptr);
+                const char *pszPrefix =
+                    poDriver->GetMetadataItem(GDAL_DMD_CONNECTION_PREFIX);
                 if (pszPrefix && STARTS_WITH_CI(pszDestDataset, pszPrefix))
                 {
-                    aosDriverNames.AddString(GDALGetDriverShortName(hDriver));
+                    if (poDriver->GetMetadataItem("MISSING_PLUGIN_FILENAME"))
+                    {
+                        osMatchingPrefix = pszPrefix;
+                        poMissingPluginDriver = poDriver;
+                        aosMissingDriverNames.AddString(
+                            poDriver->GetDescription());
+                    }
+                    else
+                        aosDriverNames.AddString(poDriver->GetDescription());
                 }
             }
         }
@@ -3011,13 +3132,25 @@ char **GDALGetOutputDriversForDatasetName(const char *pszDestDataset,
                 aosDriverNames.AddString(osDrvName.c_str());
             }
         }
+        else if (EQUAL(osExt.c_str(), "gdb") &&
+                 IsOnlyExpectedGDBDrivers(aosDriverNames))
+        {
+            // Do not warn about that case given that FileGDB write support
+            // forwards to OpenFileGDB one. And also consider GPSBabel as too
+            // marginal to deserve the warning.
+            aosDriverNames.Clear();
+            aosDriverNames.AddString("OpenFileGDB");
+        }
         else if (aosDriverNames.size() >= 2)
         {
             if (bEmitWarning)
             {
                 CPLError(CE_Warning, CPLE_AppDefined,
-                         "Several drivers matching %s extension. Using %s",
-                         osExt.c_str(), aosDriverNames[0]);
+                         "Several drivers matching %s %s. Using %s",
+                         osMatchingPrefix.empty() ? osExt.c_str()
+                                                  : osMatchingPrefix.c_str(),
+                         osMatchingPrefix.empty() ? "extension" : "prefix",
+                         aosDriverNames[0]);
             }
             const std::string osDrvName = aosDriverNames[0];
             aosDriverNames.Clear();
@@ -3025,5 +3158,73 @@ char **GDALGetOutputDriversForDatasetName(const char *pszDestDataset,
         }
     }
 
+    if (aosDriverNames.empty() && bEmitWarning &&
+        aosMissingDriverNames.size() == 1 && poMissingPluginDriver)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "No installed driver matching %s %s, but %s driver is "
+                 "known. However plugin %s",
+                 osMatchingPrefix.empty() ? osExt.c_str()
+                                          : osMatchingPrefix.c_str(),
+                 osMatchingPrefix.empty() ? "extension" : "prefix",
+                 poMissingPluginDriver->GetDescription(),
+                 GDALGetMessageAboutMissingPluginDriver(poMissingPluginDriver)
+                     .c_str());
+    }
+
     return aosDriverNames.StealList();
+}
+
+/************************************************************************/
+/*                GDALGetMessageAboutMissingPluginDriver()              */
+/************************************************************************/
+
+std::string
+GDALGetMessageAboutMissingPluginDriver(GDALDriver *poMissingPluginDriver)
+{
+    std::string osMsg =
+        poMissingPluginDriver->GetMetadataItem("MISSING_PLUGIN_FILENAME");
+    osMsg += " is not available in your "
+             "installation.";
+    if (const char *pszInstallationMsg = poMissingPluginDriver->GetMetadataItem(
+            GDAL_DMD_PLUGIN_INSTALLATION_MESSAGE))
+    {
+        osMsg += " ";
+        osMsg += pszInstallationMsg;
+    }
+
+    VSIStatBuf sStat;
+    if (const char *pszGDALDriverPath =
+            CPLGetConfigOption("GDAL_DRIVER_PATH", nullptr))
+    {
+        if (VSIStat(pszGDALDriverPath, &sStat) != 0)
+        {
+            if (osMsg.back() != '.')
+                osMsg += ".";
+            osMsg += " Directory '";
+            osMsg += pszGDALDriverPath;
+            osMsg += "' pointed by GDAL_DRIVER_PATH does not exist.";
+        }
+    }
+    else
+    {
+        if (osMsg.back() != '.')
+            osMsg += ".";
+#ifdef INSTALL_PLUGIN_FULL_DIR
+        if (VSIStat(INSTALL_PLUGIN_FULL_DIR, &sStat) != 0)
+        {
+            osMsg += " Directory '";
+            osMsg += INSTALL_PLUGIN_FULL_DIR;
+            osMsg += "' hardcoded in the GDAL library does not "
+                     "exist and the GDAL_DRIVER_PATH "
+                     "configuration option is not set.";
+        }
+        else
+#endif
+        {
+            osMsg += " The GDAL_DRIVER_PATH configuration "
+                     "option is not set.";
+        }
+    }
+    return osMsg;
 }

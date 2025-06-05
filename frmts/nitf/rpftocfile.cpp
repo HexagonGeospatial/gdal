@@ -519,7 +519,8 @@ RPFToc *RPFTOCReadFromBuffer(const char *pszFilename, VSILFILE *fp,
                 RPFTOCFree(toc);
                 return nullptr;
             }
-            frameRow = (unsigned short)((entry->nVertFrames - 1) - frameRow);
+            frameRow = static_cast<unsigned short>((entry->nVertFrames - 1) -
+                                                   frameRow);
         }
 
         if (frameRow >= entry->nVertFrames)
@@ -579,8 +580,9 @@ RPFToc *RPFTOCReadFromBuffer(const char *pszFilename, VSILFILE *fp,
         // some CADRG maps have legend name smaller than 8.3 then the extension
         // has blanks (0x20) at the end -> check only the first 3 letters of the
         // extension.
-        const char *fileExt = CPLGetExtension(frameEntry->filename);
-        if (EQUALN(fileExt, "ovr", 3) || EQUALN(fileExt, "lgd", 3))
+        const std::string fileExt = CPLGetExtensionSafe(frameEntry->filename);
+        if (EQUALN(fileExt.c_str(), "ovr", 3) ||
+            EQUALN(fileExt.c_str(), "lgd", 3))
         {
             entry->isOverviewOrLegend = TRUE;
         }
@@ -660,9 +662,11 @@ RPFToc *RPFTOCReadFromBuffer(const char *pszFilename, VSILFILE *fp,
             // Check if it was not intended to be "./X/" instead.
             VSIStatBufL sStatBuf;
             if (frameEntry->directory[0] == '/' &&
-                VSIStatL(CPLFormFilename(CPLGetDirname(pszFilename),
-                                         frameEntry->directory + 1, nullptr),
-                         &sStatBuf) == 0 &&
+                VSIStatL(
+                    CPLFormFilenameSafe(CPLGetDirnameSafe(pszFilename).c_str(),
+                                        frameEntry->directory + 1, nullptr)
+                        .c_str(),
+                    &sStatBuf) == 0 &&
                 VSI_ISDIR(sStatBuf.st_mode))
             {
                 memmove(frameEntry->directory, frameEntry->directory + 1,
@@ -671,7 +675,7 @@ RPFToc *RPFTOCReadFromBuffer(const char *pszFilename, VSILFILE *fp,
         }
 
         {
-            char *baseDir = CPLStrdup(CPLGetDirname(pszFilename));
+            char *baseDir = CPLStrdup(CPLGetDirnameSafe(pszFilename).c_str());
             VSIStatBufL sStatBuf;
             char *subdir = nullptr;
             if (CPLIsFilenameRelative(frameEntry->directory) == FALSE)
@@ -681,7 +685,8 @@ RPFToc *RPFTOCReadFromBuffer(const char *pszFilename, VSILFILE *fp,
                 subdir = CPLStrdup(baseDir);
             else
                 subdir = CPLStrdup(
-                    CPLFormFilename(baseDir, frameEntry->directory, nullptr));
+                    CPLFormFilenameSafe(baseDir, frameEntry->directory, nullptr)
+                        .c_str());
 #if !defined(_WIN32) && !defined(_WIN32_CE)
             if (VSIStatL(subdir, &sStatBuf) != 0 &&
                 strlen(subdir) > strlen(baseDir))
@@ -696,7 +701,8 @@ RPFToc *RPFTOCReadFromBuffer(const char *pszFilename, VSILFILE *fp,
             }
 #endif
             frameEntry->fullFilePath = CPLStrdup(
-                CPLFormFilename(subdir, frameEntry->filename, nullptr));
+                CPLFormFilenameSafe(subdir, frameEntry->filename, nullptr)
+                    .c_str());
             if (VSIStatL(frameEntry->fullFilePath, &sStatBuf) != 0)
             {
 #if !defined(_WIN32) && !defined(_WIN32_CE)

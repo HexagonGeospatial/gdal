@@ -43,10 +43,12 @@
 %constant GDT_Int32     = GDT_Int32;
 %constant GDT_UInt64    = GDT_UInt64;
 %constant GDT_Int64     = GDT_Int64;
+%constant GDT_Float16   = GDT_Float16;
 %constant GDT_Float32   = GDT_Float32;
 %constant GDT_Float64   = GDT_Float64;
 %constant GDT_CInt16    = GDT_CInt16;
 %constant GDT_CInt32    = GDT_CInt32;
+%constant GDT_CFloat16  = GDT_CFloat16;
 %constant GDT_CFloat32  = GDT_CFloat32;
 %constant GDT_CFloat64  = GDT_CFloat64;
 %constant GDT_TypeCount = GDT_TypeCount;
@@ -165,11 +167,19 @@
 %constant CPLE_UserInterrupt              = CPLE_UserInterrupt;
 %constant CPLE_ObjectNull                 = CPLE_ObjectNull;
 %constant CPLE_HttpResponse               = CPLE_HttpResponse;
-%constant CPLE_AWSBucketNotFound          = CPLE_AWSBucketNotFound;
-%constant CPLE_AWSObjectNotFound          = CPLE_AWSObjectNotFound;
-%constant CPLE_AWSAccessDenied            = CPLE_AWSAccessDenied;
-%constant CPLE_AWSInvalidCredentials      = CPLE_AWSInvalidCredentials;
-%constant CPLE_AWSSignatureDoesNotMatch   = CPLE_AWSSignatureDoesNotMatch;
+%constant CPLE_BucketNotFound             = CPLE_BucketNotFound;
+%constant CPLE_ObjectNotFound             = CPLE_ObjectNotFound;
+%constant CPLE_AccessDenied               = CPLE_AccessDenied;
+%constant CPLE_InvalidCredentials         = CPLE_InvalidCredentials;
+%constant CPLE_SignatureDoesNotMatch      = CPLE_SignatureDoesNotMatch;
+%constant CPLE_ObjectStorageGenericError  = CPLE_ObjectStorageGenericError;
+
+// Deprecated values
+%constant CPLE_AWSBucketNotFound          = CPLE_BucketNotFound;
+%constant CPLE_AWSObjectNotFound          = CPLE_ObjectNotFound;
+%constant CPLE_AWSAccessDenied            = CPLE_AccessDenied;
+%constant CPLE_AWSInvalidCredentials      = CPLE_InvalidCredentials;
+%constant CPLE_AWSSignatureDoesNotMatch   = CPLE_SignatureDoesNotMatch;
 
 // Open flags
 %constant OF_ALL     = GDAL_OF_ALL;
@@ -203,12 +213,14 @@
 %constant char *DMD_CREATIONFIELDDATATYPES  = GDAL_DMD_CREATIONFIELDDATATYPES;
 %constant char *DMD_CREATIONFIELDDATASUBTYPES  = GDAL_DMD_CREATIONFIELDDATASUBTYPES;
 %constant char *DMD_CREATION_FIELD_DEFN_FLAGS  = GDAL_DMD_CREATION_FIELD_DEFN_FLAGS;
+%constant char *DMD_UPDATE_ITEMS  = GDAL_DMD_UPDATE_ITEMS;
 %constant char *DMD_SUBDATASETS        = GDAL_DMD_SUBDATASETS;
 %constant char *DMD_CREATION_FIELD_DOMAIN_TYPES    = GDAL_DMD_CREATION_FIELD_DOMAIN_TYPES;
 %constant char *DMD_ALTER_GEOM_FIELD_DEFN_FLAGS    = GDAL_DMD_ALTER_GEOM_FIELD_DEFN_FLAGS;
 %constant char *DMD_SUPPORTED_SQL_DIALECTS    = GDAL_DMD_SUPPORTED_SQL_DIALECTS;
 %constant char *DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR = GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR;
 %constant char *DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN = GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN;
+%constant char *DMD_MAX_STRING_LENGTH = GDAL_DMD_MAX_STRING_LENGTH;
 
 %constant char *DCAP_OPEN       = GDAL_DCAP_OPEN;
 %constant char *DCAP_CREATE     = GDAL_DCAP_CREATE;
@@ -216,6 +228,7 @@
 %constant char *DCAP_CREATECOPY = GDAL_DCAP_CREATECOPY;
 %constant char *DCAP_CREATECOPY_MULTIDIMENSIONAL = GDAL_DCAP_CREATECOPY_MULTIDIMENSIONAL;
 %constant char *DCAP_MULTIDIM_RASTER = GDAL_DCAP_MULTIDIM_RASTER;
+%constant char *DCAP_UPDATE     = GDAL_DCAP_UPDATE;
 %constant char *DCAP_SUBCREATECOPY = GDAL_DCAP_SUBCREATECOPY;
 %constant char *DCAP_VIRTUALIO  = GDAL_DCAP_VIRTUALIO;
 %constant char *DCAP_RASTER     = GDAL_DCAP_RASTER;
@@ -306,6 +319,8 @@
 #define GDAL_DMD_CREATIONFIELDDATASUBTYPES "DMD_CREATIONFIELDDATASUBTYPES"
 #define GDAL_DMD_CREATION_FIELD_DEFN_FLAGS "DMD_CREATION_FIELD_DEFN_FLAGS"
 #define DMD_CREATION_FIELD_DEFN_FLAGS "DMD_CREATIONFIELDDATASUBTYPES"
+#define GDAL_DMD_UPDATE_ITEMS "DMD_UPDATE_ITEMS"
+#define DMD_UPDATE_ITEMS "DMD_UPDATE_ITEMS"
 #define DMD_SUBDATASETS "DMD_SUBDATASETS"
 #define GDAL_DMD_SUBDATASETS "DMD_SUBDATASETS"
 #define DMD_CREATION_FIELD_DOMAIN_TYPES "DMD_CREATION_FIELD_DOMAIN_TYPES"
@@ -318,6 +333,8 @@
 #define GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR "DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR"
 #define DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN "DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN"
 #define GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN "DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN"
+#define DMD_MAX_STRING_LENGTH "DMD_MAX_STRING_LENGTH"
+#define GDAL_DMD_MAX_STRING_LENGTH "DMD_MAX_STRING_LENGTH"
 
 #define DCAP_OPEN       "DCAP_OPEN"
 #define GDAL_DCAP_OPEN       "DCAP_OPEN"
@@ -327,6 +344,8 @@
 #define GDAL_DCAP_CREATE_MULTIDIMENSIONAL "DCAP_CREATE_MULTIDIMENSIONAL"
 #define DCAP_CREATECOPY "DCAP_CREATECOPY"
 #define GDAL_DCAP_CREATECOPY "DCAP_CREATECOPY"
+#define DCAP_UPDATE     "DCAP_UPDATE"
+#define GDAL_DCAP_UPDATE     "DCAP_UPDATE"
 #define DCAP_CREATECOPY_MULTIDIMENSIONAL "DCAP_CREATECOPY_MULTIDIMENSIONAL"
 #define GDAL_DCAP_CREATECOPY_MULTIDIMENSIONAL "DCAP_CREATECOPY_MULTIDIMENSIONAL"
 #define DCAP_MULTIDIM_RASTER "DCAP_MULTIDIM_RASTER"
@@ -498,6 +517,10 @@
 %constant GAAT_INTEGER_LIST = GAAT_INTEGER_LIST;
 %constant GAAT_REAL_LIST    = GAAT_REAL_LIST;
 %constant GAAT_DATASET_LIST = GAAT_DATASET_LIST;
+
+// GDALArgDatasetValue
+%constant int GADV_NAME = GADV_NAME;
+%constant int GADV_OBJECT = GADV_OBJECT;
 
 #ifdef SWIGPYTHON
 %thread;

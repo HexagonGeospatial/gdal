@@ -95,7 +95,6 @@ set_property(
 include(GdalStandardIncludes)
 gdal_standard_includes(ogr)
 target_compile_options(ogr PRIVATE ${GDAL_CXX_WARNING_FLAGS} ${WFLAG_OLD_STYLE_CAST} ${WFLAG_EFFCXX})
-target_include_directories(ogr PRIVATE $<TARGET_PROPERTY:ogr_MEM,SOURCE_DIR>)
 set_property(TARGET ogr PROPERTY POSITION_INDEPENDENT_CODE ${GDAL_OBJECT_LIBRARIES_POSITION_INDEPENDENT_CODE})
 target_sources(${GDAL_LIB_TARGET_NAME} PRIVATE $<TARGET_OBJECTS:ogr>)
 
@@ -202,7 +201,7 @@ add_custom_target(check_swq_parser_md5 ALL
                   COMMAND ${CMAKE_COMMAND}
                       "-DIN_FILE=swq_parser.y"
                       "-DTARGET=generate_swq_parser"
-                      "-DEXPECTED_MD5SUM=47b674ecca1fc71a50bc81d7d0bfa29d   "
+                      "-DEXPECTED_MD5SUM=c3eaca734f3005e73586cc697e481f94"
                       "-DFILENAME_CMAKE=${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
                       -P "${PROJECT_SOURCE_DIR}/cmake/helpers/check_md5sum.cmake"
                   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

@@ -738,7 +738,7 @@ bool OGRVRTDataSource::Initialize(CPLXMLNode *psTreeIn, const char *pszNewName,
 
     // Set name, and capture the directory path so we can use it
     // for relative datasources.
-    CPLString osVRTDirectory = CPLGetPath(pszNewName);
+    CPLString osVRTDirectory = CPLGetPathSafe(pszNewName);
 
     // Look for the OGRVRTDataSource node, it might be after an <xml> node.
     CPLXMLNode *psVRTDSXML = CPLGetXMLNode(psTree, "=OGRVRTDataSource");
@@ -860,11 +860,12 @@ char **OGRVRTDataSource::GetFileList()
         switch (paeLayerType[nLayers - 1])
         {
             case OGR_VRT_PROXIED_LAYER:
-                poVRTLayer = (OGRVRTLayer *)((OGRProxiedLayer *)poLayer)
-                                 ->GetUnderlyingLayer();
+                poVRTLayer = cpl::down_cast<OGRVRTLayer *>(
+                    cpl::down_cast<OGRProxiedLayer *>(poLayer)
+                        ->GetUnderlyingLayer());
                 break;
             case OGR_VRT_LAYER:
-                poVRTLayer = (OGRVRTLayer *)poLayer;
+                poVRTLayer = cpl::down_cast<OGRVRTLayer *>(poLayer);
                 break;
             default:
                 break;

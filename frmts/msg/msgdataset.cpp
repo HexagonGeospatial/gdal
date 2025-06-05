@@ -305,9 +305,7 @@ GDALDataset *MSGDataset::Open(GDALOpenInfo *poOpenInfo)
     if (poOpenInfo->eAccess == GA_Update)
     {
         delete poDS;
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The MSG driver does not support update access to existing"
-                 " datasets.\n");
+        ReportUpdateNotSupportedByDriver("MSG");
         return nullptr;
     }
 
@@ -420,7 +418,7 @@ MSGRasterBand::MSGRasterBand(MSGDataset *poDSIn, int nBandIn)
     {
         // missing entire band .. take data from first band
         MSGRasterBand *pFirstRasterBand =
-            (MSGRasterBand *)poDSIn->GetRasterBand(1);
+            cpl::down_cast<MSGRasterBand *>(poDSIn->GetRasterBand(1));
         eDataType = pFirstRasterBand->eDataType;
         nBlockYSize = pFirstRasterBand->nBlockYSize;
         fScanNorth = pFirstRasterBand->fScanNorth;
@@ -505,7 +503,7 @@ CPLErr MSGRasterBand::IReadBlock(int /*nBlockXOff*/, int nBlockYOff,
 
 {
 
-    MSGDataset *poGDS = (MSGDataset *)poDS;
+    MSGDataset *poGDS = cpl::down_cast<MSGDataset *>(poDS);
 
     int iBytesPerPixel = 1;
     if (eDataType == GDT_UInt16)

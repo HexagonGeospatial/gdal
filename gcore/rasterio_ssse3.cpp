@@ -420,6 +420,11 @@ __attribute__((optimize("tree-vectorize")))
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
+#if defined(__clang__) && !defined(__INTEL_CLANG_COMPILER)
+// clang++ -O2 -fsanitize=undefined fails to vectorize, ignore that warning
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpass-failed"
+#endif
 static void
 GDALInterleave3Byte_SSSE3(const uint8_t *CPL_RESTRICT pSrc,
                           uint8_t *CPL_RESTRICT pDst, size_t nIters)
@@ -434,6 +439,9 @@ GDALInterleave3Byte_SSSE3(const uint8_t *CPL_RESTRICT pSrc,
         pDst[3 * i + 2] = pSrc[i + 2 * nIters];
     }
 }
+#if defined(__clang__) && !defined(__INTEL_CLANG_COMPILER)
+#pragma clang diagnostic pop
+#endif
 
 #endif
 
@@ -448,8 +456,8 @@ inline __m128i GDAL_mm_or_5_si128(__m128i r0, __m128i r1, __m128i r2,
         _mm_or_si128(_mm_or_si128(r0, r1), _mm_or_si128(r2, r3)), r4);
 }
 
-void GDALInterleave5Byte_SSSE3(const uint8_t *CPL_RESTRICT pSrc,
-                               uint8_t *CPL_RESTRICT pDst, size_t nIters)
+static void GDALInterleave5Byte_SSSE3(const uint8_t *CPL_RESTRICT pSrc,
+                                      uint8_t *CPL_RESTRICT pDst, size_t nIters)
 {
     size_t i = 0;
     constexpr size_t VALS_PER_ITER = 16;

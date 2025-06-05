@@ -13,6 +13,7 @@
 ###############################################################################
 
 import contextlib
+import functools
 import io
 import json
 import math
@@ -1966,13 +1967,20 @@ def _read_in_thread(f, q):
     f.close()
 
 
-def runexternal_out_and_err(cmd, check_memleak=True, encoding="ascii"):
+def runexternal_out_and_err(
+    cmd, check_memleak=True, encoding="ascii", stdin=None, close_stdin=False
+):
     # pylint: disable=unused-argument
     if sys.platform == "win32":
         command = cmd
     else:
         command = shlex.split(cmd)
-    p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(
+        command, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+
+    if close_stdin:
+        p.stdin.close()
 
     if p.stdout is not None:
         q_stdout = Queue()
@@ -2130,4 +2138,23 @@ def error_raised(type, match=""):
 
     assert any(
         [err["level"] == type and match in err["message"] for err in errors]
-    ), f'Did not receive an error of type {err_levels[type]} matching "{match}"'
+    ), f'Did not receive an error of type {err_levels[type]} matching "{match}". Received: {[(err["level"], err["message"]) for err in errors]}'
+
+
+###############################################################################
+# Check VRT capabilities
+
+
+@functools.lru_cache()
+def gdal_has_vrt_expression_dialect(dialect):
+    return dialect in gdal.GetDriverByName("VRT").GetMetadataItem("ExpressionDialects")
+
+
+###############################################################################
+
+
+def importorskip_gdal_array():
+    pytest_version = [int(x) for x in pytest.__version__.split(".")]
+    if pytest_version >= [8, 2, 0]:
+        return pytest.importorskip("osgeo.gdal_array", exc_type=ImportError)
+    return pytest.importorskip("osgeo.gdal_array")

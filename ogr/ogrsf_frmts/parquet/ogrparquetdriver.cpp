@@ -15,10 +15,12 @@
 
 #include <algorithm>
 #include <map>
+#include <mutex>
 #include <tuple>
 
 #include "ogr_parquet.h"
 #include "ogrparquetdrivercore.h"
+#include "memdataset.h"
 
 #include "../arrow_common/ograrrowrandomaccessfile.h"
 #include "../arrow_common/vsiarrowfilesystem.hpp"
@@ -47,8 +49,8 @@ static GDALDataset *OpenFromDatasetFactory(
     const bool bIsVSI = STARTS_WITH(osBasePath.c_str(), "/vsi");
     auto poDS = std::make_unique<OGRParquetDataset>(poMemoryPool);
     auto poLayer = std::make_unique<OGRParquetDatasetLayer>(
-        poDS.get(), CPLGetBasename(osBasePath.c_str()), bIsVSI, dataset,
-        papszOpenOptions);
+        poDS.get(), CPLGetBasenameSafe(osBasePath.c_str()).c_str(), bIsVSI,
+        dataset, papszOpenOptions);
     poDS->SetLayer(std::move(poLayer));
     poDS->SetFileSystem(fs);
     return poDS.release();
@@ -86,7 +88,7 @@ GetFileSystem(std::string &osBasePathInOut,
             char *pszCurDir = CPLGetCurrentDir();
             if (pszCurDir == nullptr)
                 return {nullptr, osFSFilename};
-            osPath = CPLFormFilename(pszCurDir, osPath.c_str(), nullptr);
+            osPath = CPLFormFilenameSafe(pszCurDir, osPath.c_str(), nullptr);
             CPLFree(pszCurDir);
         }
         PARQUET_ASSIGN_OR_THROW(
@@ -177,7 +179,7 @@ OpenParquetDatasetWithoutMetadata(const std::string &osBasePathIn,
 /*                  BuildMemDatasetWithRowGroupExtents()                */
 /************************************************************************/
 
-/** Builds a Memory dataset that contains, for each row-group of the input file,
+/** Builds a MEM dataset that contains, for each row-group of the input file,
  * the feature count and spatial extent of the features of this row group,
  * using Parquet statistics. This assumes that the Parquet file declares
  * a "covering":{"bbox":{ ... }} metadata item.
@@ -193,11 +195,8 @@ static GDALDataset *BuildMemDatasetWithRowGroupExtents(OGRParquetLayer *poLayer)
     if (poLayer->GeomColsBBOXParquet(0, iParquetXMin, iParquetYMin,
                                      iParquetXMax, iParquetYMax))
     {
-        auto poMemDrv = GetGDALDriverManager()->GetDriverByName("Memory");
-        if (!poMemDrv)
-            return nullptr;
         auto poMemDS = std::unique_ptr<GDALDataset>(
-            poMemDrv->Create("", 0, 0, 0, GDT_Unknown, nullptr));
+            MEMDataset::Create("", 0, 0, 0, GDT_Unknown, nullptr));
         if (!poMemDS)
             return nullptr;
         OGRSpatialReference *poTmpSRS = nullptr;
@@ -331,8 +330,8 @@ static GDALDataset *OGRParquetDriverOpen(GDALOpenInfo *poOpenInfo)
         VSIStatBufL sStat;
         if (!osBasePath.empty() && osBasePath.back() == '/')
             osBasePath.pop_back();
-        std::string osMetadataPath =
-            CPLFormFilename(osBasePath.c_str(), "_metadata", nullptr);
+        const std::string osMetadataPath =
+            CPLFormFilenameSafe(osBasePath.c_str(), "_metadata", nullptr);
         if (CPLTestBool(
                 CPLGetConfigOption("OGR_PARQUET_USE_METADATA_FILE", "YES")) &&
             VSIStatL((osMetadataPath + osQueryParameters).c_str(), &sStat) == 0)
@@ -362,7 +361,8 @@ static GDALDataset *OGRParquetDriverOpen(GDALOpenInfo *poOpenInfo)
                 const CPLStringList aosFiles(VSIReadDir(osBasePath.c_str()));
                 for (const char *pszFilename : cpl::Iterate(aosFiles))
                 {
-                    if (EQUAL(CPLGetExtension(pszFilename), "parquet"))
+                    if (EQUAL(CPLGetExtensionSafe(pszFilename).c_str(),
+                              "parquet"))
                     {
                         bLikelyParquetDataset = true;
                         break;
@@ -370,8 +370,9 @@ static GDALDataset *OGRParquetDriverOpen(GDALOpenInfo *poOpenInfo)
                     else if (strchr(pszFilename, '='))
                     {
                         // HIVE partitioning
-                        if (VSIStatL(CPLFormFilename(osBasePath.c_str(),
-                                                     pszFilename, nullptr),
+                        if (VSIStatL(CPLFormFilenameSafe(osBasePath.c_str(),
+                                                         pszFilename, nullptr)
+                                         .c_str(),
                                      &sStat) == 0 &&
                             VSI_ISDIR(sStat.st_mode))
                         {
@@ -447,6 +448,11 @@ static GDALDataset *OGRParquetDriverOpen(GDALOpenInfo *poOpenInfo)
         std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
         auto poMemoryPool = std::shared_ptr<arrow::MemoryPool>(
             arrow::MemoryPool::CreateDefault().release());
+#if ARROW_VERSION_MAJOR >= 19
+        PARQUET_ASSIGN_OR_THROW(
+            arrow_reader,
+            parquet::arrow::OpenFile(std::move(infile), poMemoryPool.get()));
+#else
         auto st = parquet::arrow::OpenFile(std::move(infile),
                                            poMemoryPool.get(), &arrow_reader);
         if (!st.ok())
@@ -455,10 +461,11 @@ static GDALDataset *OGRParquetDriverOpen(GDALOpenInfo *poOpenInfo)
                      "parquet::arrow::OpenFile() failed");
             return nullptr;
         }
+#endif
 
         auto poDS = std::make_unique<OGRParquetDataset>(poMemoryPool);
         auto poLayer = std::make_unique<OGRParquetLayer>(
-            poDS.get(), CPLGetBasename(osFilename.c_str()),
+            poDS.get(), CPLGetBasenameSafe(osFilename.c_str()).c_str(),
             std::move(arrow_reader), poOpenInfo->papszOpenOptions);
 
         // For debug purposes: return a layer with the extent of each row group
@@ -527,26 +534,32 @@ static GDALDataset *OGRParquetDriverCreate(const char *pszName, int nXSize,
 
 class OGRParquetDriver final : public GDALDriver
 {
+    std::mutex m_oMutex{};
     bool m_bMetadataInitialized = false;
     void InitMetadata();
 
   public:
     const char *GetMetadataItem(const char *pszName,
-                                const char *pszDomain) override
-    {
-        if (EQUAL(pszName, GDAL_DS_LAYER_CREATIONOPTIONLIST))
-        {
-            InitMetadata();
-        }
-        return GDALDriver::GetMetadataItem(pszName, pszDomain);
-    }
+                                const char *pszDomain) override;
 
     char **GetMetadata(const char *pszDomain) override
     {
+        std::lock_guard oLock(m_oMutex);
         InitMetadata();
         return GDALDriver::GetMetadata(pszDomain);
     }
 };
+
+const char *OGRParquetDriver::GetMetadataItem(const char *pszName,
+                                              const char *pszDomain)
+{
+    std::lock_guard oLock(m_oMutex);
+    if (EQUAL(pszName, GDAL_DS_LAYER_CREATIONOPTIONLIST))
+    {
+        InitMetadata();
+    }
+    return GDALDriver::GetMetadataItem(pszName, pszDomain);
+}
 
 void OGRParquetDriver::InitMetadata()
 {

@@ -22,9 +22,10 @@
 #include "hdf5dataset.h"
 #include "hdf5drivercore.h"
 #include "ogr_spatialref.h"
-#include "../mem/memdataset.h"
+#include "memdataset.h"
 
 #include <algorithm>
+#include <limits>
 
 class HDF5ImageDataset final : public HDF5Dataset
 {
@@ -971,9 +972,7 @@ GDALDataset *HDF5ImageDataset::Open(GDALOpenInfo *poOpenInfo)
     // Confirm the requested access is supported.
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The HDF5ImageDataset driver does not support update access "
-                 "to existing datasets.");
+        ReportUpdateNotSupportedByDriver("HDF5");
         return nullptr;
     }
 
@@ -1060,6 +1059,18 @@ GDALDataset *HDF5ImageDataset::Open(GDALOpenInfo *poOpenInfo)
         static_cast<hsize_t *>(CPLCalloc(poDS->ndims, sizeof(hsize_t)));
     poDS->dimensions = H5Sget_simple_extent_dims(poDS->dataspace_id, poDS->dims,
                                                  poDS->maxdims);
+    for (int i = 0; i < poDS->dimensions; ++i)
+    {
+        if (poDS->dims[i] >
+            static_cast<hsize_t>(std::numeric_limits<int>::max()))
+        {
+            CPLError(CE_Failure, CPLE_NotSupported,
+                     "At least one dimension size exceeds INT_MAX !");
+            delete poDS;
+            return nullptr;
+        }
+    }
+
     auto datatype = H5Dget_type(poDS->dataset_id);
     poDS->native = H5Tget_native_type(datatype, H5T_DIR_ASCEND);
     H5Tclose(datatype);

@@ -1,7 +1,7 @@
-.. _gdal_vector_pipeline_subcommand:
+.. _gdal_vector_pipeline:
 
 ================================================================================
-"gdal vector pipeline" sub-command
+``gdal vector pipeline``
 ================================================================================
 
 .. versionadded:: 3.11
@@ -15,87 +15,148 @@
 Synopsis
 --------
 
-.. code-block::
-
-    Usage: gdal vector pipeline [OPTIONS] <PIPELINE>
-
-    Process a vector dataset.
-
-    Positional arguments:
-
-    Common Options:
-      -h, --help    Display help message and exit
-      --json-usage  Display usage as JSON document and exit
-      --progress    Display progress bar
-
-    <PIPELINE> is of the form: read [READ-OPTIONS] ( ! <STEP-NAME> [STEP-OPTIONS] )* ! write [WRITE-OPTIONS]
-
+.. program-output:: gdal vector pipeline --help-doc=main
 
 A pipeline chains several steps, separated with the `!` (quotation mark) character.
-The first step must be ``read``, and the last one ``write``.
+The first step must be ``read`` or ``concat``, and the last one ``write``. Each step has its
+own positional or non-positional arguments. Apart from ``read``, ``concat`` and ``write``,
+all other steps can potentially be used several times in a pipeline.
 
 Potential steps are:
 
-* read [OPTIONS] <INPUT>
+* read
 
-.. code-block::
+.. program-output:: gdal vector pipeline --help-doc=read
 
-    Read a vector dataset.
+* buffer
 
-    Positional arguments:
-      -i, --input <INPUT>                                  Input vector dataset [required]
+.. program-output:: gdal vector pipeline --help-doc=buffer
 
-    Options:
-      -l, --layer, --input-layer <INPUT-LAYER>             Input layer name(s) [may be repeated]
+Details for options can be found in :ref:`gdal_vector_buffer`.
 
-    Advanced Options:
-      --if, --input-format <INPUT-FORMAT>                  Input formats [may be repeated]
-      --oo, --open-option <KEY=VALUE>                      Open options [may be repeated]
+* concat
 
-* filter [OPTIONS]
+.. program-output:: gdal vector pipeline --help-doc=concat
 
-.. code-block::
+Details for options can be found in :ref:`gdal_vector_concat`.
 
-    Filter a vector dataset.
+* clip
 
-    Options:
-      --bbox <BBOX>                                        Bounding box as xmin,ymin,xmax,ymax
+.. program-output:: gdal vector pipeline --help-doc=clip
 
-* reproject [OPTIONS]
+Details for options can be found in :ref:`gdal_vector_clip`.
 
-.. code-block::
+* edit
 
-    Reproject a vector dataset.
+.. program-output:: gdal vector pipeline --help-doc=edit
 
-    Options:
-      -s, --src-crs <SRC-CRS>                              Source CRS
-      -d, --dst-crs <DST-CRS>                              Destination CRS [required]
+Details for options can be found in :ref:`gdal_vector_edit`.
 
-* write [OPTIONS] <OUTPUT>
+* explode-collections
 
-.. code-block::
+.. program-output:: gdal vector pipeline --help-doc=explode-collections
 
-    Write a vector dataset.
+Details for options can be found in :ref:`gdal_vector_explode_collections`.
 
-    Positional arguments:
-      -o, --output <OUTPUT>                                Output vector dataset [required]
+* filter
 
-    Options:
-      -f, --of, --format, --output-format <OUTPUT-FORMAT>  Output format
-      --co, --creation-option <KEY>=<VALUE>                Creation option [may be repeated]
-      --lco, --layer-creation-option <KEY>=<VALUE>         Layer creation option [may be repeated]
-      --overwrite                                          Whether overwriting existing output is allowed
-      --update                                             Whether updating existing dataset is allowed
-      --overwrite-layer                                    Whether overwriting existing layer is allowed
-      --append                                             Whether appending to existing layer is allowed
-      -l, --output-layer <OUTPUT-LAYER>                    Output layer name
+.. program-output:: gdal vector pipeline --help-doc=filter
 
+Details for options can be found in :ref:`gdal_vector_filter`.
+
+* make-valid
+
+.. program-output:: gdal vector pipeline --help-doc=make-valid
+
+Details for options can be found in :ref:`gdal_vector_make_valid`.
+
+* reproject
+
+.. program-output:: gdal vector pipeline --help-doc=reproject
+
+Details for options can be found in :ref:`gdal_vector_reproject`.
+
+* segmentize
+
+.. program-output:: gdal vector pipeline --help-doc=segmentize
+
+Details for options can be found in :ref:`gdal_vector_segmentize`.
+
+* select
+
+.. program-output:: gdal vector pipeline --help-doc=select
+
+Details for options can be found in :ref:`gdal_vector_select`.
+
+* set-geom-type
+
+.. program-output:: gdal vector pipeline --help-doc=set-geom-type
+
+Details for options can be found in :ref:`gdal_vector_set_geom_type`.
+
+* simplify
+
+.. program-output:: gdal vector pipeline --help-doc=simplify
+
+Details for options can be found in :ref:`gdal_vector_simplify`.
+
+* simplify-coverage
+
+.. program-output:: gdal vector pipeline --help-doc=simplify-coverage
+
+Details for options can be found in :ref:`gdal_vector_simplify_coverage`.
+
+* sql
+
+.. program-output:: gdal vector pipeline --help-doc=sql
+
+Details for options can be found in :ref:`gdal_vector_sql`.
+
+* swap-xy
+
+.. program-output:: gdal vector pipeline --help-doc=swap-xy
+
+Details for options can be found in :ref:`gdal_vector_swap_xy`.
+
+* write
+
+.. program-output:: gdal vector pipeline --help-doc=write
 
 Description
 -----------
 
 :program:`gdal vector pipeline` can be used to process a vector dataset and
-perform various on-the-fly processing steps.
+perform various processing steps.
+
+GDALG output (on-the-fly / streamed dataset)
+--------------------------------------------
+
+A pipeline can be serialized as a JSON file using the ``GDALG`` output format.
+The resulting file can then be opened as a vector dataset using the
+:ref:`vector.gdalg` driver, and apply the specified pipeline in a on-the-fly /
+streamed way.
+
+The ``command_line`` member of the JSON file should nominally be the whole command
+line without the final ``write`` step, and is what is generated by
+``gdal vector pipeline ! .... ! write out.gdalg.json``.
+
+.. code-block:: json
+
+    {
+        "type": "gdal_streamed_alg",
+        "command_line": "gdal vector pipeline ! read in.gpkg ! reproject --dst-crs=EPSG:32632"
+    }
+
+The final ``write`` step can be added but if so it must explicitly specify the
+``stream`` output format and a non-significant output dataset name.
+
+.. code-block:: json
+
+    {
+        "type": "gdal_streamed_alg",
+        "command_line": "gdal vector pipeline ! read in.gpkg ! reproject --dst-crs=EPSG:32632 ! write --output-format=streamed streamed_dataset"
+    }
+
 
 Examples
 --------
@@ -106,3 +167,18 @@ Examples
    .. code-block:: bash
 
         $ gdal vector pipeline --progress ! read in.gpkg ! reproject --dst-crs=EPSG:32632 ! write out.gpkg --overwrite
+
+.. example::
+   :title: Serialize the command of a reprojection of a GeoPackage file in a GDALG file, and later read it
+
+   .. code-block:: bash
+
+        $ gdal vector pipeline --progress ! read in.gpkg ! reproject --dst-crs=EPSG:32632 ! write in_epsg_32632.gdalg.json --overwrite
+        $ gdal vector info in_epsg_32632.gdalg.json
+
+.. example:: Union 2 source shapefiles (with similar structure), reproject them to EPSG:32632, keep only cities larger than 1 million inhabitants and write to a GeoPackage
+   :title:
+
+   .. code-block:: bash
+
+        $ gdal vector pipeline --progress ! concat --single --dst-crs=EPSG:32632 france.shp belgium.shp ! filter --where "pop > 1e6" ! write out.gpkg --overwrite

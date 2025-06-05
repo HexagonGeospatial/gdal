@@ -10,11 +10,9 @@
  * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
-// g++ -g -Wall -fPIC frmts/nitf/ecrgtocdataset.cpp -shared -o gdal_ECRGTOC.so
-// -Iport -Igcore -Iogr -Ifrmts/vrt -L. -lgdal
-
 #include "cpl_port.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -65,19 +63,17 @@ typedef struct
 class ECRGTOCDataset final : public GDALPamDataset
 {
     OGRSpatialReference m_oSRS{};
-    char **papszSubDatasets;
-    double adfGeoTransform[6];
+    char **papszSubDatasets = nullptr;
+    std::array<double, 6> adfGeoTransform = {0};
+    char **papszFileList = nullptr;
 
-    char **papszFileList;
+    CPL_DISALLOW_COPY_ASSIGN(ECRGTOCDataset)
 
   public:
     ECRGTOCDataset()
     {
         m_oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         m_oSRS.SetFromUserInput(SRS_WKT_WGS84_LAT_LONG);
-        papszSubDatasets = nullptr;
-        papszFileList = nullptr;
-        memset(adfGeoTransform, 0, sizeof(adfGeoTransform));
     }
 
     virtual ~ECRGTOCDataset()
@@ -98,7 +94,8 @@ class ECRGTOCDataset final : public GDALPamDataset
 
     virtual CPLErr GetGeoTransform(double *padfGeoTransform) override
     {
-        memcpy(padfGeoTransform, adfGeoTransform, 6 * sizeof(double));
+        memcpy(padfGeoTransform, adfGeoTransform.data(),
+               sizeof(adfGeoTransform));
         return CE_None;
     }
 
@@ -124,7 +121,8 @@ class ECRGTOCDataset final : public GDALPamDataset
 
 class ECRGTOCSubDataset final : public VRTDataset
 {
-    char **papszFileList;
+    char **papszFileList = nullptr;
+    CPL_DISALLOW_COPY_ASSIGN(ECRGTOCSubDataset)
 
   public:
     ECRGTOCSubDataset(int nXSize, int nYSize) : VRTDataset(nXSize, nYSize)
@@ -134,16 +132,10 @@ class ECRGTOCSubDataset final : public VRTDataset
 
         /* The driver is set to VRT in VRTDataset constructor. */
         /* We have to set it to the expected value ! */
-        poDriver =
-            reinterpret_cast<GDALDriver *>(GDALGetDriverByName("ECRGTOC"));
-
-        papszFileList = nullptr;
+        poDriver = GDALDriver::FromHandle(GDALGetDriverByName("ECRGTOC"));
     }
 
-    ~ECRGTOCSubDataset()
-    {
-        CSLDestroy(papszFileList);
-    }
+    ~ECRGTOCSubDataset() override;
 
     virtual char **GetFileList() override
     {
@@ -157,6 +149,11 @@ class ECRGTOCSubDataset final : public VRTDataset
           double dfGlobalMinY, double dfGlobalMaxX, double dfGlobalMaxY,
           double dfGlobalPixelXSize, double dfGlobalPixelYSize);
 };
+
+ECRGTOCSubDataset::~ECRGTOCSubDataset()
+{
+    CSLDestroy(papszFileList);
+}
 
 /************************************************************************/
 /*                           LaunderString()                            */
@@ -471,7 +468,7 @@ bool ECRGTOCSource::ValidateOpenedBand(GDALRasterBand *poBand) const
 /*                           BuildFullName()                            */
 /************************************************************************/
 
-static const char *BuildFullName(const char *pszTOCFilename,
+static std::string BuildFullName(const char *pszTOCFilename,
                                  const char *pszFramePath,
                                  const char *pszFrameName)
 {
@@ -486,24 +483,25 @@ static const char *BuildFullName(const char *pszTOCFilename,
         if (pszPath[i] == '\\')
             pszPath[i] = '/';
     }
-    const char *pszName = CPLFormFilename(pszPath, pszFrameName, nullptr);
+    const std::string osName =
+        CPLFormFilenameSafe(pszPath, pszFrameName, nullptr);
     CPLFree(pszPath);
     pszPath = nullptr;
-    const char *pszTOCPath = CPLGetDirname(pszTOCFilename);
-    const char *pszFirstSlashInName = strchr(pszName, '/');
-    if (pszFirstSlashInName != nullptr)
+    std::string osTOCPath = CPLGetDirnameSafe(pszTOCFilename);
+    const auto nPosFirstSlashInName = osName.find('/');
+    if (nPosFirstSlashInName != std::string::npos)
     {
-        int nFirstDirLen = static_cast<int>(pszFirstSlashInName - pszName);
-        if (static_cast<int>(strlen(pszTOCPath)) >= nFirstDirLen + 1 &&
-            (pszTOCPath[strlen(pszTOCPath) - (nFirstDirLen + 1)] == '/' ||
-             pszTOCPath[strlen(pszTOCPath) - (nFirstDirLen + 1)] == '\\') &&
-            strncmp(pszTOCPath + strlen(pszTOCPath) - nFirstDirLen, pszName,
-                    nFirstDirLen) == 0)
+        if (osTOCPath.size() >= nPosFirstSlashInName + 1 &&
+            (osTOCPath[osTOCPath.size() - (nPosFirstSlashInName + 1)] == '/' ||
+             osTOCPath[osTOCPath.size() - (nPosFirstSlashInName + 1)] ==
+                 '\\') &&
+            strncmp(osTOCPath.c_str() + osTOCPath.size() - nPosFirstSlashInName,
+                    osName.c_str(), nPosFirstSlashInName) == 0)
         {
-            pszTOCPath = CPLGetDirname(pszTOCPath);
+            osTOCPath = CPLGetDirnameSafe(osTOCPath.c_str());
         }
     }
-    return CPLProjectRelativeFilename(pszTOCPath, pszName);
+    return CPLProjectRelativeFilenameSafe(osTOCPath.c_str(), osName.c_str());
 }
 
 /************************************************************************/
@@ -543,7 +541,8 @@ GDALDataset *ECRGTOCSubDataset::Build(
     {
         poVirtualDS->AddBand(GDT_Byte, nullptr);
         GDALRasterBand *poBand = poVirtualDS->GetRasterBand(i + 1);
-        poBand->SetColorInterpretation((GDALColorInterp)(GCI_RedBand + i));
+        poBand->SetColorInterpretation(
+            static_cast<GDALColorInterp>(GCI_RedBand + i));
     }
 
     poVirtualDS->SetDescription(pszTOCFilename);
@@ -571,7 +570,7 @@ GDALDataset *ECRGTOCSubDataset::Build(
 
     for (int i = 0; i < static_cast<int>(aosFrameDesc.size()); i++)
     {
-        const char *pszName = BuildFullName(
+        const std::string osName = BuildFullName(
             pszTOCFilename, aosFrameDesc[i].pszPath, aosFrameDesc[i].pszName);
 
         double dfMinX = 0.0;
@@ -590,7 +589,7 @@ GDALDataset *ECRGTOCSubDataset::Build(
             static_cast<int>((dfMaxY - dfMinY) / dfPixelYSize + 0.5);
 
         poVirtualDS->papszFileList =
-            CSLAddString(poVirtualDS->papszFileList, pszName);
+            CSLAddString(poVirtualDS->papszFileList, osName.c_str());
 
         for (int j = 0; j < 3; j++)
         {
@@ -599,7 +598,7 @@ GDALDataset *ECRGTOCSubDataset::Build(
                     poVirtualDS->GetRasterBand(j + 1));
             /* Place the raster band at the right position in the VRT */
             auto poSource = new ECRGTOCSource(
-                pszName, j + 1, nFrameXSize, nFrameYSize,
+                osName.c_str(), j + 1, nFrameXSize, nFrameYSize,
                 static_cast<int>((dfMinX - dfGlobalMinX) / dfGlobalPixelXSize +
                                  0.5),
                 static_cast<int>((dfGlobalMaxY - dfMaxY) / dfGlobalPixelYSize +
@@ -849,10 +848,10 @@ GDALDataset *ECRGTOCDataset::Build(const char *pszTOCFilename,
 
                     nValidFrames++;
 
-                    const char *pszFullName = BuildFullName(
+                    const std::string osFullName = BuildFullName(
                         pszTOCFilename, pszFramePath, pszFrameName);
                     poDS->papszFileList =
-                        CSLAddString(poDS->papszFileList, pszFullName);
+                        CSLAddString(poDS->papszFileList, osFullName.c_str());
 
                     if (!bGlobalExtentValid)
                     {
@@ -1035,8 +1034,7 @@ GDALDataset *ECRGTOCDataset::Open(GDALOpenInfo *poOpenInfo)
 
     if (poDS && poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "ECRGTOC driver does not support update mode");
+        ReportUpdateNotSupportedByDriver("ECRGTOC");
         delete poDS;
         return nullptr;
     }

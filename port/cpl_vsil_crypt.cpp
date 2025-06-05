@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <algorithm>
 
+#include "cpl_conv.h"
 #include "cpl_error.h"
 #include "cpl_vsi.h"
 
@@ -1321,7 +1322,7 @@ int VSICryptFileHandle::Truncate(vsi_l_offset nNewSize)
         return -1;
     if (poBaseHandle->Truncate(
             poHeader->nHeaderSize +
-            ((nNewSize + poHeader->nSectorSize - 1) / poHeader->nSectorSize) *
+            cpl::div_round_up(nNewSize, poHeader->nSectorSize) *
                 poHeader->nSectorSize) != 0)
         return -1;
     bUpdateHeader = true;
@@ -1471,7 +1472,8 @@ class VSICryptFilesystemHandler final : public VSIFilesystemHandler
     int Stat(const char *pszFilename, VSIStatBufL *pStatBuf,
              int nFlags) override;
     int Unlink(const char *pszFilename) override;
-    int Rename(const char *oldpath, const char *newpath) override;
+    int Rename(const char *oldpath, const char *newpath, GDALProgressFunc,
+               void *) override;
     char **ReadDirEx(const char *pszDirname, int nMaxFiles) override;
 };
 
@@ -1847,7 +1849,8 @@ int VSICryptFilesystemHandler::Unlink(const char *pszFilename)
 /*                               Rename()                               */
 /************************************************************************/
 
-int VSICryptFilesystemHandler::Rename(const char *oldpath, const char *newpath)
+int VSICryptFilesystemHandler::Rename(const char *oldpath, const char *newpath,
+                                      GDALProgressFunc, void *)
 {
     CPLString osNewPath;
     if (strncmp(newpath, VSICRYPT_PREFIX, strlen(VSICRYPT_PREFIX)) == 0)
@@ -2096,18 +2099,11 @@ void VSIInstallCryptFileHandler(void)
 class VSIDummyCryptFilesystemHandler : public VSIFilesystemHandler
 {
   public:
-    VSIDummyCryptFilesystemHandler()
-    {
-    }
+    VSIDummyCryptFilesystemHandler() = default;
 
     VSIVirtualHandle *Open(const char * /* pszFilename */,
                            const char * /* pszAccess */, bool /* bSetError */,
-                           CSLConstList /* papszOptions */) override
-    {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "%s support not available in this build", VSICRYPT_PREFIX);
-        return nullptr;
-    }
+                           CSLConstList /* papszOptions */) override;
 
     int Stat(const char * /* pszFilename */, VSIStatBufL * /*pStatBuf */,
              int /* nFlags */) override
@@ -2117,6 +2113,15 @@ class VSIDummyCryptFilesystemHandler : public VSIFilesystemHandler
         return -1;
     }
 };
+
+VSIVirtualHandle *VSIDummyCryptFilesystemHandler::Open(
+    const char * /* pszFilename */, const char * /* pszAccess */,
+    bool /* bSetError */, CSLConstList /* papszOptions */)
+{
+    CPLError(CE_Failure, CPLE_NotSupported,
+             "%s support not available in this build", VSICRYPT_PREFIX);
+    return nullptr;
+}
 
 void VSIInstallCryptFileHandler(void)
 {

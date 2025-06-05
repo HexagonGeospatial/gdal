@@ -10,13 +10,9 @@ best of our knowledge and not guaranteed. Users should check by themselves.
 # Alpine based
 
 Alpine version:
+* 3.22 for GDAL 3.12
 * 3.21 for GDAL 3.11
 * 3.20 for GDAL 3.10
-* 3.19 for GDAL 3.9
-* 3.18 for GDAL 3.8
-* 3.17 for GDAL 3.7
-* 3.16 for GDAL 3.6
-* 3.15 for GDAL 3.5
 
 ## Small: `ghcr.io/osgeo/gdal:alpine-small-latest`
 
@@ -24,7 +20,7 @@ Alpine version:
 * Raster drivers: ultrasmall + built-in + SQLite-based ones + network-based ones
 * Vector drivers: ultrasmall + built-in + most XML-based ones + network-based ones + PostgreSQL
 * Using internal libtiff and libgeotiff
-* External libraries enabled: ultrasmall + libexpat, libpq, libssl
+* External libraries enabled: ultrasmall + libexpat, libpq, libssl, muparser
 * *No* GDAL Python
 * Base PROJ grid package (http://download.osgeo.org/proj/proj-datumgrid-1.8.zip)
 * Overall licensing terms of the GDAL build: permissive (MIT, BSD style, Apache, etc..)
@@ -38,7 +34,8 @@ See [alpine-small/Dockerfile](alpine-small/Dockerfile)
 * Vector drivers: small + Spatialite, XLS
 * Using internal libtiff and libgeotiff
 * External libraries enabled: small + libgeos, libhdf5, libhdf5, libkea, libnetcdf, libfreexl,
-  libspatialite, libxml2, libkml, libpoppler, openexr, libheif, libdeflate, libparquet, libjxl
+  libspatialite, libxml2, libkml, libpoppler, openexr, libheif, libdeflate, libparquet, libjxl,
+  muparser, exprtk
 * GDAL Python
 * Base PROJ grid package (http://download.osgeo.org/proj/proj-datumgrid-1.8.zip)
 * Overall licensing terms of the GDAL build: copy-left (GPL) + LGPL + permissive
@@ -59,7 +56,8 @@ Ubuntu version:
 * Vector drivers: all built-in + XML based ones + SQLite-based ones + network-based ones + PostgreSQL
 * Using internal libtiff and libgeotiff
 * External libraries enabled: libsqlite3, libproj, libcurl, libjpeg, libpng, libwebp,
-  libzstd, libdeflate, libexpat, libxerces-c, libpq, libssl, libgeos, libspatialite
+  libzstd, libdeflate, libexpat, libxerces-c, libpq, libssl, libgeos, libspatialite,
+  muparser
 * GDAL Python (Python 3.8 for Ubuntu 20.04, Python 3.10 for Ubuntu 22.04, Python 3.12 for Ubuntu 24.04)
 * Base PROJ grid package (http://download.osgeo.org/proj/proj-datumgrid-1.8.zip)
 * Overall licensing terms of the GDAL build: LGPL + permissive (MIT, BSD style, Apache, etc..)
@@ -74,8 +72,10 @@ See [ubuntu-small/Dockerfile](ubuntu-small/Dockerfile)
 * Using internal libtiff and libgeotiff
 * External libraries enabled: small + libnetcdf, libhdf4, libhdf5, libtiledb, libkea,
   mongocxx 3.4, libspatialite, unixodbc, libxml2, libcfitsio, libmysqlclient,
-  libkml, libpoppler, pdfium, openexr, libheif, libdeflate, libparquet, libjxl
+  libkml, libpoppler, pdfium, openexr, libheif, libdeflate, libparquet, libjxl,
+  muparser, exprtk
 * GDAL Python (Python 3.8 for Ubuntu 20.04, Python 3.10 for Ubuntu 22.04, Python 3.12 for Ubuntu 24.04)
+* GDAL Java JNI bindings
 * *All* PROJ grid packages (equivalent of latest of proj-data-X.zip from http://download.osgeo.org/proj/ at time of generation, > 500 MB)
 * Overall licensing terms of the GDAL build: copy-left (GPL) + LGPL + permissive
 
@@ -101,11 +101,11 @@ If you are getting a ``<jemalloc>: arena 0 background thread creation failed (1)
 
 # Images of releases
 
-Tagged images of recent past releases are available. The last ones (at time of writing) are for GDAL 3.10.0 and PROJ 9.5.0, for linux/amd64 and linux/arm64:
-* ghcr.io/osgeo/gdal:alpine-small-3.10.0
-* ghcr.io/osgeo/gdal:alpine-normal-3.10.0
-* ghcr.io/osgeo/gdal:ubuntu-small-3.10.0
-* ghcr.io/osgeo/gdal:ubuntu-full-3.10.0
+Tagged images of recent past releases are available. The last ones (at time of writing) are for GDAL 3.11.0 and PROJ 9.6.0, for linux/amd64 and linux/arm64:
+* ghcr.io/osgeo/gdal:alpine-small-3.11.0
+* ghcr.io/osgeo/gdal:alpine-normal-3.11.0
+* ghcr.io/osgeo/gdal:ubuntu-small-3.11.0
+* ghcr.io/osgeo/gdal:ubuntu-full-3.11.0
 
 ## Multi-arch Images
 

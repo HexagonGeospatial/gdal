@@ -57,6 +57,15 @@ public:
     return ds;
   }
 
+%newobject Create;
+#ifndef SWIGJAVA
+%feature( "kwargs" ) CreateVector;
+#endif
+  GDALDatasetShadow *CreateVector(const char *utf8_path, char **options = 0) {
+    GDALDatasetShadow* ds = (GDALDatasetShadow*) GDALCreate(self, utf8_path, 0, 0, 0, GDT_Unknown, options);
+    return ds;
+  }
+
 %newobject CreateMultiDimensional;
 #ifndef SWIGJAVA
 %feature( "kwargs" ) CreateMultiDimensional;
@@ -101,6 +110,8 @@ public:
     return GDALDeleteDataset( self, utf8_path );
   }
 
+%apply ( const char *utf8_path ) { ( const char *newName ) };
+%apply ( const char *utf8_path ) { ( const char *oldName ) };
   CPLErr Rename( const char *newName, const char *oldName ) {
     return GDALRenameDataset( self, newName, oldName );
   }
@@ -108,6 +119,8 @@ public:
   CPLErr CopyFiles( const char *newName, const char *oldName ) {
     return GDALCopyDatasetFiles( self, newName, oldName );
   }
+%clear ( const char *newName );
+%clear ( const char *oldName );
 
   bool HasOpenOption( const char *openOptionName ) {
     return GDALDriverHasOpenOption( self, openOptionName );

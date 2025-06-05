@@ -58,13 +58,19 @@ int OGRADBCDriverIdentify(GDALOpenInfo *poOpenInfo)
 {
     return STARTS_WITH(poOpenInfo->pszFilename, "ADBC:") ||
            ((OGRADBCDriverIsDuckDB(poOpenInfo) ||
-             OGRADBCDriverIsSQLite3(poOpenInfo) ||
+             (OGRADBCDriverIsSQLite3(poOpenInfo) &&
+              ((!poOpenInfo->IsExtensionEqualToCI("gpkg") &&
+                (GDALGetDriverByName("SQLite") == nullptr ||
+                 poOpenInfo->IsSingleAllowedDriver("ADBC"))) ||
+               (poOpenInfo->IsExtensionEqualToCI("gpkg") &&
+                (GDALGetDriverByName("GPKG") == nullptr ||
+                 poOpenInfo->IsSingleAllowedDriver("ADBC"))))) ||
              OGRADBCDriverIsParquet(poOpenInfo))
 #ifndef OGR_ADBC_HAS_DRIVER_MANAGER
             && GDALGetAdbcLoadDriverOverride() != nullptr
 #endif
             && !STARTS_WITH(poOpenInfo->pszFilename, "/vsi") &&
-            !EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "mbtiles"));
+            !poOpenInfo->IsExtensionEqualToCI("mbtiles"));
 }
 
 /************************************************************************/

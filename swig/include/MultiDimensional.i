@@ -52,6 +52,12 @@ public:
   }
 %clear char **;
 
+%apply (char **CSL) {char **};
+  char **GetMDArrayFullNamesRecursive(char** groupOptions = 0, char** arrayOptions = 0) {
+    return GDALGroupGetMDArrayFullNamesRecursive( self, groupOptions, arrayOptions );
+  }
+%clear char **;
+
 %newobject OpenMDArray;
   GDALMDArrayHS* OpenMDArray( const char* name, char** options = 0) {
 #if defined(SWIGPYTHON)
@@ -173,6 +179,7 @@ public:
 %clear char **;
 
 %newobject CreateGroup;
+%feature ("kwargs") CreateGroup;
   GDALGroupHS *CreateGroup( const char *name,
                             char **options = 0 ) {
     return GDALGroupCreateGroup(self, name, options);
@@ -184,12 +191,13 @@ public:
   }
 
 %newobject CreateDimension;
+%feature ("kwargs") CreateDimension;
   GDALDimensionHS *CreateDimension( const char *name,
-                                    const char* type,
+                                    const char* dim_type,
                                     const char* direction,
                                     GUIntBig size,
                                     char **options = 0 ) {
-    return GDALGroupCreateDimension(self, name, type, direction, size, options);
+    return GDALGroupCreateDimension(self, name, dim_type, direction, size, options);
   }
 
 #if defined(SWIGPYTHON) || defined(SWIGJAVA)
@@ -239,6 +247,20 @@ public:
   GDALGroupHS *SubsetDimensionFromSelection( const char *selection,
                                              char **options = 0 ) {
     return GDALGroupSubsetDimensionFromSelection(self, selection, options);
+  }
+
+  size_t GetDataTypeCount() {
+    return GDALGroupGetDataTypeCount(self);
+  }
+
+%newobject GetDataType;
+  GDALExtendedDataTypeHS* GetDataType(size_t idx) {
+    if (idx >= GDALGroupGetDataTypeCount(self))
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "GetDataType(): invalid index");
+        return NULL;
+    }
+    return GDALGroupGetDataType(self, idx);
   }
 
 } /* extend */
@@ -1030,7 +1052,7 @@ public:
 
   %newobject GetSpatialRef;
   OSRSpatialReferenceShadow *GetSpatialRef() {
-    return GDALMDArrayGetSpatialRef(self);
+    return (OSRSpatialReferenceShadow*) GDALMDArrayGetSpatialRef(self);
   }
 #endif
 
@@ -1433,7 +1455,6 @@ public:
 } /* extend */
 }; /* GDALDimensionH */
 
-
 //************************************************************************
 //
 // GDALExtendedDataTypeClass
@@ -1521,6 +1542,10 @@ public:
     return GDALExtendedDataTypeGetSubType(self);
   }
 
+  GDALRasterAttributeTableShadow* GetRAT() {
+    return GDALExtendedDataTypeGetRAT(self);
+  }
+
 #if defined(SWIGPYTHON)
   void GetComponents( GDALEDTComponentHS*** pcomps, size_t* pnCount ) {
     *pcomps = GDALExtendedDataTypeGetComponents(self, pnCount);
@@ -1544,7 +1569,7 @@ public:
 
 //************************************************************************
 //
-// GDALExtendedDataType
+// GDALEDTComponent
 //
 //************************************************************************
 

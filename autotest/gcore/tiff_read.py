@@ -4682,6 +4682,28 @@ def test_tiff_jxl_read_for_files_created_before_6393():
 
 
 ###############################################################################
+# Test reading Compression=50002 deprecated value
+
+
+@pytest.mark.require_creation_option("GTiff", "JXL")
+def test_tiff_read_jxl_deprecated_50002():
+    ds = gdal.Open("data/gtiff/byte_jxl_deprecated_50002.tif")
+    assert ds.GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE") == "JXL"
+    assert ds.GetRasterBand(1).Checksum() == 4672
+
+
+###############################################################################
+# Test reading Compression=52546 value used in DNG 1.7
+
+
+@pytest.mark.require_creation_option("GTiff", "JXL")
+def test_tiff_read_jxl_dng_1_7_52546():
+    ds = gdal.Open("data/gtiff/byte_jxl_dng_1_7_52546.tif")
+    assert ds.GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE") == "JXL"
+    assert ds.GetRasterBand(1).Checksum() == 4672
+
+
+###############################################################################
 # Test multi-threaded decoding
 
 
@@ -4971,14 +4993,21 @@ def test_tiff_read_multi_threaded(
 
 
 @pytest.mark.parametrize("use_dataset_readraster", [True, False])
-@pytest.mark.parametrize("advise_read", [True, False])
-@pytest.mark.skipif(platform.system() == "Darwin", reason="fails randomly")
+@pytest.mark.parametrize(
+    "advise_read,test_retry", [(True, False), (True, True), (False, False)]
+)
+@pytest.mark.skipif(
+    platform.system() == "Darwin" or gdaltest.is_travis_branch("mingw64"),
+    reason="fails randomly",
+)
 @pytest.mark.require_curl()
 @pytest.mark.skipif(
     not check_libtiff_internal_or_at_least(4, 0, 11),
     reason="libtiff >= 4.0.11 required",
 )
-def test_tiff_read_multi_threaded_vsicurl(use_dataset_readraster, advise_read):
+def test_tiff_read_multi_threaded_vsicurl(
+    use_dataset_readraster, advise_read, test_retry
+):
 
     webserver_process = None
     webserver_port = 0
@@ -5021,23 +5050,33 @@ def test_tiff_read_multi_threaded_vsicurl(use_dataset_readraster, advise_read):
                     f.seek(start, 0)
                     request.wfile.write(f.read(end - start + 1))
 
+        def method_fail(request):
+            request.protocol_version = "HTTP/1.1"
+            request.send_response(429)
+            request.send_header("Connection", "close")
+            request.end_headers()
+
         _, blockYSize = ref_ds.GetRasterBand(1).GetBlockSize()
         if advise_read:
             for i in range(3):
+                if test_retry:
+                    handler.add("GET", "/utm.tif", custom_method=method_fail)
                 handler.add("GET", "/utm.tif", custom_method=method)
         else:
             for i in range(2 + ref_ds.RasterYSize // blockYSize):
                 handler.add("GET", "/utm.tif", custom_method=method)
 
         with webserver.install_http_handler(handler):
-            with gdaltest.config_options(
-                {
-                    "GDAL_NUM_THREADS": "2",
-                    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif",
-                    "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
-                    "GDAL_HTTP_ENABLE_ADVISE_READ": ("YES" if advise_read else "NO"),
-                }
-            ):
+            options = {
+                "GDAL_NUM_THREADS": "2",
+                "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif",
+                "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+                "GDAL_HTTP_ENABLE_ADVISE_READ": ("YES" if advise_read else "NO"),
+            }
+            if test_retry:
+                options["GDAL_HTTP_MAX_RETRY"] = "1"
+                options["GDAL_HTTP_RETRY_DELAY"] = ".1"
+            with gdaltest.config_options(options):
                 ds = gdal.Open("/vsicurl/http://127.0.0.1:%d/utm.tif" % webserver_port)
                 assert ds is not None, "could not open dataset"
 
@@ -5553,3 +5592,47 @@ def test_tiff_read_corrupted_vat_dbf(tmp_vsimem):
         band = ds.GetRasterBand(1)
         with pytest.raises(Exception):
             band.GetDefaultRAT()
+
+
+def test_tiff_read_corrupted_lzw():
+
+    ds = gdal.Open("data/gtiff/lzw_corrupted.tif")
+    with pytest.raises(Exception):
+        ds.ReadRaster()
+
+
+###############################################################################
+# Test bugfix for https://lists.osgeo.org/pipermail/gdal-dev/2025-March/060378.html
+
+
+@gdaltest.enable_exceptions()
+def test_tiff_read_multithreaded_read_fresh_file(tmp_vsimem):
+
+    drv = gdal.GetDriverByName("GTiff")
+    ds_out = drv.Create(
+        tmp_vsimem / "temp.tif",
+        xsize=100,
+        ysize=100,
+        bands=1,
+        eType=gdal.GDT_Byte,
+        options=["COMPRESS=DEFLATE", "NUM_THREADS=2"],
+    )
+    assert ds_out.ReadRaster(0, 0, 100, 100) == b"\x00" * (100 * 100)
+
+
+###############################################################################
+# Test bugfix for https://lists.osgeo.org/pipermail/gdal-dev/2025-March/060378.html
+
+
+@gdaltest.enable_exceptions()
+def test_tiff_read_multithreaded_read_missing_tilebytecounts_and_offsets():
+
+    ds = gdal.OpenEx(
+        "data/gtiff/missing_tilebytecounts_and_offsets.tif",
+        open_options=["NUM_THREADS=2"],
+    )
+    with pytest.raises(
+        Exception,
+        match="missing_tilebytecounts_and_offsets.tif: Error while getting location of block 0",
+    ):
+        ds.ReadRaster()

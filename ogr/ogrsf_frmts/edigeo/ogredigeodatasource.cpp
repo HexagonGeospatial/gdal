@@ -156,14 +156,15 @@ VSILFILE *OGREDIGEODataSource::OpenFile(const char *pszType,
                                         const CPLString &osExt)
 {
     CPLString osTmp = osLON + pszType;
-    CPLString osFilename = CPLFormCIFilename(CPLGetPath(GetDescription()),
-                                             osTmp.c_str(), osExt.c_str());
+    CPLString osFilename = CPLFormCIFilenameSafe(
+        CPLGetPathSafe(GetDescription()).c_str(), osTmp.c_str(), osExt.c_str());
     VSILFILE *fp = VSIFOpenL(osFilename, "rb");
     if (fp == nullptr)
     {
         const CPLString osExtLower = CPLString(osExt).tolower();
-        const CPLString osFilename2 = CPLFormCIFilename(
-            CPLGetPath(GetDescription()), osTmp.c_str(), osExtLower.c_str());
+        const CPLString osFilename2 =
+            CPLFormCIFilenameSafe(CPLGetPathSafe(GetDescription()).c_str(),
+                                  osTmp.c_str(), osExtLower.c_str());
         fp = VSIFOpenL(osFilename2, "rb");
         if (fp == nullptr)
         {
@@ -410,7 +411,7 @@ int OGREDIGEODataSource::ReadSCD()
                             osRID.c_str(), osNameRID.c_str(), osKND.c_str(),
                             (int)aosAttrRID.size());*/
 
-                    aoObjList.push_back(objDesc);
+                    aoObjList.push_back(std::move(objDesc));
                 }
             }
             else if (osRTY == "ATT")
@@ -1235,7 +1236,7 @@ int OGREDIGEODataSource::BuildPolygon(const CPLString &osFEA,
                 nIter++;
             }
 
-            aoXYList.push_back(aoXY);
+            aoXYList.push_back(std::move(aoXY));
         }
     }
 

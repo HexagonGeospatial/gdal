@@ -178,6 +178,11 @@ void CPL_STDCALL GDALAllRegister()
 #if defined(DEFERRED_HDF4_DRIVER)
     DeclareDeferredHDF4Plugin();
 #endif
+#if defined(DEFERRED_KEA_DRIVER)
+    // Must be registered before HDF5 so that when the plugin is not
+    // installer the proper suggestion message is displayed
+    DeclareDeferredKEAPlugin();
+#endif
 #if defined(DEFERRED_HDF5_DRIVER)
     DeclareDeferredHDF5Plugin();
 #endif
@@ -198,9 +203,6 @@ void CPL_STDCALL GDALAllRegister()
 #endif
 #if defined(DEFERRED_JPIPKAK_DRIVER)
     DeclareDeferredJPIPKAKPlugin();
-#endif
-#if defined(DEFERRED_KEA_DRIVER)
-    DeclareDeferredKEAPlugin();
 #endif
 #if defined(DEFERRED_LIBKML_DRIVER)
     DeclareDeferredOGRLIBKMLPlugin();
@@ -362,10 +364,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_GFF();
 #endif
 
-#ifdef FRMT_elas
-    GDALRegister_ELAS();
-#endif
-
 #ifdef FRMT_esric
     GDALRegister_ESRIC();
 #endif
@@ -379,10 +377,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_AAIGrid();
     GDALRegister_GRASSASCIIGrid();
     GDALRegister_ISG();
-#endif
-
-#ifdef FRMT_sdts
-    GDALRegister_SDTS();
 #endif
 
 #ifdef FRMT_dted
@@ -430,10 +424,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_BSB();
 #endif
 
-#ifdef FRMT_xpm
-    GDALRegister_XPM();
-#endif
-
 #ifdef FRMT_bmp
     GDALRegister_BMP();
 #endif
@@ -464,10 +454,6 @@ void CPL_STDCALL GDALAllRegister()
 
 #ifdef FRMT_ilwis
     GDALRegister_ILWIS();
-#endif
-
-#ifdef FRMT_sgi
-    GDALRegister_SGI();
 #endif
 
 #ifdef FRMT_srtmhgt
@@ -531,10 +517,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_L1B();
 #endif
 
-#ifdef FRMT_fit
-    GDALRegister_FIT();
-#endif
-
 #ifdef FRMT_grib
     GDALRegister_GRIB();
 #endif
@@ -568,7 +550,6 @@ void CPL_STDCALL GDALAllRegister()
 #endif
 
 #ifdef FRMT_gsg
-    GDALRegister_GSAG();
     GDALRegister_GSBG();
     GDALRegister_GS7BG();
 #endif
@@ -585,10 +566,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_COASP();
 #endif
 
-#ifdef FRMT_r
-    GDALRegister_R();
-#endif
-
 #ifdef FRMT_map
     GDALRegister_MAP();
 #endif
@@ -603,10 +580,6 @@ void CPL_STDCALL GDALAllRegister()
 
 #ifdef FRMT_pdf
     GDALRegister_PDF();
-#endif
-
-#ifdef FRMT_rasterlite
-    GDALRegister_Rasterlite();
 #endif
 
 #ifdef FRMT_mbtiles
@@ -692,10 +665,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_SRP();
 #endif
 
-#ifdef FRMT_blx
-    GDALRegister_BLX();
-#endif
-
 #ifdef FRMT_georaster
     GDALRegister_GEOR();
 #endif
@@ -714,10 +683,6 @@ void CPL_STDCALL GDALAllRegister()
 
 #ifdef FRMT_hf2
     GDALRegister_HF2();
-#endif
-
-#ifdef FRMT_ozi
-    GDALRegister_OZI();
 #endif
 
 #ifdef FRMT_ctg
@@ -792,6 +757,10 @@ void CPL_STDCALL GDALAllRegister()
 #ifdef FRMT_basisu_ktx2
     GDALRegister_BASISU();
     GDALRegister_KTX2();
+#endif
+
+#ifdef FRMT_gdalg
+    GDALRegister_GDALG();
 #endif
 
     // NOTE: you need to generally insert your own driver before that line.

@@ -35,8 +35,12 @@ class S111Dataset final : public S100BaseDataset
     {
     }
 
+    ~S111Dataset() override;
+
     static GDALDataset *Open(GDALOpenInfo *);
 };
+
+S111Dataset::~S111Dataset() = default;
 
 /************************************************************************/
 /*                            S111RasterBand                            */
@@ -60,10 +64,7 @@ class S111RasterBand final : public GDALProxyRasterBand
     }
 
     GDALRasterBand *
-    RefUnderlyingRasterBand(bool /*bForceOpen*/ = true) const override
-    {
-        return m_poUnderlyingBand;
-    }
+    RefUnderlyingRasterBand(bool /*bForceOpen*/ = true) const override;
 
     const char *GetUnitType() override
     {
@@ -81,6 +82,12 @@ class S111RasterBand final : public GDALProxyRasterBand
         return GDALRasterBand::GetMetadata(pszDomain);
     }
 };
+
+GDALRasterBand *
+S111RasterBand::RefUnderlyingRasterBand(bool /*bForceOpen*/) const
+{
+    return m_poUnderlyingBand;
+}
 
 /************************************************************************/
 /*                                Open()                                */
@@ -103,8 +110,7 @@ GDALDataset *S111Dataset::Open(GDALOpenInfo *poOpenInfo)
     // Confirm the requested access is supported.
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The S111 driver does not support update access.");
+        ReportUpdateNotSupportedByDriver("S111");
         return nullptr;
     }
 

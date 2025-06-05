@@ -58,13 +58,8 @@ class OGRESRIFeatureServiceLayer final : public OGRLayer
     void ResetReading() override;
     OGRFeature *GetNextFeature() override;
     GIntBig GetFeatureCount(int bForce = TRUE) override;
-    OGRErr GetExtent(OGREnvelope *psExtent, int bForce = TRUE) override;
-
-    virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                             int bForce) override
-    {
-        return OGRLayer::GetExtent(iGeomField, psExtent, bForce);
-    }
+    OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                      bool bForce = true) override;
 
     int TestCapability(const char *pszCap) override;
 
@@ -100,10 +95,7 @@ class OGRESRIFeatureServiceDataset final : public GDALDataset
         return 1;
     }
 
-    OGRLayer *GetLayer(int nLayer) override
-    {
-        return (nLayer == 0) ? m_poLayer.get() : nullptr;
-    }
+    OGRLayer *GetLayer(int nLayer) override;
 
     OGRLayer *GetUnderlyingLayer()
     {
@@ -118,6 +110,11 @@ class OGRESRIFeatureServiceDataset final : public GDALDataset
         return m_osURL;
     }
 };
+
+OGRLayer *OGRESRIFeatureServiceDataset::GetLayer(int nLayer)
+{
+    return (nLayer == 0) ? m_poLayer.get() : nullptr;
+}
 
 /************************************************************************/
 /*                       OGRESRIFeatureServiceLayer()                   */
@@ -290,10 +287,12 @@ GIntBig OGRESRIFeatureServiceLayer::GetFeatureCount(int bForce)
 }
 
 /************************************************************************/
-/*                               GetExtent()                            */
+/*                              IGetExtent()                            */
 /************************************************************************/
 
-OGRErr OGRESRIFeatureServiceLayer::GetExtent(OGREnvelope *psExtent, int bForce)
+OGRErr OGRESRIFeatureServiceLayer::IGetExtent(int iGeomField,
+                                              OGREnvelope *psExtent,
+                                              bool bForce)
 {
     OGRErr eErr = OGRERR_FAILURE;
     CPLString osNewURL =
@@ -328,7 +327,7 @@ OGRErr OGRESRIFeatureServiceLayer::GetExtent(OGREnvelope *psExtent, int bForce)
     }
     CPLHTTPDestroyResult(pResult);
     if (eErr == OGRERR_FAILURE)
-        eErr = OGRLayer::GetExtent(psExtent, bForce);
+        eErr = OGRLayer::IGetExtent(iGeomField, psExtent, bForce);
     return eErr;
 }
 
@@ -785,9 +784,12 @@ void RegisterOGRGeoJSON()
         "Integer64List RealList StringList Date DateTime");
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONFIELDDATASUBTYPES, "Boolean");
     poDriver->SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL SQLITE");
-    poDriver->SetMetadataItem(GDAL_DCAP_MEASURED_GEOMETRIES, "YES");
+
     poDriver->SetMetadataItem(GDAL_DCAP_FLUSHCACHE_CONSISTENT_STATE, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_HONOR_GEOM_COORDINATE_PRECISION, "YES");
+
+    poDriver->SetMetadataItem(GDAL_DCAP_UPDATE, "YES");
+    poDriver->SetMetadataItem(GDAL_DMD_UPDATE_ITEMS, "Features");
 
     poDriver->pfnOpen = OGRGeoJSONDriverOpen;
     poDriver->pfnIdentify = OGRGeoJSONDriverIdentify;

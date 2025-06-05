@@ -129,8 +129,7 @@ int OGRODBCDataSource::OpenMDB(GDALOpenInfo *poOpenInfo)
 
                 osLayerName += pszTableName;
 
-                const CPLString osLCTableName(CPLString(osLayerName).tolower());
-                m_aosAllLCTableNames.insert(osLCTableName);
+                m_aosAllLCTableNames.insert(CPLString(osLayerName).tolower());
 
                 aosTableNames.emplace_back(osLayerName);
             }
@@ -185,7 +184,7 @@ int OGRODBCDataSource::Open(GDALOpenInfo *poOpenInfo)
     constexpr const char *ODBC_PREFIX = "ODBC:";
     if (!STARTS_WITH_CI(pszNewName, ODBC_PREFIX) &&
         OGRODBCDriverIsSupportedMsAccessFileExtension(
-            CPLGetExtension(pszNewName)))
+            CPLGetExtensionSafe(pszNewName).c_str()))
         return OpenMDB(poOpenInfo);
 
     /* -------------------------------------------------------------------- */

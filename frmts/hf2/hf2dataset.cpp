@@ -110,7 +110,7 @@ HF2RasterBand::~HF2RasterBand()
 CPLErr HF2RasterBand::IReadBlock(int nBlockXOff, int nLineYOff, void *pImage)
 
 {
-    HF2Dataset *poGDS = (HF2Dataset *)poDS;
+    HF2Dataset *poGDS = cpl::down_cast<HF2Dataset *>(poDS);
 
     const int nXBlocks = DIV_ROUND_UP(nRasterXSize, poGDS->nTileSize);
 
@@ -289,8 +289,8 @@ int HF2Dataset::LoadBlockMap()
 
     bHasLoaderBlockMap = TRUE;
 
-    const int nXBlocks = (nRasterXSize + nTileSize - 1) / nTileSize;
-    const int nYBlocks = (nRasterYSize + nTileSize - 1) / nTileSize;
+    const int nXBlocks = DIV_ROUND_UP(nRasterXSize, nTileSize);
+    const int nYBlocks = DIV_ROUND_UP(nRasterYSize, nTileSize);
     if (nXBlocks * nYBlocks > 1000000)
     {
         vsi_l_offset nCurOff = VSIFTellL(fp);
@@ -381,7 +381,7 @@ int HF2Dataset::Identify(GDALOpenInfo *poOpenInfo)
     /*  GZipped .hf2 files are common, so automagically open them */
     /*  if the /vsigzip/ has not been explicitly passed */
     CPLString osFilename;  // keep in that scope
-    if ((EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "hfz") ||
+    if ((poOpenInfo->IsExtensionEqualToCI("hfz") ||
          (strlen(poOpenInfo->pszFilename) > 6 &&
           EQUAL(poOpenInfo->pszFilename + strlen(poOpenInfo->pszFilename) - 6,
                 "hf2.gz"))) &&
@@ -425,7 +425,7 @@ GDALDataset *HF2Dataset::Open(GDALOpenInfo *poOpenInfo)
     /*  GZipped .hf2 files are common, so automagically open them */
     /*  if the /vsigzip/ has not been explicitly passed */
     CPLString osFilename(poOpenInfo->pszFilename);
-    if ((EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "hfz") ||
+    if ((poOpenInfo->IsExtensionEqualToCI("hfz") ||
          (strlen(poOpenInfo->pszFilename) > 6 &&
           EQUAL(poOpenInfo->pszFilename + strlen(poOpenInfo->pszFilename) - 6,
                 "hf2.gz"))) &&
@@ -477,8 +477,8 @@ GDALDataset *HF2Dataset::Open(GDALOpenInfo *poOpenInfo)
     {
         return nullptr;
     }
-    const int nXBlocks = (nXSize + nTileSize - 1) / nTileSize;
-    const int nYBlocks = (nYSize + nTileSize - 1) / nTileSize;
+    const int nXBlocks = DIV_ROUND_UP(nXSize, nTileSize);
+    const int nYBlocks = DIV_ROUND_UP(nYSize, nTileSize);
     if (nXBlocks > INT_MAX / nYBlocks)
     {
         return nullptr;
@@ -955,8 +955,8 @@ GDALDataset *HF2Dataset::CreateCopy(const char *pszFilename,
     /* -------------------------------------------------------------------- */
     /*      Copy imagery                                                    */
     /* -------------------------------------------------------------------- */
-    const int nXBlocks = (nXSize + nTileSize - 1) / nTileSize;
-    const int nYBlocks = (nYSize + nTileSize - 1) / nTileSize;
+    const int nXBlocks = DIV_ROUND_UP(nXSize, nTileSize);
+    const int nYBlocks = DIV_ROUND_UP(nYSize, nTileSize);
 
     void *pTileBuffer = VSI_MALLOC3_VERBOSE(nTileSize, nTileSize,
                                             GDALGetDataTypeSizeBytes(eReqDT));

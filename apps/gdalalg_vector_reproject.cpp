@@ -31,6 +31,7 @@ GDALVectorReprojectAlgorithm::GDALVectorReprojectAlgorithm(bool standaloneStep)
     : GDALVectorPipelineStepAlgorithm(NAME, DESCRIPTION, HELP_URL,
                                       standaloneStep)
 {
+    AddActiveLayerArg(&m_activeLayer);
     AddArg("src-crs", 's', _("Source CRS"), &m_srsCrs)
         .SetIsCRSArg()
         .AddHiddenAlias("s_srs");
@@ -41,43 +42,14 @@ GDALVectorReprojectAlgorithm::GDALVectorReprojectAlgorithm(bool standaloneStep)
 }
 
 /************************************************************************/
-/*               GDALVectorReprojectAlgorithmDataset                    */
-/************************************************************************/
-
-namespace
-{
-class GDALVectorReprojectAlgorithmDataset final : public GDALDataset
-{
-    std::vector<std::unique_ptr<OGRLayer>> m_layers{};
-
-  public:
-    GDALVectorReprojectAlgorithmDataset() = default;
-
-    void AddLayer(std::unique_ptr<OGRLayer> poLayer)
-    {
-        m_layers.push_back(std::move(poLayer));
-    }
-
-    int GetLayerCount() override
-    {
-        return static_cast<int>(m_layers.size());
-    }
-
-    OGRLayer *GetLayer(int idx) override
-    {
-        return idx >= 0 && idx < GetLayerCount() ? m_layers[idx].get()
-                                                 : nullptr;
-    }
-};
-}  // namespace
-
-/************************************************************************/
 /*            GDALVectorReprojectAlgorithm::RunStep()                   */
 /************************************************************************/
 
-bool GDALVectorReprojectAlgorithm::RunStep(GDALProgressFunc, void *)
+bool GDALVectorReprojectAlgorithm::RunStep(GDALVectorPipelineStepRunContext &)
 {
-    CPLAssert(m_inputDataset.GetDatasetRef());
+    auto poSrcDS = m_inputDataset[0].GetDatasetRef();
+    CPLAssert(poSrcDS);
+
     CPLAssert(m_outputDataset.GetName().empty());
     CPLAssert(!m_outputDataset.GetDatasetRef());
 
@@ -93,11 +65,8 @@ bool GDALVectorReprojectAlgorithm::RunStep(GDALProgressFunc, void *)
     oDstCRS.SetFromUserInput(m_dstCrs.c_str());
     oDstCRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
-    auto poSrcDS = m_inputDataset.GetDatasetRef();
-
     auto reprojectedDataset =
-        std::make_unique<GDALVectorReprojectAlgorithmDataset>();
-    reprojectedDataset->SetDescription(poSrcDS->GetDescription());
+        std::make_unique<GDALVectorPipelineOutputDataset>(*poSrcDS);
 
     const int nLayerCount = poSrcDS->GetLayerCount();
     bool ret = true;
@@ -107,29 +76,44 @@ bool GDALVectorReprojectAlgorithm::RunStep(GDALProgressFunc, void *)
         ret = (poSrcLayer != nullptr);
         if (ret)
         {
-            OGRSpatialReference *poSrcLayerCRS;
-            if (poSrcCRS)
-                poSrcLayerCRS = poSrcCRS.get();
-            else
-                poSrcLayerCRS = poSrcLayer->GetSpatialRef();
-            if (!poSrcLayerCRS)
+            if (m_activeLayer.empty() ||
+                m_activeLayer == poSrcLayer->GetDescription())
             {
-                ReportError(CE_Failure, CPLE_AppDefined,
-                            "Layer '%s' has no spatial reference system",
-                            poSrcLayer->GetName());
-                return false;
+                OGRSpatialReference *poSrcLayerCRS;
+                if (poSrcCRS)
+                    poSrcLayerCRS = poSrcCRS.get();
+                else
+                    poSrcLayerCRS = poSrcLayer->GetSpatialRef();
+                if (!poSrcLayerCRS)
+                {
+                    ReportError(CE_Failure, CPLE_AppDefined,
+                                "Layer '%s' has no spatial reference system",
+                                poSrcLayer->GetName());
+                    return false;
+                }
+                auto poCT = std::unique_ptr<OGRCoordinateTransformation>(
+                    OGRCreateCoordinateTransformation(poSrcLayerCRS, &oDstCRS));
+                auto poReversedCT =
+                    std::unique_ptr<OGRCoordinateTransformation>(
+                        OGRCreateCoordinateTransformation(&oDstCRS,
+                                                          poSrcLayerCRS));
+                ret = (poCT != nullptr) && (poReversedCT != nullptr);
+                if (ret)
+                {
+                    reprojectedDataset->AddLayer(
+                        *poSrcLayer,
+                        std::make_unique<OGRWarpedLayer>(
+                            poSrcLayer, /* iGeomField = */ 0,
+                            /*bTakeOwnership = */ false, poCT.release(),
+                            poReversedCT.release()));
+                }
             }
-            auto poCT = std::unique_ptr<OGRCoordinateTransformation>(
-                OGRCreateCoordinateTransformation(poSrcLayerCRS, &oDstCRS));
-            auto poReversedCT = std::unique_ptr<OGRCoordinateTransformation>(
-                OGRCreateCoordinateTransformation(&oDstCRS, poSrcLayerCRS));
-            ret = (poCT != nullptr) && (poReversedCT != nullptr);
-            if (ret)
+            else
             {
-                reprojectedDataset->AddLayer(std::make_unique<OGRWarpedLayer>(
-                    poSrcLayer, /* iGeomField = */ 0,
-                    /*bTakeOwnership = */ false, poCT.release(),
-                    poReversedCT.release()));
+                reprojectedDataset->AddLayer(
+                    *poSrcLayer,
+                    std::make_unique<GDALVectorPipelinePassthroughLayer>(
+                        *poSrcLayer));
             }
         }
     }
@@ -139,5 +123,8 @@ bool GDALVectorReprojectAlgorithm::RunStep(GDALProgressFunc, void *)
 
     return ret;
 }
+
+GDALVectorReprojectAlgorithmStandalone::
+    ~GDALVectorReprojectAlgorithmStandalone() = default;
 
 //! @endcond

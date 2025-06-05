@@ -27,20 +27,16 @@ class GDALVectorFilterAlgorithm /* non final */
   public:
     static constexpr const char *NAME = "filter";
     static constexpr const char *DESCRIPTION = "Filter a vector dataset.";
-    static constexpr const char *HELP_URL =
-        "/programs/gdal_vector_pipeline.html";
-
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
+    static constexpr const char *HELP_URL = "/programs/gdal_vector_filter.html";
 
     explicit GDALVectorFilterAlgorithm(bool standaloneStep = false);
 
   private:
-    bool RunStep(GDALProgressFunc pfnProgress, void *pProgressData) override;
+    bool RunStep(GDALVectorPipelineStepRunContext &ctxt) override;
 
+    std::string m_activeLayer{};
     std::vector<double> m_bbox{};
+    std::string m_where{};
 };
 
 /************************************************************************/
@@ -55,6 +51,8 @@ class GDALVectorFilterAlgorithmStandalone final
         : GDALVectorFilterAlgorithm(/* standaloneStep = */ true)
     {
     }
+
+    ~GDALVectorFilterAlgorithmStandalone() override;
 };
 
 //! @endcond

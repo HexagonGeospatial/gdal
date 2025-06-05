@@ -41,9 +41,9 @@ RUN apk add \
     lz4-dev \
     make \
     mariadb-connector-c-dev \
+    muparser-dev \
     netcdf-dev \
     odbc-cpp-wrapper-dev \
-    ogdi-dev \
     openexr-dev \
     openjpeg-dev \
     openssl-dev \
@@ -56,6 +56,7 @@ RUN apk add \
     py3-pyarrow-pyc \
     py3-numpy \
     py3-numpy-dev \
+    py3-numpy-tests \
     py3-pip \
     py3-setuptools \
     python3-dev \

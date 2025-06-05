@@ -19,10 +19,12 @@
 
 #include "gdal_pdf.h"
 
+#include "cpl_json_streaming_writer.h"
 #include "cpl_vsi_virtual.h"
 #include "cpl_spawn.h"
 #include "cpl_string.h"
 #include "gdal_frmts.h"
+#include "gdalalgorithm.h"
 #include "ogr_spatialref.h"
 #include "ogr_geometry.h"
 
@@ -113,14 +115,7 @@ class GDALPDFOutputDev : public SplashOutputDev
         bEnableBitmap = bFlag;
     }
 
-    virtual void startPage(int pageNum, GfxState *state, XRef *xrefIn) override
-    {
-        SplashOutputDev::startPage(pageNum, state, xrefIn);
-        SplashBitmap *poBitmap = getBitmap();
-        memset(poBitmap->getDataPtr(), 255,
-               static_cast<size_t>(poBitmap->getRowSize()) *
-                   poBitmap->getHeight());
-    }
+    virtual void startPage(int pageNum, GfxState *state, XRef *xrefIn) override;
 
     virtual void stroke(GfxState *state) override
     {
@@ -171,7 +166,7 @@ class GDALPDFOutputDev : public SplashOutputDev
                                            invert, interpolate, inlineImg);
         else
         {
-            str->reset();
+            VSIPDFFileStream::resetNoCheckReturnValue(str);
             if (inlineImg)
             {
                 skipBytes(str, width, height, 1, 1);
@@ -209,7 +204,7 @@ class GDALPDFOutputDev : public SplashOutputDev
                                        interpolate, maskColors, inlineImg);
         else
         {
-            str->reset();
+            VSIPDFFileStream::resetNoCheckReturnValue(str);
             if (inlineImg)
             {
                 skipBytes(str, width, height, colorMap->getNumPixelComps(),
@@ -257,6 +252,14 @@ class GDALPDFOutputDev : public SplashOutputDev
             str->close();
     }
 };
+
+void GDALPDFOutputDev::startPage(int pageNum, GfxState *state, XRef *xrefIn)
+{
+    SplashOutputDev::startPage(pageNum, state, xrefIn);
+    SplashBitmap *poBitmap = getBitmap();
+    memset(poBitmap->getDataPtr(), 255,
+           static_cast<size_t>(poBitmap->getRowSize()) * poBitmap->getHeight());
+}
 
 #endif  // ~ HAVE_POPPLER
 
@@ -1527,30 +1530,26 @@ class GDALPDFiumRenderDeviceDriver : public RenderDeviceDriverIface
                           const CFX_Matrix *pObject2Device,
                           const CFX_GraphStateData *pGraphState,
                           uint32_t fill_color, uint32_t stroke_color,
-                          const CFX_FillRenderOptions &fill_options,
-                          BlendMode blend_type) override
+                          const CFX_FillRenderOptions &fill_options) override
     {
         if (!bEnableVector && !bTemporaryEnableVectorForTextStroking)
             return true;
         return m_poParent->DrawPath(path, pObject2Device, pGraphState,
-                                    fill_color, stroke_color, fill_options,
-                                    blend_type);
+                                    fill_color, stroke_color, fill_options);
     }
 
-    virtual bool FillRectWithBlend(const FX_RECT &rect, uint32_t fill_color,
-                                   BlendMode blend_type) override
+    virtual bool FillRect(const FX_RECT &rect, uint32_t fill_color) override
     {
-        return m_poParent->FillRectWithBlend(rect, fill_color, blend_type);
+        return m_poParent->FillRect(rect, fill_color);
     }
 
     virtual bool DrawCosmeticLine(const CFX_PointF &ptMoveTo,
-                                  const CFX_PointF &ptLineTo, uint32_t color,
-                                  BlendMode blend_typeL) override
+                                  const CFX_PointF &ptLineTo,
+                                  uint32_t color) override
     {
         if (!bEnableVector && !bTemporaryEnableVectorForTextStroking)
             return TRUE;
-        return m_poParent->DrawCosmeticLine(ptMoveTo, ptLineTo, color,
-                                            blend_typeL);
+        return m_poParent->DrawCosmeticLine(ptMoveTo, ptLineTo, color);
     }
 
     virtual FX_RECT GetClipBox() const override
@@ -1964,6 +1963,14 @@ CPLErr PDFDataset::ReadPixels(int nReqXOff, int nReqYOff, int nReqXSize,
         PDFDoc *poDoc = m_poDocPoppler;
         poSplashOut->startDoc(poDoc);
 
+        // Note: Poppler 25.2 is certainly not the lowest version where we can
+        // avoid the hack.
+#if !(POPPLER_MAJOR_VERSION > 25 ||                                            \
+      (POPPLER_MAJOR_VERSION == 25 && POPPLER_MINOR_VERSION >= 2))
+#define USE_OPTCONTENT_HACK
+#endif
+
+#ifdef USE_OPTCONTENT_HACK
         /* EVIL: we modify a private member... */
         /* poppler (at least 0.12 and 0.14 versions) don't render correctly */
         /* some PDFs and display an error message 'Could not find a OCG with
@@ -1978,6 +1985,7 @@ CPLErr PDFDataset::ReadPixels(int nReqXOff, int nReqYOff, int nReqXSize,
         OCGs *poOldOCGs = poCatalog->optContent;
         if (!m_bUseOCG)
             poCatalog->optContent = nullptr;
+#endif
         try
         {
             poDoc->displayPageSlice(poSplashOut, m_iPage, m_dfDPI, m_dfDPI, 0,
@@ -1988,14 +1996,19 @@ CPLErr PDFDataset::ReadPixels(int nReqXOff, int nReqYOff, int nReqXSize,
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "PDFDoc::displayPageSlice() failed with %s", e.what());
+
+#ifdef USE_OPTCONTENT_HACK
             /* Restore back */
             poCatalog->optContent = poOldOCGs;
+#endif
             delete poSplashOut;
             return CE_Failure;
         }
 
+#ifdef USE_OPTCONTENT_HACK
         /* Restore back */
         poCatalog->optContent = poOldOCGs;
+#endif
 
         SplashBitmap *poBitmap = poSplashOut->getBitmap();
         if (poBitmap->getWidth() != nReqXSize ||
@@ -2081,7 +2094,7 @@ CPLErr PDFDataset::ReadPixels(int nReqXOff, int nReqYOff, int nReqXSize,
                 osCmd += "\"";
             }
 
-            CPLString osTmpFilenamePrefix = CPLGenerateTempFilename("pdf");
+            CPLString osTmpFilenamePrefix = CPLGenerateTempFilenameSafe("pdf");
             osTmpFilename =
                 CPLSPrintf("%s-%d.ppm", osTmpFilenamePrefix.c_str(), iPage);
             osCmd += CPLSPrintf(" \"%s\"", osTmpFilenamePrefix.c_str());
@@ -2688,8 +2701,7 @@ CPLErr PDFDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
         nYSize == nBufYSize &&
         (nBufXSize > nBandBlockXSize || nBufYSize > nBandBlockYSize) &&
         eBufType == GDT_Byte && nBandCount == nBands &&
-        (nBands >= 3 && panBandMap[0] == 1 && panBandMap[1] == 2 &&
-         panBandMap[2] == 3 && (nBands == 3 || panBandMap[3] == 4)))
+        IsAllBands(nBandCount, panBandMap))
     {
         bReadPixels = TRUE;
 #ifdef HAVE_PODOFO
@@ -3734,9 +3746,14 @@ void PDFDataset::ExploreLayersPoppler(GDALPDFArray *poArray,
                 }
                 else
                     osCurLayer = std::move(osName);
-                // CPLDebug("PDF", "Layer %s", osCurLayer.c_str());
+                    // CPLDebug("PDF", "Layer %s", osCurLayer.c_str());
 
-                OCGs *optContentConfig = m_poDocPoppler->getOptContentConfig();
+#if POPPLER_MAJOR_VERSION > 25 ||                                              \
+    (POPPLER_MAJOR_VERSION == 25 && POPPLER_MINOR_VERSION >= 2)
+                const
+#endif
+                    OCGs *optContentConfig =
+                        m_poDocPoppler->getOptContentConfig();
                 struct Ref r;
                 r.num = poObj->GetRefNum().toInt();
                 r.gen = poObj->GetRefGen();
@@ -3772,11 +3789,19 @@ void PDFDataset::FindLayersPoppler(int iPageOfInterest)
     if (poPages)
         nPageCount = poPages->GetLength();
 
-    OCGs *optContentConfig = m_poDocPoppler->getOptContentConfig();
+#if POPPLER_MAJOR_VERSION > 25 ||                                              \
+    (POPPLER_MAJOR_VERSION == 25 && POPPLER_MINOR_VERSION >= 2)
+    const
+#endif
+        OCGs *optContentConfig = m_poDocPoppler->getOptContentConfig();
     if (optContentConfig == nullptr || !optContentConfig->isOk())
         return;
 
-    Array *array = optContentConfig->getOrderArray();
+#if POPPLER_MAJOR_VERSION > 25 ||                                              \
+    (POPPLER_MAJOR_VERSION == 25 && POPPLER_MINOR_VERSION >= 2)
+    const
+#endif
+        Array *array = optContentConfig->getOrderArray();
     if (array)
     {
         GDALPDFArray *poArray = GDALPDFCreateArray(array);
@@ -3812,7 +3837,11 @@ void PDFDataset::FindLayersPoppler(int iPageOfInterest)
 
 void PDFDataset::TurnLayersOnOffPoppler()
 {
-    OCGs *optContentConfig = m_poDocPoppler->getOptContentConfig();
+#if POPPLER_MAJOR_VERSION > 25 ||                                              \
+    (POPPLER_MAJOR_VERSION == 25 && POPPLER_MINOR_VERSION >= 2)
+    const
+#endif
+        OCGs *optContentConfig = m_poDocPoppler->getOptContentConfig();
     if (optContentConfig == nullptr || !optContentConfig->isOk())
         return;
 
@@ -4024,7 +4053,7 @@ void PDFDataset::ExploreLayersPdfium(GDALPDFArray *poArray, int iPageOfInterest,
             GDALPDFObject *poName = poDict->Get("Name");
             if (poName != nullptr && poName->GetType() == PDFObjectType_String)
             {
-                const std::string osName =
+                std::string osName =
                     PDFSanitizeLayerName(poName->GetString().c_str());
                 // coverity[copy_paste_error]
                 if (!osTopLayer.empty())
@@ -4033,7 +4062,7 @@ void PDFDataset::ExploreLayersPdfium(GDALPDFArray *poArray, int iPageOfInterest,
                         std::string(osTopLayer).append(".").append(osName);
                 }
                 else
-                    osCurLayer = osName;
+                    osCurLayer = std::move(osName);
                 // CPLDebug("PDF", "Layer %s", osCurLayer.c_str());
 
                 const auto oRefPair =
@@ -4762,9 +4791,14 @@ PDFDataset *PDFDataset::Open(GDALOpenInfo *poOpenInfo)
             return nullptr;
         }
 
+#if POPPLER_MAJOR_VERSION > 25 ||                                              \
+    (POPPLER_MAJOR_VERSION == 25 && POPPLER_MINOR_VERSION >= 3)
+        const Object &oPageObj = poPagePoppler->getPageObj();
+#else
         /* Here's the dirty part: this is a private member */
         /* so we had to #define private public to get it ! */
-        Object &oPageObj = poPagePoppler->pageObj;
+        const Object &oPageObj = poPagePoppler->pageObj;
+#endif
         if (!oPageObj.isDict())
         {
             CPLError(CE_Failure, CPLE_AppDefined,
@@ -4773,7 +4807,7 @@ PDFDataset *PDFDataset::Open(GDALOpenInfo *poOpenInfo)
             return nullptr;
         }
 
-        poPageObj = new GDALPDFObjectPoppler(&oPageObj, FALSE);
+        poPageObj = new GDALPDFObjectPoppler(&oPageObj);
         Ref *poPageRef = poCatalogPoppler->getPageRef(iPage);
         if (poPageRef != nullptr)
         {
@@ -7685,6 +7719,90 @@ CPLString PDFSanitizeLayerName(const char *pszName)
 }
 
 /************************************************************************/
+/*                    GDALPDFListLayersAlgorithm                        */
+/************************************************************************/
+
+#ifdef HAVE_PDF_READ_SUPPORT
+
+class GDALPDFListLayersAlgorithm final : public GDALAlgorithm
+{
+  public:
+    GDALPDFListLayersAlgorithm()
+        : GDALAlgorithm("list-layers",
+                        std::string("List layers of a PDF dataset"),
+                        "/drivers/raster/pdf.html")
+    {
+        AddInputDatasetArg(&m_dataset, GDAL_OF_RASTER | GDAL_OF_VECTOR);
+        AddOutputFormatArg(&m_format).SetDefault(m_format).SetChoices("json",
+                                                                      "text");
+        AddOutputStringArg(&m_output);
+    }
+
+  protected:
+    bool RunImpl(GDALProgressFunc, void *) override;
+
+  private:
+    GDALArgDatasetValue m_dataset{};
+    std::string m_format = "json";
+    std::string m_output{};
+};
+
+bool GDALPDFListLayersAlgorithm::RunImpl(GDALProgressFunc, void *)
+{
+    auto poDS = dynamic_cast<PDFDataset *>(m_dataset.GetDatasetRef());
+    if (!poDS)
+    {
+        ReportError(CE_Failure, CPLE_AppDefined, "%s is not a PDF",
+                    m_dataset.GetName().c_str());
+        return false;
+    }
+    if (m_format == "json")
+    {
+        CPLJSonStreamingWriter oWriter(nullptr, nullptr);
+        oWriter.StartArray();
+        for (const auto &[key, value] : cpl::IterateNameValue(
+                 const_cast<CSLConstList>(poDS->GetMetadata("LAYERS"))))
+        {
+            CPL_IGNORE_RET_VAL(key);
+            oWriter.Add(value);
+        }
+        oWriter.EndArray();
+        m_output = oWriter.GetString();
+        m_output += '\n';
+    }
+    else
+    {
+        for (const auto &[key, value] : cpl::IterateNameValue(
+                 const_cast<CSLConstList>(poDS->GetMetadata("LAYERS"))))
+        {
+            CPL_IGNORE_RET_VAL(key);
+            m_output += value;
+            m_output += '\n';
+        }
+    }
+    return true;
+}
+
+/************************************************************************/
+/*                    GDALPDFInstantiateAlgorithm()                     */
+/************************************************************************/
+
+static GDALAlgorithm *
+GDALPDFInstantiateAlgorithm(const std::vector<std::string> &aosPath)
+{
+    if (aosPath.size() == 1 && aosPath[0] == "list-layers")
+    {
+        return std::make_unique<GDALPDFListLayersAlgorithm>().release();
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
+#endif  // HAVE_PDF_READ_SUPPORT
+
+/************************************************************************/
 /*                         GDALRegister_PDF()                           */
 /************************************************************************/
 
@@ -7702,6 +7820,7 @@ void GDALRegister_PDF()
 
 #ifdef HAVE_PDF_READ_SUPPORT
     poDriver->pfnOpen = PDFDataset::OpenWrapper;
+    poDriver->pfnInstantiateAlgorithm = GDALPDFInstantiateAlgorithm;
 #endif  // HAVE_PDF_READ_SUPPORT
 
     poDriver->pfnCreateCopy = GDALPDFCreateCopy;

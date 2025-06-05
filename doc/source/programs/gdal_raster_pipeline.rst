@@ -1,7 +1,7 @@
-.. _gdal_raster_pipeline_subcommand:
+.. _gdal_raster_pipeline:
 
 ================================================================================
-"gdal raster pipeline" sub-command
+``gdal raster pipeline``
 ================================================================================
 
 .. versionadded:: 3.11
@@ -15,91 +15,190 @@
 Synopsis
 --------
 
-.. code-block::
-
-    Usage: gdal raster pipeline [OPTIONS] <PIPELINE>
-
-    Process a raster dataset.
-
-    Positional arguments:
-
-    Common Options:
-      -h, --help    Display help message and exit
-      --json-usage  Display usage as JSON document and exit
-      --progress    Display progress bar
-
-    <PIPELINE> is of the form: read [READ-OPTIONS] ( ! <STEP-NAME> [STEP-OPTIONS] )* ! write [WRITE-OPTIONS]
-
+.. program-output:: gdal raster pipeline --help-doc=main
 
 A pipeline chains several steps, separated with the `!` (quotation mark) character.
-The first step must be ``read``, and the last one ``write``.
+The first step must be ``read``, and the last one ``write``. Each step has its
+own positional or non-positional arguments. Apart from ``read`` and ``write``,
+all other steps can potentially be used several times in a pipeline.
 
 Potential steps are:
 
-* read [OPTIONS] <INPUT>
+* read
 
-.. code-block::
+.. program-output:: gdal raster pipeline --help-doc=read
 
-    Read a raster dataset.
+* aspect
 
-    Positional arguments:
-      -i, --input <INPUT>                                  Input raster dataset [required]
+.. program-output:: gdal raster pipeline --help-doc=aspect
 
-    Advanced Options:
-      --if, --input-format <INPUT-FORMAT>                  Input formats [may be repeated]
-      --oo, --open-option <KEY=VALUE>                      Open options [may be repeated]
+Details for options can be found in :ref:`gdal_raster_aspect`.
 
-* edit [OPTIONS]
+* clip
 
-.. code-block::
+.. program-output:: gdal raster pipeline --help-doc=clip
 
-    Edit a raster dataset.
+Details for options can be found in :ref:`gdal_raster_clip`.
 
-    Options:
-      --crs <CRS>                                          Override CRS (without reprojection)
-      --bbox <EXTENT>                                      Bounding box as xmin,ymin,xmax,ymax
-      --metadata <KEY>=<VALUE>                             Add/update dataset metadata item [may be repeated]
-      --unset-metadata <KEY>                               Remove dataset metadata item [may be repeated]
+* color-map
 
-Details for options can be found in :ref:`gdal_raster_edit_subcommand`.
+.. program-output:: gdal raster pipeline --help-doc=color-map
 
-* reproject [OPTIONS]
+Details for options can be found in :ref:`gdal_raster_color_map`.
 
-.. code-block::
+* color-merge
 
-    Reproject a raster dataset.
+.. program-output:: gdal raster pipeline --help-doc=color-merge
 
-    Options:
-      -s, --src-crs <SRC-CRS>                              Source CRS
-      -d, --dst-crs <DST-CRS>                              Destination CRS
-      -r, --resampling <RESAMPLING>                        Resampling method. RESAMPLING=near|bilinear|cubic|cubicspline|lanczos|average|rms|mode|min|max|med|q1|q3|sum
-      --resolution <xres>,<yres>                           Target resolution (in destination CRS units)
-      --bbox <xmin>,<ymin>,<xmax>,<ymax>                   Target bounding box (in destination CRS units)
-      --target-aligned-pixels                              Round target extent to target resolution
+Details for options can be found in :ref:`gdal_raster_color_merge`.
 
-Details for options can be found in :ref:`gdal_raster_reproject_subcommand`.
+* edit
 
-* write [OPTIONS] <OUTPUT>
+.. program-output:: gdal raster pipeline --help-doc=edit
 
-.. code-block::
+Details for options can be found in :ref:`gdal_raster_edit`.
 
-    Write a raster dataset.
+* fill-nodata
 
-    Positional arguments:
-      -o, --output <OUTPUT>                                Output raster dataset [required]
+.. program-output:: gdal raster pipeline --help-doc=fill-nodata
 
-    Options:
-      -f, --of, --format, --output-format <OUTPUT-FORMAT>  Output format
-      --co, --creation-option <KEY>=<VALUE>                Creation option [may be repeated]
-      --overwrite                                          Whether overwriting existing output is allowed
+Details for options can be found in :ref:`gdal_raster_fill_nodata`.
 
+* hillshade
 
+.. program-output:: gdal raster pipeline --help-doc=hillshade
+
+Details for options can be found in :ref:`gdal_raster_hillshade`.
+
+* pansharpen
+
+.. program-output:: gdal raster pipeline --help-doc=pansharpen
+
+Details for options can be found in :ref:`gdal_raster_pansharpen`.
+
+* proximity
+
+.. program-output:: gdal raster pipeline --help-doc=proximity
+
+Details for options can be found in :ref:`gdal_raster_proximity`.
+
+* reproject
+
+.. program-output:: gdal raster pipeline --help-doc=reproject
+
+Details for options can be found in :ref:`gdal_raster_reproject`.
+
+* resize
+
+.. program-output:: gdal raster pipeline --help-doc=resize
+
+Details for options can be found in :ref:`gdal_raster_resize`.
+
+* rgb-to-palette
+
+.. program-output:: gdal raster pipeline --help-doc=rgb-to-palette
+
+Details for options can be found in :ref:`gdal_raster_rgb_to_palette`.
+
+* roughness
+
+.. program-output:: gdal raster pipeline --help-doc=roughness
+
+Details for options can be found in :ref:`gdal_raster_roughness`.
+
+* scale
+
+.. program-output:: gdal raster pipeline --help-doc=scale
+
+Details for options can be found in :ref:`gdal_raster_scale`.
+
+* select
+
+.. program-output:: gdal raster pipeline --help-doc=select
+
+Details for options can be found in :ref:`gdal_raster_select`.
+
+* set-type
+
+.. program-output:: gdal raster pipeline --help-doc=set-type
+
+Details for options can be found in :ref:`gdal_raster_set_type`.
+
+* sieve
+
+.. program-output:: gdal raster pipeline --help-doc=sieve
+
+Details for options can be found in :ref:`gdal_raster_sieve`.
+
+* slope
+
+.. program-output:: gdal raster pipeline --help-doc=slope
+
+Details for options can be found in :ref:`gdal_raster_slope`.
+
+* tpi
+
+.. program-output:: gdal raster pipeline --help-doc=tpi
+
+Details for options can be found in :ref:`gdal_raster_tpi`.
+
+* tri
+
+.. program-output:: gdal raster pipeline --help-doc=tri
+
+Details for options can be found in :ref:`gdal_raster_tri`.
+
+* unscale
+
+.. program-output:: gdal raster pipeline --help-doc=unscale
+
+Details for options can be found in :ref:`gdal_raster_unscale`.
+
+* viewshed
+
+.. program-output:: gdal raster pipeline --help-doc=viewshed
+
+Details for options can be found in :ref:`gdal_raster_viewshed`.
+
+* write
+
+.. program-output:: gdal raster pipeline --help-doc=write
 
 Description
 -----------
 
 :program:`gdal raster pipeline` can be used to process a raster dataset and
-perform various on-the-fly processing steps.
+perform various processing steps.
+
+GDALG output (on-the-fly / streamed dataset)
+--------------------------------------------
+
+A pipeline can be serialized as a JSON file using the ``GDALG`` output format.
+The resulting file can then be opened as a raster dataset using the
+:ref:`raster.gdalg` driver, and apply the specified pipeline in a on-the-fly /
+streamed way.
+
+The ``command_line`` member of the JSON file should nominally be the whole command
+line without the final ``write`` step, and is what is generated by
+``gdal raster pipeline ! .... ! write out.gdalg.json``.
+
+.. code-block:: json
+
+    {
+        "type": "gdal_streamed_alg",
+        "command_line": "gdal raster pipeline ! read in.tif ! reproject --dst-crs=EPSG:32632"
+    }
+
+The final ``write`` step can be added but if so it must explicitly specify the
+``stream`` output format and a non-significant output dataset name.
+
+.. code-block:: json
+
+    {
+        "type": "gdal_streamed_alg",
+        "command_line": "gdal raster pipeline ! read in.tif ! reproject --dst-crs=EPSG:32632 ! write --output-format=streamed streamed_dataset"
+    }
+
 
 Examples
 --------
@@ -110,3 +209,19 @@ Examples
    .. code-block:: bash
 
         $ gdal raster pipeline --progress ! read in.tif ! reproject --dst-crs=EPSG:32632 ! edit --metadata AUTHOR=EvenR ! write out.tif --overwrite
+
+.. example::
+   :title: Serialize the command of a reprojection of a GeoTIFF file in a GDALG file, and later read it
+
+   .. code-block:: bash
+
+        $ gdal raster pipeline --progress ! read in.tif ! reproject --dst-crs=EPSG:32632 ! write in_epsg_32632.gdalg.json --overwrite
+        $ gdal raster info in_epsg_32632.gdalg.json
+
+
+
+.. below is an allow-list for spelling checker.
+
+.. spelling:word-list::
+    tpi
+    tri

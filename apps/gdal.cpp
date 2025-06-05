@@ -12,10 +12,12 @@
 
 #include "gdalalgorithm.h"
 #include "commonutils.h"
+#include "cpl_error.h"
 
 #include "gdal.h"
 
 #include <cassert>
+#include <utility>
 
 // #define DEBUG_COMPLETION
 
@@ -25,7 +27,8 @@
 
 /** Return on stdout a space-separated list of choices for bash completion */
 static void EmitCompletion(std::unique_ptr<GDALAlgorithm> rootAlg,
-                           const std::vector<std::string> &argsIn)
+                           const std::vector<std::string> &argsIn,
+                           bool lastWordIsComplete)
 {
 #ifdef DEBUG_COMPLETION
     for (size_t i = 0; i < argsIn.size(); ++i)
@@ -61,20 +64,8 @@ static void EmitCompletion(std::unique_ptr<GDALAlgorithm> rootAlg,
         return;
     }
 
-    // Get inner-most algorithm
-    bool showAllOptions = true;
-    auto curAlg = std::move(rootAlg);
-    while (!args.empty() && !args.front().empty() && args.front()[0] != '-')
-    {
-        auto subAlg = curAlg->InstantiateSubAlgorithm(args.front());
-        if (!subAlg)
-            break;
-        showAllOptions = false;
-        args.erase(args.begin());
-        curAlg = std::move(subAlg);
-    }
-
-    for (const auto &choice : curAlg->GetAutoComplete(args, showAllOptions))
+    for (const auto &choice : rootAlg->GetAutoComplete(
+             args, lastWordIsComplete, /*showAllOptions = */ true))
     {
         addSpace();
         ret += CPLString(choice).replaceAll(" ", "\\ ");
@@ -93,43 +84,85 @@ static void EmitCompletion(std::unique_ptr<GDALAlgorithm> rootAlg,
 
 MAIN_START(argc, argv)
 {
+    const bool bIsCompletion = argc >= 3 && strcmp(argv[1], "completion") == 0;
+
+    if (bIsCompletion)
+    {
+        CPLErrorStateBackuper oBackuper(CPLQuietErrorHandler);
+        EarlySetConfigOptions(argc, argv);
+    }
+    else
+    {
+        EarlySetConfigOptions(argc, argv);
+    }
+
     auto alg = GDALGlobalAlgorithmRegistry::GetSingleton().Instantiate(
         GDALGlobalAlgorithmRegistry::ROOT_ALG_NAME);
     assert(alg);
 
-    if (argc >= 3 && strcmp(argv[1], "completion") == 0)
-    {
-        GDALAllRegister();
+    // Register GDAL drivers
+    GDALAllRegister();
 
-        // Process lines like "gdal completion gdal raster"
+    if (bIsCompletion)
+    {
+        const bool bLastWordIsComplete =
+            EQUAL(argv[argc - 1], "last_word_is_complete=true");
+        if (STARTS_WITH(argv[argc - 1], "last_word_is_complete="))
+            --argc;
+
+        // Process lines like "gdal completion gdal raster last_word_is_complete=true|false"
         EmitCompletion(std::move(alg),
-                       std::vector<std::string>(argv + 3, argv + argc));
+                       std::vector<std::string>(argv + 3, argv + argc),
+                       bLastWordIsComplete);
         return 0;
     }
 
-    EarlySetConfigOptions(argc, argv);
+    // Prevent GDALGeneralCmdLineProcessor() to process --format XXX, unless
+    // "gdal" is invoked only with it. Cf #12411
+    std::vector<std::pair<char **, char *>> apOrigFormat;
+    constexpr const char *pszFormatReplaced = "--format-XXXX";
+    if (!(argc == 3 && strcmp(argv[1], "--format") == 0))
+    {
+        for (int i = 1; i < argc; ++i)
+        {
+            if (strcmp(argv[i], "--format") == 0)
+            {
+                apOrigFormat.emplace_back(argv + i, argv[i]);
+                argv[i] = const_cast<char *>(pszFormatReplaced);
+            }
+        }
+    }
 
-    /* -------------------------------------------------------------------- */
-    /*      Register standard GDAL drivers, and process generic GDAL        */
-    /*      command options.                                                */
-    /* -------------------------------------------------------------------- */
-
-    GDALAllRegister();
-
+    // Process generic cmomand options
     argc = GDALGeneralCmdLineProcessor(
         argc, &argv, GDAL_OF_RASTER | GDAL_OF_VECTOR | GDAL_OF_MULTIDIM_RASTER);
+    for (auto &pair : apOrigFormat)
+    {
+        *(pair.first) = pair.second;
+    }
+
     if (argc < 1)
         return (-argc);
 
-    alg->SetCallPath(std::vector<std::string>{argv[0]});
     std::vector<std::string> args;
     for (int i = 1; i < argc; ++i)
-        args.push_back(argv[i]);
+        args.push_back(strcmp(argv[i], pszFormatReplaced) == 0 ? "--format"
+                                                               : argv[i]);
     CSLDestroy(argv);
+
+    alg->SetCalledFromCommandLine();
 
     if (!alg->ParseCommandLineArguments(args))
     {
-        fprintf(stderr, "%s", alg->GetUsageForCLI(true).c_str());
+        if (strstr(CPLGetLastErrorMsg(), "Do you mean") == nullptr &&
+            strstr(CPLGetLastErrorMsg(), "Should be one among") == nullptr &&
+            strstr(CPLGetLastErrorMsg(), "Potential values for argument") ==
+                nullptr &&
+            strstr(CPLGetLastErrorMsg(),
+                   "Single potential value for argument") == nullptr)
+        {
+            fprintf(stderr, "%s", alg->GetUsageForCLI(true).c_str());
+        }
         return 1;
     }
 

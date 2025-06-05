@@ -18,9 +18,7 @@ class DerivedDataset final : public VRTDataset
   public:
     DerivedDataset(int nXSize, int nYSize);
 
-    ~DerivedDataset()
-    {
-    }
+    ~DerivedDataset();
 
     static int Identify(GDALOpenInfo *);
     static GDALDataset *Open(GDALOpenInfo *);
@@ -32,6 +30,8 @@ DerivedDataset::DerivedDataset(int nXSize, int nYSize)
     poDriver = nullptr;
     SetWritable(FALSE);
 }
+
+DerivedDataset::~DerivedDataset() = default;
 
 int DerivedDataset::Identify(GDALOpenInfo *poOpenInfo)
 {
@@ -172,10 +172,10 @@ GDALDataset *DerivedDataset::Open(GDALOpenInfo *poOpenInfo)
     VSIStatBufL sStat;
     if (VSIStatL(odFilename, &sStat) == 0)
     {
-        CPLString path = CPLGetPath(odFilename);
+        CPLString path = CPLGetPathSafe(odFilename);
         CPLString ovrFileName = "DERIVED_DATASET_" + odDerivedName + "_" +
                                 CPLGetFilename(odFilename);
-        CPLString ovrFilePath = CPLFormFilename(path, ovrFileName, nullptr);
+        CPLString ovrFilePath = CPLFormFilenameSafe(path, ovrFileName, nullptr);
 
         poDS->oOvManager.Initialize(poDS, ovrFilePath);
     }

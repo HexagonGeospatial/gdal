@@ -311,7 +311,7 @@ void GDALDefaultOverviews::OverviewScan()
         bool bTryFindAssociatedAuxFile = true;
         if (papszInitSiblingFiles)
         {
-            CPLString osAuxFilename = CPLResetExtension(pszInitName, "aux");
+            CPLString osAuxFilename = CPLResetExtensionSafe(pszInitName, "aux");
             int iSibling = CSLFindString(papszInitSiblingFiles,
                                          CPLGetFilename(osAuxFilename));
             if (iSibling < 0)
@@ -364,10 +364,10 @@ void GDALDefaultOverviews::OverviewScan()
         {
             if (STARTS_WITH_CI(pszProxyOvrFilename, ":::BASE:::"))
             {
-                const CPLString osPath = CPLGetPath(poDS->GetDescription());
+                const CPLString osPath = CPLGetPathSafe(poDS->GetDescription());
 
-                osOvrFilename =
-                    CPLFormFilename(osPath, pszProxyOvrFilename + 10, nullptr);
+                osOvrFilename = CPLFormFilenameSafe(
+                    osPath, pszProxyOvrFilename + 10, nullptr);
             }
             else
             {
@@ -476,7 +476,7 @@ GDALRasterBand *GDALDefaultOverviews::GetOverview(int nBand, int iOverview)
 int GDALOvLevelAdjust(int nOvLevel, int nXSize)
 
 {
-    int nOXSize = (nXSize + nOvLevel - 1) / nOvLevel;
+    int nOXSize = DIV_ROUND_UP(nXSize, nOvLevel);
 
     return static_cast<int>(0.5 + nXSize / static_cast<double>(nOXSize));
 }
@@ -489,14 +489,28 @@ int GDALOvLevelAdjust2(int nOvLevel, int nXSize, int nYSize)
     // in an attempt to behave closer as previous behavior.
     if (nXSize >= nYSize / 2 && !(nXSize < nYSize && nXSize < nOvLevel))
     {
-        const int nOXSize = (nXSize + nOvLevel - 1) / nOvLevel;
+        const int nOXSize = DIV_ROUND_UP(nXSize, nOvLevel);
 
         return static_cast<int>(0.5 + nXSize / static_cast<double>(nOXSize));
     }
 
-    const int nOYSize = (nYSize + nOvLevel - 1) / nOvLevel;
+    const int nOYSize = DIV_ROUND_UP(nYSize, nOvLevel);
 
     return static_cast<int>(0.5 + nYSize / static_cast<double>(nOYSize));
+}
+
+/************************************************************************/
+/*                         GetFloorPowerOfTwo()                         */
+/************************************************************************/
+
+static int GetFloorPowerOfTwo(int n)
+{
+    int p2 = 1;
+    while ((n = n >> 1) > 0)
+    {
+        p2 <<= 1;
+    }
+    return p2;
 }
 
 /************************************************************************/
@@ -511,12 +525,29 @@ int GDALComputeOvFactor(int nOvrXSize, int nRasterXSize, int nOvrYSize,
     // in an attempt to behave closer as previous behavior.
     if (nRasterXSize != 1 && nRasterXSize >= nRasterYSize / 2)
     {
-        return static_cast<int>(0.5 +
-                                nRasterXSize / static_cast<double>(nOvrXSize));
+        const int nVal = static_cast<int>(
+            0.5 + nRasterXSize / static_cast<double>(nOvrXSize));
+        // Try to return a power-of-two value
+        const int nValPowerOfTwo = GetFloorPowerOfTwo(nVal);
+        for (int fact = 1; fact <= 2 && nValPowerOfTwo <= INT_MAX / fact;
+             ++fact)
+        {
+            if (DIV_ROUND_UP(nRasterXSize, fact * nValPowerOfTwo) == nOvrXSize)
+                return fact * nValPowerOfTwo;
+        }
+        return nVal;
     }
 
-    return static_cast<int>(0.5 +
-                            nRasterYSize / static_cast<double>(nOvrYSize));
+    const int nVal =
+        static_cast<int>(0.5 + nRasterYSize / static_cast<double>(nOvrYSize));
+    // Try to return a power-of-two value
+    const int nValPowerOfTwo = GetFloorPowerOfTwo(nVal);
+    for (int fact = 1; fact <= 2 && nValPowerOfTwo <= INT_MAX / fact; ++fact)
+    {
+        if (DIV_ROUND_UP(nRasterYSize, fact * nValPowerOfTwo) == nOvrYSize)
+            return fact * nValPowerOfTwo;
+    }
+    return nVal;
 }
 
 /************************************************************************/
@@ -546,9 +577,10 @@ CPLErr GDALDefaultOverviews::CleanOverviews()
         const bool bUseRRD = CPLTestBool(CPLGetConfigOption("USE_RRD", "NO"));
 
         if (bUseRRD)
-            osOvrFilename = CPLResetExtension(poDS->GetDescription(), "aux");
+            osOvrFilename =
+                CPLResetExtensionSafe(poDS->GetDescription(), "aux");
         else
-            osOvrFilename.Printf("%s.ovr", poDS->GetDescription());
+            osOvrFilename = std::string(poDS->GetDescription()).append(".ovr");
     }
     else
     {
@@ -666,7 +698,8 @@ CPLErr GDALDefaultOverviews::BuildOverviews(
         bOvrIsAux = pszUseRRD && CPLTestBool(pszUseRRD);
         if (bOvrIsAux)
         {
-            osOvrFilename = CPLResetExtension(poDS->GetDescription(), "aux");
+            osOvrFilename =
+                CPLResetExtensionSafe(poDS->GetDescription(), "aux");
 
             VSIStatBufL sStatBuf;
             if (VSIStatExL(osOvrFilename, &sStatBuf, VSI_STAT_EXISTS_FLAG) == 0)
@@ -734,12 +767,8 @@ CPLErr GDALDefaultOverviews::BuildOverviews(
         // If we already have a 1x1 overview and this new one would result
         // in it too, then don't create it.
         if (bFoundSinglePixelOverview &&
-            (poBand->GetXSize() + panOverviewList[i] - 1) /
-                    panOverviewList[i] ==
-                1 &&
-            (poBand->GetYSize() + panOverviewList[i] - 1) /
-                    panOverviewList[i] ==
-                1)
+            DIV_ROUND_UP(poBand->GetXSize(), panOverviewList[i]) == 1 &&
+            DIV_ROUND_UP(poBand->GetYSize(), panOverviewList[i]) == 1)
         {
             abValidLevel[i] = false;
             continue;
@@ -797,12 +826,8 @@ CPLErr GDALDefaultOverviews::BuildOverviews(
                 panNewOverviewList[nNewOverviews++] = panOverviewList[i];
             }
 
-            if ((poBand->GetXSize() + panOverviewList[i] - 1) /
-                        panOverviewList[i] ==
-                    1 &&
-                (poBand->GetYSize() + panOverviewList[i] - 1) /
-                        panOverviewList[i] ==
-                    1)
+            if (DIV_ROUND_UP(poBand->GetXSize(), panOverviewList[i]) == 1 &&
+                DIV_ROUND_UP(poBand->GetYSize(), panOverviewList[i]) == 1)
             {
                 bFoundSinglePixelOverview = true;
             }
@@ -830,9 +855,16 @@ CPLErr GDALDefaultOverviews::BuildOverviews(
         0, (HaveMaskFile() && poMaskDS) ? double(nBands) / (nBands + 1) : 1,
         pfnProgress, pProgressData);
 
+    const auto AvoidZero = [](double x)
+    {
+        if (x == 0)
+            return 1.0;
+        return x;
+    };
+
     void *pScaledProgress = GDALCreateScaledProgress(
-        0, dfAreaNewOverviews / dfAreaRefreshedOverviews, GDALScaledProgress,
-        pScaledOverviewWithoutMask);
+        0, dfAreaNewOverviews / AvoidZero(dfAreaRefreshedOverviews),
+        GDALScaledProgress, pScaledOverviewWithoutMask);
     if (bOvrIsAux)
     {
 #ifdef NO_HFA_SUPPORT
@@ -973,7 +1005,7 @@ CPLErr GDALDefaultOverviews::BuildOverviews(
         if (nNewOverviews > 0)
         {
             const double dfOffset =
-                dfAreaNewOverviews / dfAreaRefreshedOverviews;
+                dfAreaNewOverviews / AvoidZero(dfAreaRefreshedOverviews);
             const double dfScale = 1.0 - dfOffset;
             pScaledProgress = GDALCreateScaledProgress(
                 dfOffset + dfScale * iBand / nBands,
@@ -1305,7 +1337,7 @@ int GDALDefaultOverviews::HaveMaskFile(char **papszSiblingFiles,
         pszBasename = poDS->GetDescription();
 
     // Don't bother checking for masks of masks.
-    if (EQUAL(CPLGetExtension(pszBasename), "msk"))
+    if (EQUAL(CPLGetExtensionSafe(pszBasename).c_str(), "msk"))
         return FALSE;
 
     if (!GDALCanFileAcceptSidecarFile(pszBasename))

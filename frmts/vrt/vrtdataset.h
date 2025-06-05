@@ -190,6 +190,11 @@ class CPL_DLL VRTSource
         return false;
     }
 
+    virtual const CPLString &GetName() const
+    {
+        return m_osName;
+    }
+
     /** Returns a string with the VRTSource class type.
      * This method must be implemented in all subclasses
      */
@@ -199,6 +204,9 @@ class CPL_DLL VRTSource
     {
         return CE_None;
     }
+
+  protected:
+    CPLString m_osName{};
 };
 
 typedef VRTSource *(*VRTSourceParser)(const CPLXMLNode *, const char *,
@@ -237,6 +245,7 @@ class CPL_DLL VRTDataset CPL_NON_FINAL : public GDALDataset
     friend struct VRTFlushCacheStruct<VRTProcessedDataset>;
     friend class VRTSourcedRasterBand;
     friend class VRTSimpleSource;
+    friend struct VRTSourcedRasterBandRasterIOJob;
     friend VRTDatasetH CPL_STDCALL VRTCreate(int nXSize, int nYSize);
 
     std::vector<gdal::GCP> m_asGCPs{};
@@ -281,11 +290,6 @@ class CPL_DLL VRTDataset CPL_NON_FINAL : public GDALDataset
 
     bool m_bMultiThreadedRasterIOLastUsed = false;
 
-    static constexpr const char *const apszSpecialSyntax[] = {
-        "NITF_IM:{ANY}:{FILENAME}", "PDF:{ANY}:{FILENAME}",
-        "RASTERLITE:{FILENAME},{ANY}", "TILEDB:\"{FILENAME}\":{ANY}",
-        "TILEDB:{FILENAME}:{ANY}"};
-
     VRTRasterBand *InitBand(const char *pszSubclass, int nBand,
                             bool bAllowPansharpenedOrProcessed);
     static GDALDataset *OpenVRTProtocol(const char *pszSpec);
@@ -295,33 +299,7 @@ class CPL_DLL VRTDataset CPL_NON_FINAL : public GDALDataset
                            GDALDataset *&poSrcDataset, int &nSrcXOff,
                            int &nSrcYOff);
 
-    /** Structure used to declare a threaded job to satisfy IRasterIO()
-     * on a given source.
-     */
-    struct RasterIOJob
-    {
-        std::atomic<int> *pnCompletedJobs = nullptr;
-        std::atomic<bool> *pbSuccess = nullptr;
-
-        GDALDataType eVRTBandDataType = GDT_Unknown;
-        int nXOff = 0;
-        int nYOff = 0;
-        int nXSize = 0;
-        int nYSize = 0;
-        void *pData = nullptr;
-        int nBufXSize = 0;
-        int nBufYSize = 0;
-        int nBandCount = 0;
-        BANDMAP_TYPE panBandMap = nullptr;
-        GDALDataType eBufType = GDT_Unknown;
-        GSpacing nPixelSpace = 0;
-        GSpacing nLineSpace = 0;
-        GSpacing nBandSpace = 0;
-        GDALRasterIOExtraArg *psExtraArg = nullptr;
-        VRTSimpleSource *poSource = nullptr;
-
-        static void Func(void *pData);
-    };
+    static bool IsDefaultBlockSize(int nBlockSize, int nDimension);
 
     CPL_DISALLOW_COPY_ASSIGN(VRTDataset)
 
@@ -455,20 +433,20 @@ class CPL_DLL VRTDataset CPL_NON_FINAL : public GDALDataset
 
     static int Identify(GDALOpenInfo *);
     static GDALDataset *Open(GDALOpenInfo *);
-    static VRTDataset *OpenXML(const char *, const char * = nullptr,
-                               GDALAccess eAccess = GA_ReadOnly);
+    static std::unique_ptr<VRTDataset>
+    OpenXML(const char *, const char * = nullptr,
+            GDALAccess eAccess = GA_ReadOnly);
     static GDALDataset *Create(const char *pszName, int nXSize, int nYSize,
                                int nBands, GDALDataType eType,
                                char **papszOptions);
+    static std::unique_ptr<VRTDataset>
+    CreateVRTDataset(const char *pszName, int nXSize, int nYSize, int nBands,
+                     GDALDataType eType, CSLConstList papszOptions);
     static GDALDataset *
     CreateMultiDimensional(const char *pszFilename,
                            CSLConstList papszRootGroupOptions,
                            CSLConstList papszOptions);
     static CPLErr Delete(const char *pszFilename);
-
-    static std::string BuildSourceFilename(const char *pszFilename,
-                                           const char *pszVRTPath,
-                                           bool bRelativeToVRT);
 
     static int GetNumThreads(GDALDataset *poDS);
 };
@@ -558,9 +536,10 @@ class VRTPansharpenedDataset final : public VRTDataset
 {
     friend class VRTPansharpenedRasterBand;
 
-    GDALPansharpenOperation *m_poPansharpener;
+    std::unique_ptr<GDALPansharpenOperation> m_poPansharpener{};
     VRTPansharpenedDataset *m_poMainDataset;
-    std::vector<VRTPansharpenedDataset *> m_apoOverviewDatasets{};
+    std::vector<std::unique_ptr<VRTPansharpenedDataset>>
+        m_apoOverviewDatasets{};
     // Map from absolute to relative.
     std::map<CPLString, CPLString> m_oMapToRelativeFilenames{};
 
@@ -576,7 +555,8 @@ class VRTPansharpenedDataset final : public VRTDataset
     GTAdjustment m_eGTAdjustment;
     int m_bNoDataDisabled;
 
-    std::vector<GDALDataset *> m_apoDatasetsToClose{};
+    std::vector<std::unique_ptr<GDALDataset, GDALDatasetUniquePtrReleaser>>
+        m_apoDatasetsToReleaseRef{};
 
     CPL_DISALLOW_COPY_ASSIGN(VRTPansharpenedDataset)
 
@@ -614,7 +594,7 @@ class VRTPansharpenedDataset final : public VRTDataset
 
     GDALPansharpenOperation *GetPansharpener()
     {
-        return m_poPansharpener;
+        return m_poPansharpener.get();
     }
 };
 
@@ -723,6 +703,9 @@ class VRTProcessedDataset final : public VRTDataset
 
     //! Directory of the VRT
     std::string m_osVRTPath{};
+
+    //! Source of source dataset generated with GDALTranslate
+    std::unique_ptr<GDALDataset> m_poVRTSrcDS{};
 
     //! Source dataset
     std::unique_ptr<GDALDataset> m_poSrcDS{};
@@ -947,32 +930,6 @@ class CPL_DLL VRTSourcedRasterBand CPL_NON_FINAL : public VRTRasterBand
     bool IsMosaicOfNonOverlappingSimpleSourcesOfFullRasterNoResAndTypeChange(
         bool bAllowMaxValAdjustment) const;
 
-    /** Structure used to declare a threaded job to satisfy IRasterIO()
-     * on a given source.
-     */
-    struct RasterIOJob
-    {
-        std::atomic<int> *pnCompletedJobs = nullptr;
-        std::atomic<bool> *pbSuccess = nullptr;
-        VRTDataset::QueueWorkingStates *poQueueWorkingStates = nullptr;
-
-        GDALDataType eVRTBandDataType = GDT_Unknown;
-        int nXOff = 0;
-        int nYOff = 0;
-        int nXSize = 0;
-        int nYSize = 0;
-        void *pData = nullptr;
-        int nBufXSize = 0;
-        int nBufYSize = 0;
-        GDALDataType eBufType = GDT_Unknown;
-        GSpacing nPixelSpace = 0;
-        GSpacing nLineSpace = 0;
-        GDALRasterIOExtraArg *psExtraArg = nullptr;
-        VRTSimpleSource *poSource = nullptr;
-
-        static void Func(void *pData);
-    };
-
     CPL_DISALLOW_COPY_ASSIGN(VRTSourcedRasterBand)
 
   protected:
@@ -1132,6 +1089,9 @@ class CPL_DLL VRTWarpedRasterBand final : public VRTRasterBand
     virtual int GetOverviewCount() override;
     virtual GDALRasterBand *GetOverview(int) override;
 
+    bool
+    EmitErrorMessageIfWriteNotSupported(const char *pszCaller) const override;
+
   private:
     int m_nIRasterIOCounter =
         0;  //! Protects against infinite recursion inside IRasterIO()
@@ -1217,12 +1177,13 @@ class CPL_DLL VRTDerivedRasterBand CPL_NON_FINAL : public VRTSourcedRasterBand
     bool InitializePython();
     CPLErr
     GetPixelFunctionArguments(const CPLString &,
+                              const std::vector<int> &anMapBufferIdxToSourceIdx,
                               std::vector<std::pair<CPLString, CPLString>> &);
 
     CPL_DISALLOW_COPY_ASSIGN(VRTDerivedRasterBand)
 
   public:
-    char *pszFuncName;
+    CPLString osFuncName{};
     GDALDataType eSourceTransferType;
 
     using PixelFunc =
@@ -1252,7 +1213,11 @@ class CPL_DLL VRTDerivedRasterBand CPL_NON_FINAL : public VRTSourcedRasterBand
     static const std::pair<PixelFunc, std::string> *
     GetPixelFunction(const char *pszFuncNameIn);
 
+    static std::vector<std::string> GetPixelFunctionNames();
+
     void SetPixelFunctionName(const char *pszFuncNameIn);
+    void AddPixelFunctionArgument(const char *pszArg, const char *pszValue);
+    void SetSkipNonContributingSources(bool bSkip);
     void SetSourceTransferType(GDALDataType eDataType);
     void SetPixelFunctionLanguage(const char *pszLanguage);
 
@@ -1336,6 +1301,7 @@ class VRTDriver final : public GDALDriver
 {
     CPL_DISALLOW_COPY_ASSIGN(VRTDriver)
 
+    std::mutex m_oMutex{};
     std::map<std::string, VRTSourceParser> m_oMapSourceParser{};
 
   public:
@@ -1382,6 +1348,7 @@ class CPL_DLL VRTSimpleSource CPL_NON_FINAL : public VRTSource
 
   protected:
     friend class VRTSourcedRasterBand;
+    friend class VRTDerivedRasterBand;
     friend class VRTDataset;
     friend class GDALTileIndexDataset;
     friend class GDALTileIndexBand;
@@ -1475,6 +1442,9 @@ class CPL_DLL VRTSimpleSource CPL_NON_FINAL : public VRTSource
     {
         return m_osSrcDSName;
     }
+
+    // Must be called after SetSrcBand()
+    void SetSourceDatasetName(const char *pszFilename, bool bRelativeToVRT);
 
     const CPLString &GetResampling() const
     {
@@ -1664,6 +1634,7 @@ class CPL_DLL VRTComplexSource CPL_NON_FINAL : public VRTSimpleSource
     double m_dfDstMin = 0;
     double m_dfDstMax = 0;
     double m_dfExponent = 1;
+    bool m_bClip = true;  // Only taken into account for non-linear scaling
 
     int m_nColorTableComponent = 0;
 
@@ -1738,7 +1709,7 @@ class CPL_DLL VRTComplexSource CPL_NON_FINAL : public VRTSimpleSource
 
     void SetLinearScaling(double dfOffset, double dfScale);
     void SetPowerScaling(double dfExponent, double dfSrcMin, double dfSrcMax,
-                         double dfDstMin, double dfDstMax);
+                         double dfDstMin, double dfDstMax, bool bClip = true);
     void SetColorTableComponent(int nComponent);
 };
 
@@ -2139,7 +2110,7 @@ class VRTAttribute final : public GDALAttribute
 class VRTMDArraySource
 {
   public:
-    virtual ~VRTMDArraySource() = default;
+    virtual ~VRTMDArraySource();
 
     virtual bool Read(const GUInt64 *arrayStartIdx, const size_t *count,
                       const GInt64 *arrayStep, const GPtrDiff_t *bufferStride,

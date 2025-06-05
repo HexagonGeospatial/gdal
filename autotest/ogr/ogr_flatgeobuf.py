@@ -968,7 +968,7 @@ def test_ogr_flatgeobuf_invalid_output_filename():
     ids=["regular", "no_spatial_index"],
 )
 def test_ogr_flatgeobuf_arrow_stream_numpy(layer_creation_options):
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     numpy = pytest.importorskip("numpy")
 
     ds = ogr.GetDriverByName("FlatGeoBuf").CreateDataSource("/vsimem/test.fgb")
@@ -1260,7 +1260,7 @@ def test_ogr_flatgeobuf_title_description_metadata(tmp_vsimem):
 @gdaltest.enable_exceptions()
 def test_ogr_flatgeobuf_write_arrow(tmp_vsimem):
 
-    ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+    ds = ogr.GetDriverByName("MEM").CreateDataSource("")
     src_lyr = ds.CreateLayer("src_lyr")
 
     field_def = ogr.FieldDefn("field_bool", ogr.OFTInteger)
@@ -1446,7 +1446,7 @@ def test_ogr_flatgeobuf_sql_arrow(tmp_vsimem):
         with ds.ExecuteSQL("SELECT 'a' FROM test") as lyr:
             assert not lyr.TestCapability(ogr.OLCFastGetArrowStream)
 
-            tmp_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+            tmp_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
             tmp_lyr = tmp_ds.CreateLayer("test")
             tmp_lyr.WriteArrow(lyr)
             f = tmp_lyr.GetNextFeature()
@@ -1504,7 +1504,7 @@ def test_ogr_flatgeobuf_sql_arrow(tmp_vsimem):
         with ds.ExecuteSQL(sql) as lyr:
             assert lyr.TestCapability(ogr.OLCFastGetArrowStream)
 
-            tmp_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+            tmp_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
             tmp_lyr = tmp_ds.CreateLayer("test")
             tmp_lyr.WriteArrow(lyr)
             assert tmp_lyr.GetLayerDefn().GetFieldCount() == 2
@@ -1524,7 +1524,7 @@ def test_ogr_flatgeobuf_sql_arrow(tmp_vsimem):
         with ds.ExecuteSQL(sql) as lyr:
             assert lyr.TestCapability(ogr.OLCFastGetArrowStream)
 
-            tmp_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+            tmp_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
             tmp_lyr = tmp_ds.CreateLayer("test")
             tmp_lyr.WriteArrow(lyr)
             assert tmp_lyr.GetLayerDefn().GetFieldCount() == 1
@@ -1537,7 +1537,7 @@ def test_ogr_flatgeobuf_sql_arrow(tmp_vsimem):
         with ds.ExecuteSQL(sql) as lyr:
             assert lyr.TestCapability(ogr.OLCFastGetArrowStream)
 
-            tmp_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+            tmp_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
             tmp_lyr = tmp_ds.CreateLayer("test")
             tmp_lyr.WriteArrow(lyr)
             assert tmp_lyr.GetFeatureCount() == 1
@@ -1551,7 +1551,7 @@ def test_ogr_flatgeobuf_sql_arrow(tmp_vsimem):
             lyr.SetSpatialFilterRect(1, 2, 1, 2)
             assert lyr.TestCapability(ogr.OLCFastGetArrowStream)
 
-            tmp_ds = ogr.GetDriverByName("Memory").CreateDataSource("")
+            tmp_ds = ogr.GetDriverByName("MEM").CreateDataSource("")
             tmp_lyr = tmp_ds.CreateLayer("test")
             tmp_lyr.WriteArrow(lyr)
             assert tmp_lyr.GetLayerDefn().GetFieldCount() == 2
@@ -1570,7 +1570,7 @@ def test_ogr_flatgeobuf_sql_arrow(tmp_vsimem):
 
 
 def test_ogr_flatgeobuf_arrow_stream_numpy_datetime_as_string(tmp_vsimem):
-    pytest.importorskip("osgeo.gdal_array")
+    gdaltest.importorskip_gdal_array()
     pytest.importorskip("numpy")
 
     filename = str(tmp_vsimem / "datetime_as_string.fgb")

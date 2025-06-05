@@ -41,17 +41,6 @@ from osgeo_utils.auxiliary.util import enable_gdal_exceptions
 
 Options = Any
 
-try:
-    import numpy
-    from PIL import Image
-
-    import osgeo.gdal_array as gdalarray
-
-    numpy_available = True
-except ImportError:
-    # 'antialias' resampling is not available
-    numpy_available = False
-
 __version__ = gdal.__version__
 
 resampling_list = (
@@ -87,7 +76,7 @@ def isfile(path):
     """Wrapper for os.path.isfile() that can work with /vsi files too"""
     if path.startswith("/vsi"):
         stat_res = gdal.VSIStatL(path)
-        if stat is None:
+        if stat_res is None:
             return False
         return stat.S_ISREG(stat_res.mode)
     else:
@@ -907,40 +896,6 @@ def scale_query_to_tile(dsquery, dstile, options, tilefilename=""):
                     "RegenerateOverview() failed on %s, error %d" % (tilefilename, res)
                 )
 
-    elif options.resampling == "antialias" and numpy_available:
-
-        if tilefilename.startswith("/vsi"):
-            raise Exception(
-                "Outputting to /vsi file systems with antialias mode is not supported"
-            )
-
-        # Scaling by PIL (Python Imaging Library) - improved Lanczos
-        array = numpy.zeros((querysize, querysize, tilebands), numpy.uint8)
-        for i in range(tilebands):
-            array[:, :, i] = gdalarray.BandReadAsArray(
-                dsquery.GetRasterBand(i + 1), 0, 0, querysize, querysize
-            )
-        if options.tiledriver == "JPEG" and tilebands == 2:
-            im = Image.fromarray(array[:, :, 0], "L")
-        elif options.tiledriver == "JPEG" and tilebands == 4:
-            im = Image.fromarray(array[:, :, 0:3], "RGB")
-        else:
-            im = Image.fromarray(array, "RGBA")
-        im1 = im.resize((tile_size, tile_size), Image.LANCZOS)
-        if os.path.exists(tilefilename):
-            im0 = Image.open(tilefilename)
-            im1 = Image.composite(im1, im0, im1)
-
-        params = {}
-        if options.tiledriver == "WEBP":
-            if options.webp_lossless:
-                params["lossless"] = True
-            else:
-                params["quality"] = options.webp_quality
-        elif options.tiledriver == "JPEG":
-            params["quality"] = options.jpeg_quality
-        im1.save(tilefilename, options.tiledriver, **params)
-
     else:
 
         if options.resampling == "near":
@@ -1437,21 +1392,18 @@ def create_base_tile(tile_job_info: "TileJobInfo", tile_detail: "TileDetail") ->
 
     del data
 
-    if options.resampling != "antialias":
-        # Write a copy of tile to png/jpg
-        out_drv.CreateCopy(
-            tilefilename,
-            dstile
-            if tile_job_info.tile_driver != "JPEG"
-            else remove_alpha_band(dstile),
-            strict=0,
-            options=_get_creation_options(options),
-        )
+    # Write a copy of tile to png/jpg
+    out_drv.CreateCopy(
+        tilefilename,
+        dstile if tile_job_info.tile_driver != "JPEG" else remove_alpha_band(dstile),
+        strict=0,
+        options=_get_creation_options(options),
+    )
 
-        # Remove useless side car file
-        aux_xml = tilefilename + ".aux.xml"
-        if gdal.VSIStatL(aux_xml) is not None:
-            gdal.Unlink(aux_xml)
+    # Remove useless side car file
+    aux_xml = tilefilename + ".aux.xml"
+    if gdal.VSIStatL(aux_xml) is not None:
+        gdal.Unlink(aux_xml)
 
     del dstile
 
@@ -1463,14 +1415,14 @@ def create_base_tile(tile_job_info: "TileJobInfo", tile_detail: "TileDetail") ->
                 output,
                 str(tz),
                 str(tx),
-                "%d.kml" % GDAL2Tiles.getYTile(ty, tz, options),
+                "%d.kml" % ty,
             )
             if not options.resume or not isfile(kmlfilename):
                 with my_open(kmlfilename, "wb") as f:
                     f.write(
                         generate_kml(
                             tx,
-                            ty,
+                            tile_detail.ty_tms,
                             tz,
                             tile_job_info.tile_extension,
                             tile_job_info.tile_size,
@@ -1658,21 +1610,18 @@ def create_overview_tile(
         return
 
     scale_query_to_tile(dsquery, dstile, options, tilefilename=tilefilename)
+
     # Write a copy of tile to png/jpg
-    if options.resampling != "antialias":
-        # Write a copy of tile to png/jpg
-        out_driver.CreateCopy(
-            tilefilename,
-            dstile
-            if tile_job_info.tile_driver != "JPEG"
-            else remove_alpha_band(dstile),
-            strict=0,
-            options=_get_creation_options(options),
-        )
-        # Remove useless side car file
-        aux_xml = tilefilename + ".aux.xml"
-        if gdal.VSIStatL(aux_xml) is not None:
-            gdal.Unlink(aux_xml)
+    out_driver.CreateCopy(
+        tilefilename,
+        dstile if tile_job_info.tile_driver != "JPEG" else remove_alpha_band(dstile),
+        strict=0,
+        options=_get_creation_options(options),
+    )
+    # Remove useless side car file
+    aux_xml = tilefilename + ".aux.xml"
+    if gdal.VSIStatL(aux_xml) is not None:
+        gdal.Unlink(aux_xml)
 
     if options.verbose:
         logger.debug(
@@ -2091,11 +2040,11 @@ def options_post_processing(
         options.url += os.path.basename(out_path) + "/"
 
     # Supported options
-    if options.resampling == "antialias" and not numpy_available:
-        exit_with_error(
-            "'antialias' resampling algorithm is not available.",
-            "Install PIL (Python Imaging Library) and numpy.",
+    if options.resampling == "antialias":
+        print(
+            "Use of --resampling antialias is deprecated. It is now an equivalent of lanczos"
         )
+        options.resampling = "lanczos"
 
     if options.tiledriver == "WEBP":
         if gdal.GetDriverByName(options.tiledriver) is None:
@@ -2126,6 +2075,7 @@ def options_post_processing(
 class TileDetail:
     tx = 0
     ty = 0
+    ty_tms = 0
     tz = 0
     rx = 0
     ry = 0
@@ -2373,15 +2323,19 @@ class GDAL2Tiles:
                 self.warped_input_dataset = reproject_dataset(
                     input_dataset, self.in_srs, self.out_srs
                 )
-
-                if in_nodata:
-                    self.warped_input_dataset = update_no_data_values(
-                        self.warped_input_dataset, in_nodata, options=self.options
-                    )
-                else:
+                if not in_nodata:
                     self.warped_input_dataset = update_alpha_value_for_non_alpha_inputs(
                         self.warped_input_dataset, options=self.options
                     )
+            else:
+                self.warped_input_dataset = gdal.GetDriverByName("VRT").CreateCopy(
+                    "", input_dataset
+                )
+
+            if in_nodata:
+                self.warped_input_dataset = update_no_data_values(
+                    self.warped_input_dataset, in_nodata, options=self.options
+                )
 
             if self.warped_input_dataset and self.options.verbose:
                 logger.debug(
@@ -2587,11 +2541,10 @@ class GDAL2Tiles:
                 # one, generate an oversample temporary VRT file, and tile from
                 # it
                 oversample_factor = 1 << (self.tmaxz - self.nativezoom)
-                if self.options.resampling in ("average", "antialias"):
-                    resampleAlg = "average"
-                elif self.options.resampling in (
+                if self.options.resampling in (
                     "near",
                     "bilinear",
+                    "average",
                     "cubic",
                     "cubicspline",
                     "lanczos",
@@ -2957,6 +2910,7 @@ class GDAL2Tiles:
                 tile_details.append(
                     TileDetail(
                         tx=tx,
+                        ty_tms=ty,
                         ty=ytile,
                         tz=tz,
                         rx=rx,
@@ -3983,7 +3937,7 @@ function ExtDraggableObject(src, opt_drag) {
             zoom: %(beginzoom)s,
             minZoom: %(minzoom)s,
             maxZoom: %(maxzoom)s,
-            layers: [osm]
+            layers: [osm, lyr]
         });
 
         var basemaps = {"OpenStreetMap": osm, "CartoDB Positron": cartodb, "Without background": white}
@@ -4409,6 +4363,7 @@ function ExtDraggableObject(src, opt_drag) {
         else:
             tiling_scheme = self.options.profile
 
+        s = s.replace("${TITLE}", gdal.EscapeString(self.options.title, gdal.CPLES_XML))
         s = s.replace("${TILING_SCHEME}", tiling_scheme)
         s = s.replace("${URL}", self.options.url if self.options.url else "./")
         tminx, tminy, tmaxx, tmaxy = self.tminmax[self.tmaxz]

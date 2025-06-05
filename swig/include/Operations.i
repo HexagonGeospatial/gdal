@@ -208,8 +208,9 @@ int  RasterizeLayer( GDALDatasetShadow *dataset,
         return CE_Failure;
     }
 
+    OGRLayerH hLayer = (OGRLayerH)layer;
     eErr = GDALRasterizeLayers( dataset, bands, band_list,
-                                1, &layer,
+                                1, &hLayer,
                                 NULL, NULL,
                                 burn_values_list, options,
                                 callback, callback_data );
@@ -252,8 +253,9 @@ int  RasterizeLayer( GDALDatasetShadow *dataset,
         return CE_Failure;
     }
 
+    OGRLayerH hLayer = (OGRLayerH)layer;
     eErr = GDALRasterizeLayers( dataset, bands, band_list,
-                                1, &layer,
+                                1, &hLayer,
                                 (GDALTransformerFunc) pfnTransformer,
                                 pTransformArg,
                                 burn_values_list, options,
@@ -707,6 +709,9 @@ GDALDatasetShadow*  CreatePansharpenedVRT( const char* pszXML,
 /*                             Transformer                              */
 /************************************************************************/
 
+%rename (GetTranformerOptionList) GDALGetGenImgProjTranformerOptionList;
+const char* GDALGetGenImgProjTranformerOptionList();
+
 #ifndef SWIGPYTHON
 %rename (Transformer) GDALTransformerInfoShadow;
 #endif
@@ -823,6 +828,8 @@ public:
 %}
 #endif
 
+%rename (WarpGetOptionList) GDALWarpGetOptionList;
+const char* GDALWarpGetOptionList();
 
 /************************************************************************/
 /*                        SuggestedWarpOutput()                         */

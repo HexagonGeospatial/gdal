@@ -42,15 +42,6 @@
 
 // #define DEBUG_VERBOSE 1
 
-// See #5459
-#ifdef isnan
-#define HAS_ISNAN_MACRO
-#endif
-#include <algorithm>
-#if defined(HAS_ISNAN_MACRO) && !defined(isnan)
-#define isnan std::isnan
-#endif
-
 /************************************************************************/
 /* ==================================================================== */
 /*                             VRTSource                                */
@@ -235,6 +226,19 @@ void VRTSimpleSource::SetSrcBand(GDALRasterBand *poNewSrcBand)
 }
 
 /************************************************************************/
+/*                      SetSourceDatasetName()                          */
+/************************************************************************/
+
+void VRTSimpleSource::SetSourceDatasetName(const char *pszFilename,
+                                           bool bRelativeToVRT)
+{
+    CPLAssert(m_nBand >= 0);
+    m_osSrcDSName = pszFilename;
+    m_osSourceFileNameOri = pszFilename;
+    m_bRelativeToVRTOri = bRelativeToVRT;
+}
+
+/************************************************************************/
 /*                          SetSrcMaskBand()                            */
 /************************************************************************/
 
@@ -379,7 +383,8 @@ void VRTSimpleSource::AddSourceFilenameNode(const char *pszVRTPath,
         }
         else
         {
-            for (const char *pszSyntax : VRTDataset::apszSpecialSyntax)
+            for (const char *pszSyntax :
+                 GDALDataset::apszSpecialSubDatasetSyntax)
             {
                 CPLString osPrefix(pszSyntax);
                 osPrefix.resize(strchr(pszSyntax, ':') - pszSyntax + 1);
@@ -439,15 +444,15 @@ void VRTSimpleSource::AddSourceFilenameNode(const char *pszVRTPath,
             !CPLIsFilenameRelative(osVRTFilename.c_str()) &&
             pszCurDir != nullptr)
         {
-            osSourceDataset =
-                CPLFormFilename(pszCurDir, osSourceDataset.c_str(), nullptr);
+            osSourceDataset = CPLFormFilenameSafe(
+                pszCurDir, osSourceDataset.c_str(), nullptr);
         }
         else if (!CPLIsFilenameRelative(osSourceDataset.c_str()) &&
                  CPLIsFilenameRelative(osVRTFilename.c_str()) &&
                  pszCurDir != nullptr)
         {
             osVRTFilename =
-                CPLFormFilename(pszCurDir, osVRTFilename.c_str(), nullptr);
+                CPLFormFilenameSafe(pszCurDir, osVRTFilename.c_str(), nullptr);
         }
         CPLFree(pszCurDir);
         osSourceFilename = CPLExtractRelativePath(
@@ -487,6 +492,11 @@ CPLXMLNode *VRTSimpleSource::SerializeToXML(const char *pszVRTPath)
     {
         CPLCreateXMLNode(CPLCreateXMLNode(psSrc, CXT_Attribute, "resampling"),
                          CXT_Text, m_osResampling.c_str());
+    }
+
+    if (!m_osName.empty())
+    {
+        CPLAddXMLAttributeAndValue(psSrc, "name", m_osName);
     }
 
     if (m_bSrcDSNameFromVRT)
@@ -568,6 +578,7 @@ CPLErr VRTSimpleSource::XMLInit(const CPLXMLNode *psSrc, const char *pszVRTPath,
     m_poMapSharedSources = &oMapSharedSources;
 
     m_osResampling = CPLGetXMLValue(psSrc, "resampling", "");
+    m_osName = CPLGetXMLValue(psSrc, "name", "");
 
     /* -------------------------------------------------------------------- */
     /*      Prepare filename.                                               */
@@ -605,7 +616,7 @@ CPLErr VRTSimpleSource::XMLInit(const CPLXMLNode *psSrc, const char *pszVRTPath,
             m_nExplicitSharedStatus = CPLTestBool(pszShared);
         }
 
-        m_osSrcDSName = VRTDataset::BuildSourceFilename(
+        m_osSrcDSName = GDALDataset::BuildFilename(
             pszFilename, pszVRTPath, CPL_TO_BOOL(m_bRelativeToVRTOri));
     }
     else if (psSourceVRTDataset)
@@ -889,7 +900,6 @@ bool VRTSimpleSource::IsSameExceptBandNumber(
            m_dfDstYOff == poOtherSource->m_dfDstYOff &&
            m_dfDstXSize == poOtherSource->m_dfDstXSize &&
            m_dfDstYSize == poOtherSource->m_dfDstYSize &&
-           !m_osSrcDSName.empty() &&
            m_osSrcDSName == poOtherSource->m_osSrcDSName;
 }
 
@@ -1358,6 +1368,10 @@ CPLErr VRTSimpleSource::RasterIO(GDALDataType eVRTBandDataType, int nXOff,
     {
         psExtraArg->pfnProgress = psExtraArgIn->pfnProgress;
         psExtraArg->pProgressData = psExtraArgIn->pProgressData;
+        if (psExtraArgIn->nVersion >= 2)
+        {
+            psExtraArg->bUseOnlyThisScale = psExtraArgIn->bUseOnlyThisScale;
+        }
     }
 
     GByte *pabyOut = static_cast<unsigned char *>(pData) +
@@ -2544,7 +2558,7 @@ VRTComplexSource::VRTComplexSource(const VRTComplexSource *poSrcSource,
       m_bSrcMinMaxDefined(poSrcSource->m_bSrcMinMaxDefined),
       m_dfSrcMin(poSrcSource->m_dfSrcMin), m_dfSrcMax(poSrcSource->m_dfSrcMax),
       m_dfDstMin(poSrcSource->m_dfDstMin), m_dfDstMax(poSrcSource->m_dfDstMax),
-      m_dfExponent(poSrcSource->m_dfExponent),
+      m_dfExponent(poSrcSource->m_dfExponent), m_bClip(poSrcSource->m_bClip),
       m_nColorTableComponent(poSrcSource->m_nColorTableComponent),
       m_adfLUTInputs(poSrcSource->m_adfLUTInputs),
       m_adfLUTOutputs(poSrcSource->m_adfLUTOutputs)
@@ -2667,6 +2681,7 @@ CPLXMLNode *VRTComplexSource::SerializeToXML(const char *pszVRTPath)
         }
         CPLSetXMLValue(psSrc, "DstMin", CPLSPrintf("%g", m_dfDstMin));
         CPLSetXMLValue(psSrc, "DstMax", CPLSPrintf("%g", m_dfDstMax));
+        CPLSetXMLValue(psSrc, "Clip", m_bClip ? "true" : "false");
     }
 
     if (!m_adfLUTInputs.empty())
@@ -2768,6 +2783,7 @@ CPLErr VRTComplexSource::XMLInit(const CPLXMLNode *psSrc,
 
         m_dfDstMin = CPLAtof(CPLGetXMLValue(psSrc, "DstMin", "0.0"));
         m_dfDstMax = CPLAtof(CPLGetXMLValue(psSrc, "DstMax", "0.0"));
+        m_bClip = CPLTestBool(CPLGetXMLValue(psSrc, "Clip", "true"));
     }
 
     if (const char *pszNODATA = CPLGetXMLValue(psSrc, "NODATA", nullptr))
@@ -2904,7 +2920,7 @@ void VRTComplexSource::SetLinearScaling(double dfOffset, double dfScale)
 
 void VRTComplexSource::SetPowerScaling(double dfExponentIn, double dfSrcMinIn,
                                        double dfSrcMaxIn, double dfDstMinIn,
-                                       double dfDstMaxIn)
+                                       double dfDstMaxIn, bool bClip)
 {
     m_nProcessingFlags &= ~PROCESSING_FLAG_SCALING_LINEAR;
     m_nProcessingFlags |= PROCESSING_FLAG_SCALING_EXPONENTIAL;
@@ -2914,6 +2930,7 @@ void VRTComplexSource::SetPowerScaling(double dfExponentIn, double dfSrcMinIn,
     m_dfDstMin = dfDstMinIn;
     m_dfDstMax = dfDstMaxIn;
     m_bSrcMinMaxDefined = true;
+    m_bClip = bClip;
 }
 
 /************************************************************************/
@@ -3535,13 +3552,8 @@ CPLErr VRTComplexSource::RasterIOInternal(
                     }
                     else
                     {
-                        static bool bHasWarned = false;
-                        if (!bHasWarned)
-                        {
-                            bHasWarned = true;
-                            CPLError(CE_Failure, CPLE_AppDefined,
+                        CPLErrorOnce(CE_Failure, CPLE_AppDefined,
                                      "No entry %d.", static_cast<int>(fResult));
-                        }
                         continue;
                     }
                 }
@@ -3577,12 +3589,17 @@ CPLErr VRTComplexSource::RasterIOInternal(
                         }
                     }
 
-                    double dfPowVal =
-                        (fResult - m_dfSrcMin) / (m_dfSrcMax - m_dfSrcMin);
-                    if (dfPowVal < 0.0)
-                        dfPowVal = 0.0;
-                    else if (dfPowVal > 1.0)
-                        dfPowVal = 1.0;
+                    double dfPowVal = (m_dfSrcMin == m_dfSrcMax)
+                                          ? 0
+                                          : (fResult - m_dfSrcMin) /
+                                                (m_dfSrcMax - m_dfSrcMin);
+                    if (m_bClip)
+                    {
+                        if (dfPowVal < 0.0)
+                            dfPowVal = 0.0;
+                        else if (dfPowVal > 1.0)
+                            dfPowVal = 1.0;
+                    }
                     fResult =
                         static_cast<WorkingDT>((m_dfDstMax - m_dfDstMin) *
                                                    pow(dfPowVal, m_dfExponent) +

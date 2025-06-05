@@ -17,8 +17,7 @@ from osgeo import gdal
 
 
 def get_info_alg():
-    reg = gdal.GetGlobalAlgorithmRegistry()
-    return reg.InstantiateAlg("info")
+    return gdal.GetGlobalAlgorithmRegistry()["info"]
 
 
 @pytest.mark.parametrize(
@@ -31,13 +30,13 @@ def get_info_alg():
 def test_gdalalg_info_on_raster(args):
     info = get_info_alg()
     assert info.ParseRunAndFinalize(args)
-    output_string = info.GetActualAlgorithm().GetArg("output-string").Get()
+    output_string = info["output-string"]
     assert output_string.startswith("Driver: GTiff/GeoTIFF")
 
 
 def test_gdalalg_info_on_raster_invalid_arg():
     info = get_info_alg()
-    with pytest.raises(Exception, match="Long name option '--invalid' is unknown"):
+    with pytest.raises(Exception, match="Option '--invalid' is unknown"):
         assert info.ParseRunAndFinalize(
             ["--format=text", "--invalid", "data/utmsmall.tif"]
         )
@@ -57,26 +56,25 @@ def test_gdalalg_info_on_raster_invalid_arg():
 def test_gdalalg_info_on_vector(args):
     info = get_info_alg()
     assert info.ParseRunAndFinalize(args)
-    output_string = info.GetActualAlgorithm().GetArg("output-string").Get()
+    output_string = info["output-string"]
     assert output_string.startswith("INFO: Open of")
 
 
 def test_gdalalg_info_on_vector_invalid_arg():
     info = get_info_alg()
-    with pytest.raises(Exception, match="Long name option '--invalid' is unknown"):
+    with pytest.raises(Exception, match="Option '--invalid' is unknown"):
         assert info.ParseRunAndFinalize(["--format=text", "--invalid", "data/path.shp"])
 
 
 def test_gdalalg_info_invalid_arg():
     info = get_info_alg()
-    with pytest.raises(Exception, match="Long name option '--invalid' is unknown"):
+    with pytest.raises(Exception, match="Option '--invalid' is unknown"):
         assert info.ParseRunAndFinalize(["--invalid"])
 
 
 def test_gdalalg_info_run_cannot_be_run():
     info = get_info_alg()
-    ds = gdal.GetDriverByName("MEM").Create("", 1, 1)
-    info.GetArg("input").SetDataset(ds)
+    info["input"] = gdal.GetDriverByName("MEM").Create("", 1, 1)
     with pytest.raises(Exception, match="method should not be called directly"):
         info.Run()
 
@@ -108,6 +106,15 @@ def test_gdalalg_info_mixed_raster_vector_with_invalid_arg(tmp_vsimem):
 def test_gdalalg_info_mixed_run_without_arg(tmp_vsimem):
 
     info = get_info_alg()
-    info.GetArg("input").Get().SetName("data/utmsmall.tif")
+    info["input"] = "data/utmsmall.tif"
     with pytest.raises(Exception, match="should not be called directly"):
         assert info.Run()
+
+
+@pytest.mark.require_driver("netCDF")
+def test_gdalalg_info_netcdf_raster():
+
+    info = get_info_alg()
+    assert info.ParseRunAndFinalize(["../gdrivers/data/netcdf/byte.nc"])
+    output_string = info["output-string"]
+    assert '"geoTransform"' in output_string

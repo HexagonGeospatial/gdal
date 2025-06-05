@@ -2682,7 +2682,7 @@ CPLErr JPGDatasetCommon::IRasterIO(
         (nXSize == nRasterXSize) && (nYSize == nBufYSize) &&
         (nYSize == nRasterYSize) && (eBufType == GDT_Byte) &&
         (GetDataPrecision() != 12) && (pData != nullptr) &&
-        (panBandMap[0] == 1) && (panBandMap[1] == 2) && (panBandMap[2] == 3) &&
+        IsAllBands(nBandCount, panBandMap) &&
         // These color spaces need to be transformed to RGB.
         GetOutColorSpace() != JCS_YCCK && GetOutColorSpace() != JCS_CMYK)
     {
@@ -2762,9 +2762,7 @@ GDALDataset *JPGDatasetCommon::Open(GDALOpenInfo *poOpenInfo)
 
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The JPEG driver does not support update access to existing"
-                 " datasets.");
+        ReportUpdateNotSupportedByDriver("JPEG");
         return nullptr;
     }
 
@@ -3110,10 +3108,8 @@ JPGDatasetCommon *JPGDataset::OpenStage2(JPGDatasetOpenArgs *psArgs,
 
     poDS->nScaleFactor = nScaleFactor;
     poDS->SetScaleNumAndDenom();
-    poDS->nRasterXSize =
-        (poDS->sDInfo.image_width + nScaleFactor - 1) / nScaleFactor;
-    poDS->nRasterYSize =
-        (poDS->sDInfo.image_height + nScaleFactor - 1) / nScaleFactor;
+    poDS->nRasterXSize = DIV_ROUND_UP(poDS->sDInfo.image_width, nScaleFactor);
+    poDS->nRasterYSize = DIV_ROUND_UP(poDS->sDInfo.image_height, nScaleFactor);
 
     poDS->sDInfo.out_color_space = poDS->sDInfo.jpeg_color_space;
     poDS->eGDALColorSpace = poDS->sDInfo.jpeg_color_space;
@@ -4872,8 +4868,22 @@ GDALDataset *JPGDataset::CreateCopyStage2(
 
 char **GDALJPGDriver::GetMetadata(const char *pszDomain)
 {
-    GetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST);
+    std::lock_guard oLock(m_oMutex);
+    InitializeMetadata();
     return GDALDriver::GetMetadata(pszDomain);
+}
+
+const char *GDALJPGDriver::GetMetadataItem(const char *pszName,
+                                           const char *pszDomain)
+{
+    std::lock_guard oLock(m_oMutex);
+
+    if (pszName != nullptr && EQUAL(pszName, GDAL_DMD_CREATIONOPTIONLIST) &&
+        (pszDomain == nullptr || EQUAL(pszDomain, "")))
+    {
+        InitializeMetadata();
+    }
+    return GDALDriver::GetMetadataItem(pszName, pszDomain);
 }
 
 // C_ARITH_CODING_SUPPORTED is defined in libjpeg-turbo's jconfig.h
@@ -4916,12 +4926,12 @@ static bool GDALJPEGIsArithmeticCodingAvailable()
 }
 #endif
 
-const char *GDALJPGDriver::GetMetadataItem(const char *pszName,
-                                           const char *pszDomain)
+void GDALJPGDriver::InitializeMetadata()
 {
-    if (pszName != nullptr && EQUAL(pszName, GDAL_DMD_CREATIONOPTIONLIST) &&
-        (pszDomain == nullptr || EQUAL(pszDomain, "")) &&
-        GDALDriver::GetMetadataItem(pszName, pszDomain) == nullptr)
+    if (m_bMetadataInitialized)
+        return;
+    m_bMetadataInitialized = true;
+
     {
         CPLString osCreationOptions =
             "<CreationOptionList>\n"
@@ -4977,7 +4987,6 @@ const char *GDALJPGDriver::GetMetadataItem(const char *pszName,
             "</CreationOptionList>\n";
         SetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST, osCreationOptions);
     }
-    return GDALDriver::GetMetadataItem(pszName, pszDomain);
 }
 
 void GDALRegister_JPEG()

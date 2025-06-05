@@ -2016,7 +2016,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                             oDesc.osContent = pszStr;
                         else
                             oDesc.osFile = pszStr;
-                        aoMetadata.push_back(oDesc);
+                        aoMetadata.push_back(std::move(oDesc));
                     }
                     else if (poMetadata && json_object_get_type(poMetadata) ==
                                                json_type_object)
@@ -2121,7 +2121,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                         "CoverageCollection or GridCoverage");
                             }
 
-                            aoMetadata.push_back(oDesc);
+                            aoMetadata.push_back(std::move(oDesc));
                         }
                     }
                 }
@@ -2142,7 +2142,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     {
                         GMLJP2V2AnnotationDesc oDesc;
                         oDesc.osFile = json_object_get_string(poAnnotation);
-                        aoAnnotations.push_back(oDesc);
+                        aoAnnotations.push_back(std::move(oDesc));
                     }
                 }
             }
@@ -2239,7 +2239,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                         "CoverageCollection or GridCoverage");
                             }
 
-                            aoGMLFiles.push_back(oDesc);
+                            aoGMLFiles.push_back(std::move(oDesc));
                         }
                     }
                     else if (poGMLFile && json_object_get_type(poGMLFile) ==
@@ -2247,7 +2247,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     {
                         GMLJP2V2GMLFileDesc oDesc;
                         oDesc.osFile = json_object_get_string(poGMLFile);
-                        aoGMLFiles.push_back(oDesc);
+                        aoGMLFiles.push_back(std::move(oDesc));
                     }
                 }
             }
@@ -2296,7 +2296,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                         "CoverageCollection or GridCoverage");
                             }
 
-                            aoStyles.push_back(oDesc);
+                            aoStyles.push_back(std::move(oDesc));
                         }
                     }
                     else if (poStyle &&
@@ -2304,7 +2304,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     {
                         GMLJP2V2StyleDesc oDesc;
                         oDesc.osFile = json_object_get_string(poStyle);
-                        aoStyles.push_back(oDesc);
+                        aoStyles.push_back(std::move(oDesc));
                     }
                 }
             }
@@ -2354,7 +2354,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                         "CoverageCollection or GridCoverage");
                             }
 
-                            aoExtensions.push_back(oDesc);
+                            aoExtensions.push_back(std::move(oDesc));
                         }
                     }
                     else if (poExtension && json_object_get_type(poExtension) ==
@@ -2362,7 +2362,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     {
                         GMLJP2V2ExtensionDesc oDesc;
                         oDesc.osFile = json_object_get_string(poExtension);
-                        aoExtensions.push_back(oDesc);
+                        aoExtensions.push_back(std::move(oDesc));
                     }
                 }
             }
@@ -2393,7 +2393,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                         else
                             oDesc.osLabel = CPLGetFilename(oDesc.osFile);
 
-                        aoBoxes.push_back(oDesc);
+                        aoBoxes.push_back(std::move(oDesc));
                     }
                 }
                 else if (poBox &&
@@ -2402,7 +2402,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     GMLJP2V2BoxDesc oDesc;
                     oDesc.osFile = json_object_get_string(poBox);
                     oDesc.osLabel = CPLGetFilename(oDesc.osFile);
-                    aoBoxes.push_back(oDesc);
+                    aoBoxes.push_back(std::move(oDesc));
                 }
             }
         }
@@ -2711,8 +2711,9 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
             CPLXMLTreeCloser psGMLFile(nullptr);
             if (!aoGMLFiles[i].osFile.empty())
             {
-                if (EQUAL(CPLGetExtension(aoGMLFiles[i].osFile), "gml") ||
-                    EQUAL(CPLGetExtension(aoGMLFiles[i].osFile), "xml"))
+                const CPLString osExt =
+                    CPLGetExtensionSafe(aoGMLFiles[i].osFile);
+                if (EQUAL(osExt, "gml") || EQUAL(osExt, "xml"))
                 {
                     psGMLFile =
                         CPLXMLTreeCloser(CPLParseXMLFile(aoGMLFiles[i].osFile));
@@ -2751,9 +2752,9 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                                      nullptr, nullptr, nullptr);
                     if (hSrcDS)
                     {
-                        CPLString osTmpFile =
-                            CPLSPrintf("%s/%d/%s.gml", osTmpDir.c_str(), i,
-                                       CPLGetBasename(aoGMLFiles[i].osFile));
+                        const CPLString osTmpFile =
+                            osTmpDir + "/" + std::to_string(i) + "/" +
+                            CPLGetBasenameSafe(aoGMLFiles[i].osFile) + ".gml";
                         char **papszOptions = nullptr;
                         papszOptions =
                             CSLSetNameValue(papszOptions, "FORMAT", "GML3.2");
@@ -2859,18 +2860,16 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                 if (!aoGMLFiles[i].bInline ||
                     !aoGMLFiles[i].osRemoteResource.empty())
                 {
-                    osTmpFile =
-                        CPLSPrintf("%s/%d/%s.gml", osTmpDir.c_str(), i,
-                                   CPLGetBasename(aoGMLFiles[i].osFile));
-
+                    osTmpFile = osTmpDir + "/" + std::to_string(i) + "/" +
+                                CPLGetBasenameSafe(aoGMLFiles[i].osFile) +
+                                ".gml";
                     GMLJP2V2BoxDesc oDesc;
                     oDesc.osFile = osTmpFile;
                     oDesc.osLabel = CPLGetFilename(oDesc.osFile);
-                    aoBoxes.push_back(oDesc);
-
                     CPLSetXMLValue(
                         node_f, "#xlink:href",
                         CPLSPrintf("gmljp2://xml/%s", oDesc.osLabel.c_str()));
+                    aoBoxes.push_back(std::move(oDesc));
                 }
 
                 if (CPLGetXMLNode(psGMLFileRoot, "xmlns") == nullptr &&
@@ -2930,13 +2929,15 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                         else if (CSLCount(papszTokens) == 2 &&
                                  CPLIsFilenameRelative(papszTokens[1]) &&
                                  VSIStatL(
-                                     CPLFormFilename(
-                                         CPLGetDirname(aoGMLFiles[i].osFile),
-                                         papszTokens[1], nullptr),
+                                     CPLFormFilenameSafe(
+                                         CPLGetDirnameSafe(aoGMLFiles[i].osFile)
+                                             .c_str(),
+                                         papszTokens[1], nullptr)
+                                         .c_str(),
                                      &sStat) == 0)
                         {
-                            osXSD = CPLFormFilename(
-                                CPLGetDirname(aoGMLFiles[i].osFile),
+                            osXSD = CPLFormFilenameSafe(
+                                CPLGetDirnameSafe(aoGMLFiles[i].osFile).c_str(),
                                 papszTokens[1], nullptr);
                         }
                         if (!osXSD.empty())
@@ -2955,7 +2956,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                     break;
                             }
                             if (j == static_cast<int>(aoBoxes.size()))
-                                aoBoxes.push_back(oDesc);
+                                aoBoxes.push_back(std::move(oDesc));
                         }
                     }
 
@@ -3001,7 +3002,8 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
         {
             // Is the file already a KML file?
             CPLXMLTreeCloser psKMLFile(nullptr);
-            if (EQUAL(CPLGetExtension(aoAnnotations[i].osFile), "kml"))
+            if (EQUAL(CPLGetExtensionSafe(aoAnnotations[i].osFile).c_str(),
+                      "kml"))
                 psKMLFile =
                     CPLXMLTreeCloser(CPLParseXMLFile(aoAnnotations[i].osFile));
             GDALDriverH hDrv = nullptr;
@@ -3039,9 +3041,9 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                                                  nullptr, nullptr, nullptr);
                 if (hSrcDS)
                 {
-                    CPLString osTmpFile =
-                        CPLSPrintf("%s/%d/%s.kml", osTmpDir.c_str(), i,
-                                   CPLGetBasename(aoAnnotations[i].osFile));
+                    const CPLString osTmpFile =
+                        osTmpDir + "/" + std::to_string(i) + "/" +
+                        CPLGetBasenameSafe(aoAnnotations[i].osFile) + ".kml";
                     char **papszOptions = nullptr;
                     if (aoAnnotations.size() > 1)
                     {

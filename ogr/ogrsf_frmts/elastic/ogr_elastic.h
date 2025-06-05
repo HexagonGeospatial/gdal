@@ -188,21 +188,13 @@ class OGRElasticLayer final : public OGRLayer
 
     virtual GIntBig GetFeatureCount(int bForce) override;
 
-    virtual void SetSpatialFilter(OGRGeometry *poGeom) override
-    {
-        SetSpatialFilter(0, poGeom);
-    }
+    OGRErr ISetSpatialFilter(int iGeomField,
+                             const OGRGeometry *poGeom) override;
 
-    virtual void SetSpatialFilter(int iGeomField, OGRGeometry *poGeom) override;
     virtual OGRErr SetAttributeFilter(const char *pszFilter) override;
 
-    virtual OGRErr GetExtent(OGREnvelope *psExtent, int bForce = TRUE) override
-    {
-        return GetExtent(0, psExtent, bForce);
-    }
-
-    virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                             int bForce = TRUE) override;
+    virtual OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                              bool bForce) override;
 
     virtual OGRErr SyncToDisk() override;
 
@@ -288,12 +280,14 @@ class OGRElasticAggregationLayer final
     CPLJSONObject m_oAggregatedFieldsRequest{};
     std::vector<std::unique_ptr<OGRFeature>> m_apoCachedFeatures{};
 
-    explicit OGRElasticAggregationLayer(OGRElasticDataSource *poDS);
     std::string BuildRequest();
     void IssueAggregationRequest();
     OGRFeature *GetNextRawFeature();
 
   public:
+    // Do not use directly. Use Build() static method instead
+    explicit OGRElasticAggregationLayer(OGRElasticDataSource *poDS);
+
     ~OGRElasticAggregationLayer() override;
 
     OGRFeatureDefn *GetLayerDefn() override
@@ -306,8 +300,8 @@ class OGRElasticAggregationLayer final
     GIntBig GetFeatureCount(int bForce) override;
     int TestCapability(const char *) override;
 
-    using OGRLayer::SetSpatialFilter;
-    void SetSpatialFilter(OGRGeometry *poGeom) override;
+    OGRErr ISetSpatialFilter(int iGeomField,
+                             const OGRGeometry *poGeom) override;
 
     GDALDataset *GetDataset() override;
 

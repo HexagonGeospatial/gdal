@@ -30,6 +30,11 @@
 
 #define SWQ_ISNOTNULL (-SWQ_ISNULL)
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 /************************************************************************/
 /*                         OGRArrowLayer()                              */
 /************************************************************************/
@@ -636,7 +641,7 @@ inline void OGRArrowLayer::CreateFieldFromSchema(
     {
         const auto dictionaryType =
             std::static_pointer_cast<arrow::DictionaryType>(field->type());
-        const auto indexType = dictionaryType->index_type();
+        auto indexType = dictionaryType->index_type();
         if (dictionaryType->value_type()->id() == arrow::Type::STRING &&
             IsIntegerArrowType(indexType->id()))
         {
@@ -644,7 +649,7 @@ inline void OGRArrowLayer::CreateFieldFromSchema(
             m_poArrowDS->RegisterDomainName(osDomainName,
                                             m_poFeatureDefn->GetFieldCount());
             oField.SetDomainName(osDomainName);
-            type = indexType;
+            type = std::move(indexType);
         }
         else
         {
@@ -5065,15 +5070,6 @@ inline OGRFeature *OGRArrowLayer::GetNextRawFeature()
 }
 
 /************************************************************************/
-/*                            GetExtent()                               */
-/************************************************************************/
-
-inline OGRErr OGRArrowLayer::GetExtent(OGREnvelope *psExtent, int bForce)
-{
-    return GetExtent(0, psExtent, bForce);
-}
-
-/************************************************************************/
 /*                       GetExtentFromMetadata()                        */
 /************************************************************************/
 
@@ -5108,16 +5104,13 @@ OGRArrowLayer::GetExtentFromMetadata(const CPLJSONObject &oJSONDef,
 }
 
 /************************************************************************/
-/*                        SetSpatialFilter()                            */
+/*                        ISetSpatialFilter()                           */
 /************************************************************************/
 
-inline void OGRArrowLayer::SetSpatialFilter(int iGeomField,
-                                            OGRGeometry *poGeomIn)
+inline OGRErr OGRArrowLayer::ISetSpatialFilter(int iGeomField,
+                                               const OGRGeometry *poGeomIn)
 
 {
-    if (!ValidateGeometryFieldIndexForSetSpatialFilter(iGeomField, poGeomIn))
-        return;
-
     // When changing filters, we need to invalidate cached batches, as
     // PostFilterArrowArray() has potentially modified array contents
     if (m_poFilterGeom)
@@ -5141,6 +5134,7 @@ inline void OGRArrowLayer::SetSpatialFilter(int iGeomField,
     }
 
     SetBatch(m_poBatch);
+    return OGRERR_NONE;
 }
 
 /************************************************************************/
@@ -5178,22 +5172,12 @@ inline bool OGRArrowLayer::FastGetExtent(int iGeomField,
 }
 
 /************************************************************************/
-/*                            GetExtent()                               */
+/*                           IGetExtent()                               */
 /************************************************************************/
 
-inline OGRErr OGRArrowLayer::GetExtent(int iGeomField, OGREnvelope *psExtent,
-                                       int bForce)
+inline OGRErr OGRArrowLayer::IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                                        bool bForce)
 {
-    if (iGeomField < 0 || iGeomField >= m_poFeatureDefn->GetGeomFieldCount())
-    {
-        if (iGeomField != 0)
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Invalid geometry field index : %d", iGeomField);
-        }
-        return OGRERR_FAILURE;
-    }
-
     if (FastGetExtent(iGeomField, psExtent))
     {
         return OGRERR_NONE;
@@ -5387,7 +5371,7 @@ inline OGRErr OGRArrowLayer::GetExtent(int iGeomField, OGREnvelope *psExtent,
         }
     }
 
-    return GetExtentInternal(iGeomField, psExtent, bForce);
+    return OGRLayer::IGetExtent(iGeomField, psExtent, bForce);
 }
 
 /************************************************************************/
@@ -5415,28 +5399,18 @@ inline bool OGRArrowLayer::FastGetExtent3D(int iGeomField,
 }
 
 /************************************************************************/
-/*                           GetExtent3D()                              */
+/*                          IGetExtent3D()                              */
 /************************************************************************/
 
-inline OGRErr OGRArrowLayer::GetExtent3D(int iGeomField,
-                                         OGREnvelope3D *psExtent, int bForce)
+inline OGRErr OGRArrowLayer::IGetExtent3D(int iGeomField,
+                                          OGREnvelope3D *psExtent, bool bForce)
 {
-    if (iGeomField < 0 || iGeomField >= m_poFeatureDefn->GetGeomFieldCount())
-    {
-        if (iGeomField != 0)
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Invalid geometry field index : %d", iGeomField);
-        }
-        return OGRERR_FAILURE;
-    }
-
     if (FastGetExtent3D(iGeomField, psExtent))
     {
         return OGRERR_NONE;
     }
 
-    return OGRLayer::GetExtent3D(iGeomField, psExtent, bForce);
+    return OGRLayer::IGetExtent3D(iGeomField, psExtent, bForce);
 }
 
 /************************************************************************/
@@ -6199,5 +6173,9 @@ inline int OGRArrowLayer::TestCapability(const char *pszCap)
 
     return false;
 }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #endif /* OGARROWLAYER_HPP_INCLUDED */

@@ -2,15 +2,15 @@
  *
  * Project:  PDS Driver; Planetary Data System Format
  * Purpose:  Implementation of PDSDataset
- * Author:   Trent Hare (thare@usgs.gov),
- *           Robert Soricone (rsoricone@usgs.gov)
+ * Author:   Trent Hare (thare at usgs.gov),
+ *           Robert Soricone (rsoricone at usgs.gov)
  *
  * NOTE: Original code authored by Trent and Robert and placed in the public
  * domain as per US government policy.  I have (within my rights) appropriated
  * it and placed it under the following license.  This is not intended to
  * diminish Trent and Roberts contribution.
  ******************************************************************************
- * Copyright (c) 2007, Frank Warmerdam <warmerdam@pobox.com>
+ * Copyright (c) 2007, Frank Warmerdam <warmerdam at pobox.com>
  * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * SPDX-License-Identifier: MIT
@@ -591,7 +591,7 @@ void PDSDataset::ParseSRS()
     if (bProjectionSet)
     {
         // Create projection name, i.e. MERCATOR MARS and set as ProjCS keyword
-        const CPLString proj_target_name = map_proj_name + " " + target_name;
+        CPLString proj_target_name = map_proj_name + " " + target_name;
         oSRS.SetProjCS(proj_target_name);  // set ProjCS keyword
 
         // The geographic/geocentric name will be the same basic name as the
@@ -600,8 +600,8 @@ void PDSDataset::ParseSRS()
 
         // The datum and sphere names will be the same basic name aas the planet
         const CPLString datum_name = "D_" + target_name;
-        // Might not be IAU defined so don't add.
-        CPLString sphere_name = target_name;  // + "_IAU_IAG");
+
+        CPLString sphere_name = std::move(target_name);
 
         // calculate inverse flattening from major and minor axis: 1/f = a/(a-b)
         double iflattening;
@@ -679,16 +679,17 @@ void PDSDataset::ParseSRS()
     /*      Check for a .prj and world file to override the georeferencing. */
     /* ==================================================================== */
     {
-        const CPLString osPath = CPLGetPath(pszFilename);
-        const CPLString osName = CPLGetBasename(pszFilename);
-        const char *pszPrjFile = CPLFormCIFilename(osPath, osName, "prj");
+        const CPLString osPath = CPLGetPathSafe(pszFilename);
+        const CPLString osName = CPLGetBasenameSafe(pszFilename);
+        const std::string osPrjFile =
+            CPLFormCIFilenameSafe(osPath, osName, "prj");
 
-        VSILFILE *fp = VSIFOpenL(pszPrjFile, "r");
+        VSILFILE *fp = VSIFOpenL(osPrjFile.c_str(), "r");
         if (fp != nullptr)
         {
             VSIFCloseL(fp);
 
-            char **papszLines = CSLLoad(pszPrjFile);
+            char **papszLines = CSLLoad(osPrjFile.c_str());
 
             m_oSRS.importFromESRI(papszLines);
             CSLDestroy(papszLines);
@@ -846,8 +847,9 @@ int PDSDataset::ParseImage(const CPLString &osPrefix,
         }
         else
         {
-            CPLString osTPath = CPLGetPath(GetDescription());
-            m_osImageFilename = CPLFormCIFilename(osTPath, osFilename, nullptr);
+            CPLString osTPath = CPLGetPathSafe(GetDescription());
+            m_osImageFilename =
+                CPLFormCIFilenameSafe(osTPath, osFilename, nullptr);
             osExternalCube = m_osImageFilename;
         }
     }
@@ -1201,7 +1203,7 @@ int PDSDataset::ParseImage(const CPLString &osPrefix,
     int nPixelOffset;
     vsi_l_offset nBandOffset;
 
-    const auto CPLSM64 = [](int x) { return CPLSM(static_cast<GInt64>(x)); };
+    const auto CPLSM64 = [](int x) { return CPLSM(static_cast<int64_t>(x)); };
 
     try
     {
@@ -1302,10 +1304,7 @@ class PDSWrapperRasterBand final : public GDALProxyRasterBand
 
   protected:
     virtual GDALRasterBand *
-    RefUnderlyingRasterBand(bool /*bForceOpen*/) const override
-    {
-        return poBaseBand;
-    }
+    RefUnderlyingRasterBand(bool /*bForceOpen*/) const override;
 
   public:
     explicit PDSWrapperRasterBand(GDALRasterBand *poBaseBandIn)
@@ -1314,11 +1313,13 @@ class PDSWrapperRasterBand final : public GDALProxyRasterBand
         eDataType = poBaseBand->GetRasterDataType();
         poBaseBand->GetBlockSize(&nBlockXSize, &nBlockYSize);
     }
-
-    ~PDSWrapperRasterBand()
-    {
-    }
 };
+
+GDALRasterBand *
+PDSWrapperRasterBand::RefUnderlyingRasterBand(bool /*bForceOpen*/) const
+{
+    return poBaseBand;
+}
 
 /************************************************************************/
 /*                       ParseCompressedImage()                         */
@@ -1330,9 +1331,9 @@ int PDSDataset::ParseCompressedImage()
     const CPLString osFileName =
         CleanString(GetKeyword("COMPRESSED_FILE.FILE_NAME", ""));
 
-    const CPLString osPath = CPLGetPath(GetDescription());
+    const CPLString osPath = CPLGetPathSafe(GetDescription());
     const CPLString osFullFileName =
-        CPLFormFilename(osPath, osFileName, nullptr);
+        CPLFormFilenameSafe(osPath, osFileName, nullptr);
 
     poCompressedDS =
         GDALDataset::FromHandle(GDALOpen(osFullFileName, GA_ReadOnly));
@@ -1425,11 +1426,11 @@ GDALDataset *PDSDataset::Open(GDALOpenInfo *poOpenInfo)
     if (EQUAL(osEncodingType, "ZIP") && !osCompressedFilename.empty() &&
         !osUncompressedFilename.empty())
     {
-        const CPLString osPath = CPLGetPath(poDS->GetDescription());
+        const CPLString osPath = CPLGetPathSafe(poDS->GetDescription());
         osCompressedFilename =
-            CPLFormFilename(osPath, osCompressedFilename, nullptr);
+            CPLFormFilenameSafe(osPath, osCompressedFilename, nullptr);
         osUncompressedFilename =
-            CPLFormFilename(osPath, osUncompressedFilename, nullptr);
+            CPLFormFilenameSafe(osPath, osUncompressedFilename, nullptr);
         if (VSIStatExL(osCompressedFilename, &sStat, VSI_STAT_EXISTS_FLAG) ==
                 0 &&
             VSIStatExL(osUncompressedFilename, &sStat, VSI_STAT_EXISTS_FLAG) !=

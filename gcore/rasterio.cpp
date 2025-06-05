@@ -32,6 +32,7 @@
 #include "cpl_conv.h"
 #include "cpl_cpu_features.h"
 #include "cpl_error.h"
+#include "cpl_float.h"
 #include "cpl_progress.h"
 #include "cpl_string.h"
 #include "cpl_vsi.h"
@@ -51,6 +52,9 @@
 
 #ifdef HAVE_SSSE3_AT_COMPILE_TIME
 #include "rasterio_ssse3.h"
+#ifdef __SSSE3__
+#include <tmmintrin.h>
+#endif
 #endif
 
 static void GDALFastCopyByte(const GByte *CPL_RESTRICT pSrcData,
@@ -328,7 +332,6 @@ CPLErr GDALRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             else
             {
                 // Type to type conversion.
-
                 if (eRWFlag == GF_Read)
                     GDALCopyWords64(
                         pabySrcBlock + nSrcByteOffset, eDataType, nBandDataSize,
@@ -712,7 +715,6 @@ CPLErr GDALRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                 {
                     /* type to type conversion ... ouch, this is expensive way
                     of handling single words */
-
                     GDALCopyWords64(static_cast<GByte *>(pData) + iBufOffset,
                                     eBufType, 0, pabyDstBlock + iDstOffset,
                                     eDataType, 0, 1);
@@ -1294,8 +1296,8 @@ CPLErr GDALRasterBand::RasterIOResampled(
             return CE_Failure;
         }
 
-        int nTotalBlocks = ((nBufXSize + nDstBlockXSize - 1) / nDstBlockXSize) *
-                           ((nBufYSize + nDstBlockYSize - 1) / nDstBlockYSize);
+        const int nTotalBlocks = DIV_ROUND_UP(nBufXSize, nDstBlockXSize) *
+                                 DIV_ROUND_UP(nBufYSize, nDstBlockYSize);
         int nBlocksDone = 0;
 
         int nDstYOff;
@@ -1762,8 +1764,8 @@ CPLErr GDALDataset::RasterIOResampled(
             return CE_Failure;
         }
 
-        int nTotalBlocks = ((nBufXSize + nDstBlockXSize - 1) / nDstBlockXSize) *
-                           ((nBufYSize + nDstBlockYSize - 1) / nDstBlockYSize);
+        const int nTotalBlocks = DIV_ROUND_UP(nBufXSize, nDstBlockXSize) *
+                                 DIV_ROUND_UP(nBufYSize, nDstBlockYSize);
         int nBlocksDone = 0;
 
         int nDstYOff;
@@ -2064,7 +2066,6 @@ void CPL_STDCALL GDALSwapWords(void *pData, int nWordSize, int nWordCount,
 
         case 8:
             CPLAssert(nWordSkip >= 8 || nWordCount == 1);
-#ifdef CPL_HAS_GINT64
             if (CPL_IS_ALIGNED(pabyData, 8) && (nWordSkip % 8) == 0)
             {
                 for (int i = 0; i < nWordCount; i++)
@@ -2075,7 +2076,6 @@ void CPL_STDCALL GDALSwapWords(void *pData, int nWordSize, int nWordCount,
                 }
             }
             else
-#endif
             {
                 for (int i = 0; i < nWordCount; i++)
                 {
@@ -2823,6 +2823,11 @@ inline void GDALCopyWordsFromT(const T *const CPL_RESTRICT pSrcData,
                            static_cast<std::int64_t *>(pDstData),
                            nDstPixelStride, nWordCount);
             break;
+        case GDT_Float16:
+            GDALCopyWordsT(pSrcData, nSrcPixelStride,
+                           static_cast<GFloat16 *>(pDstData), nDstPixelStride,
+                           nWordCount);
+            break;
         case GDT_Float32:
             GDALCopyWordsT(pSrcData, nSrcPixelStride,
                            static_cast<float *>(pDstData), nDstPixelStride,
@@ -2860,6 +2865,21 @@ inline void GDALCopyWordsFromT(const T *const CPL_RESTRICT pSrcData,
             {
                 GDALCopyWordsComplexOutT(pSrcData, nSrcPixelStride,
                                          static_cast<int *>(pDstData),
+                                         nDstPixelStride, nWordCount);
+            }
+            break;
+        case GDT_CFloat16:
+            if (bInComplex)
+            {
+                GDALCopyWordsComplexT(pSrcData, nSrcPixelStride,
+                                      static_cast<GFloat16 *>(pDstData),
+                                      nDstPixelStride, nWordCount);
+            }
+            else  // input is not complex, so we need to promote to a complex
+                  // buffer
+            {
+                GDALCopyWordsComplexOutT(pSrcData, nSrcPixelStride,
+                                         static_cast<GFloat16 *>(pDstData),
                                          nDstPixelStride, nWordCount);
             }
             break;
@@ -3002,6 +3022,7 @@ static void GDALReplicateWord(const void *CPL_RESTRICT pSrcData,
             CASE_DUPLICATE_SIMPLE(GDT_Int32, GInt32)
             CASE_DUPLICATE_SIMPLE(GDT_UInt64, std::uint64_t)
             CASE_DUPLICATE_SIMPLE(GDT_Int64, std::int64_t)
+            CASE_DUPLICATE_SIMPLE(GDT_Float16, GFloat16)
             CASE_DUPLICATE_SIMPLE(GDT_Float32, float)
             CASE_DUPLICATE_SIMPLE(GDT_Float64, double)
 
@@ -3022,6 +3043,7 @@ static void GDALReplicateWord(const void *CPL_RESTRICT pSrcData,
 
             CASE_DUPLICATE_COMPLEX(GDT_CInt16, GInt16)
             CASE_DUPLICATE_COMPLEX(GDT_CInt32, GInt32)
+            CASE_DUPLICATE_COMPLEX(GDT_CFloat16, GFloat16)
             CASE_DUPLICATE_COMPLEX(GDT_CFloat32, float)
             CASE_DUPLICATE_COMPLEX(GDT_CFloat64, double)
 
@@ -3517,6 +3539,11 @@ void CPL_STDCALL GDALCopyWords64(const void *CPL_RESTRICT pSrcData,
                 static_cast<const std::int64_t *>(pSrcData), nSrcPixelStride,
                 false, pDstData, eDstType, nDstPixelStride, nWordCount);
             break;
+        case GDT_Float16:
+            GDALCopyWordsFromT<GFloat16>(
+                static_cast<const GFloat16 *>(pSrcData), nSrcPixelStride, false,
+                pDstData, eDstType, nDstPixelStride, nWordCount);
+            break;
         case GDT_Float32:
             GDALCopyWordsFromT<float>(static_cast<const float *>(pSrcData),
                                       nSrcPixelStride, false, pDstData,
@@ -3536,6 +3563,11 @@ void CPL_STDCALL GDALCopyWords64(const void *CPL_RESTRICT pSrcData,
             GDALCopyWordsFromT<int>(static_cast<const int *>(pSrcData),
                                     nSrcPixelStride, true, pDstData, eDstType,
                                     nDstPixelStride, nWordCount);
+            break;
+        case GDT_CFloat16:
+            GDALCopyWordsFromT<GFloat16>(
+                static_cast<const GFloat16 *>(pSrcData), nSrcPixelStride, true,
+                pDstData, eDstType, nDstPixelStride, nWordCount);
             break;
         case GDT_CFloat32:
             GDALCopyWordsFromT<float>(static_cast<const float *>(pSrcData),
@@ -3634,6 +3666,9 @@ int GDALBandGetBestOverviewLevel2(GDALRasterBand *poBand, int &nXOff,
                                   int nBufXSize, int nBufYSize,
                                   GDALRasterIOExtraArg *psExtraArg)
 {
+    if (psExtraArg != nullptr && psExtraArg->nVersion > 1 &&
+        psExtraArg->bUseOnlyThisScale)
+        return -1;
     /* -------------------------------------------------------------------- */
     /*      Compute the desired downsampling factor.  It is                 */
     /*      based on the least reduced axis, and represents the number      */
@@ -5117,6 +5152,10 @@ void GDALCopyRasterIOExtraArg(GDALRasterIOExtraArg *psDestArg,
             psDestArg->dfXSize = psSrcArg->dfXSize;
             psDestArg->dfYSize = psSrcArg->dfYSize;
         }
+        if (psSrcArg->nVersion >= 2)
+        {
+            psDestArg->bUseOnlyThisScale = psSrcArg->bUseOnlyThisScale;
+        }
     }
 }
 
@@ -5127,6 +5166,12 @@ void GDALCopyRasterIOExtraArg(GDALRasterIOExtraArg *psDestArg,
 template <class T> static inline bool IsEqualToNoData(T value, T noDataValue)
 {
     return value == noDataValue;
+}
+
+template <> bool IsEqualToNoData<GFloat16>(GFloat16 value, GFloat16 noDataValue)
+{
+    using std::isnan;
+    return isnan(noDataValue) ? isnan(value) : value == noDataValue;
 }
 
 template <> bool IsEqualToNoData<float>(float value, float noDataValue)
@@ -5300,6 +5345,14 @@ bool GDALBufferHasOnlyNoData(const void *pBuffer, double dfNoDataValue,
                    static_cast<const uint64_t *>(pBuffer),
                    static_cast<uint64_t>(static_cast<int64_t>(dfNoDataValue)),
                    nWidth, nHeight, nLineStride, nComponents);
+    }
+    if (nBitsPerSample == 16 && nSampleFormat == GSF_FLOATING_POINT)
+    {
+        return (std::isnan(dfNoDataValue) ||
+                GDALIsValueInRange<GFloat16>(dfNoDataValue)) &&
+               HasOnlyNoDataT(static_cast<const GFloat16 *>(pBuffer),
+                              static_cast<GFloat16>(dfNoDataValue), nWidth,
+                              nHeight, nLineStride, nComponents);
     }
     if (nBitsPerSample == 32 && nSampleFormat == GSF_FLOATING_POINT)
     {
@@ -5879,10 +5932,12 @@ static void GDALTranspose2D(const void *pSrc, GDALDataType eSrcType, DST *pDst,
         case GDT_Int32:    CALL_GDALTranspose2D_internal(int32_t); break;
         case GDT_UInt64:   CALL_GDALTranspose2D_internal(uint64_t); break;
         case GDT_Int64:    CALL_GDALTranspose2D_internal(int64_t); break;
+        case GDT_Float16:  CALL_GDALTranspose2D_internal(GFloat16); break;
         case GDT_Float32:  CALL_GDALTranspose2D_internal(float); break;
         case GDT_Float64:  CALL_GDALTranspose2D_internal(double); break;
         case GDT_CInt16:   CALL_GDALTranspose2DComplex_internal(int16_t); break;
         case GDT_CInt32:   CALL_GDALTranspose2DComplex_internal(int32_t); break;
+        case GDT_CFloat16: CALL_GDALTranspose2DComplex_internal(GFloat16); break;
         case GDT_CFloat32: CALL_GDALTranspose2DComplex_internal(float); break;
         case GDT_CFloat64: CALL_GDALTranspose2DComplex_internal(double); break;
         case GDT_Unknown:
@@ -5943,6 +5998,11 @@ __attribute__((optimize("tree-vectorize")))
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
+#if defined(__clang__) && !defined(__INTEL_CLANG_COMPILER)
+// clang++ -O2 -fsanitize=undefined fails to vectorize, ignore that warning
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpass-failed"
+#endif
 static void
 GDALInterleave2Byte(const uint8_t *CPL_RESTRICT pSrc,
                     uint8_t *CPL_RESTRICT pDst, size_t nIters)
@@ -5956,6 +6016,9 @@ GDALInterleave2Byte(const uint8_t *CPL_RESTRICT pSrc,
         pDst[2 * i + 1] = pSrc[i + 1 * nIters];
     }
 }
+#if defined(__clang__) && !defined(__INTEL_CLANG_COMPILER)
+#pragma clang diagnostic pop
+#endif
 
 #endif
 
@@ -6038,6 +6101,11 @@ __attribute__((optimize("tree-vectorize")))
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
+#if defined(__clang__) && !defined(__INTEL_CLANG_COMPILER)
+// clang++ -O2 -fsanitize=undefined fails to vectorize, ignore that warning
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpass-failed"
+#endif
 static void
 GDALInterleave4Byte(const uint8_t *CPL_RESTRICT pSrc,
                     uint8_t *CPL_RESTRICT pDst, size_t nIters)
@@ -6053,6 +6121,9 @@ GDALInterleave4Byte(const uint8_t *CPL_RESTRICT pSrc,
         pDst[4 * i + 3] = pSrc[i + 3 * nIters];
     }
 }
+#if defined(__clang__) && !defined(__INTEL_CLANG_COMPILER)
+#pragma clang diagnostic pop
+#endif
 
 #endif
 
@@ -6123,10 +6194,12 @@ void GDALTranspose2D(const void *pSrc, GDALDataType eSrcType, void *pDst,
         case GDT_Int32:    CALL_GDALTranspose2D_internal(int32_t, false); break;
         case GDT_UInt64:   CALL_GDALTranspose2D_internal(uint64_t, false); break;
         case GDT_Int64:    CALL_GDALTranspose2D_internal(int64_t, false); break;
+        case GDT_Float16:  CALL_GDALTranspose2D_internal(GFloat16, false); break;
         case GDT_Float32:  CALL_GDALTranspose2D_internal(float, false); break;
         case GDT_Float64:  CALL_GDALTranspose2D_internal(double, false); break;
         case GDT_CInt16:   CALL_GDALTranspose2D_internal(int16_t, true); break;
         case GDT_CInt32:   CALL_GDALTranspose2D_internal(int32_t, true); break;
+        case GDT_CFloat16: CALL_GDALTranspose2D_internal(GFloat16, true); break;
         case GDT_CFloat32: CALL_GDALTranspose2D_internal(float, true); break;
         case GDT_CFloat64: CALL_GDALTranspose2D_internal(double, true); break;
         case GDT_Unknown:
@@ -6136,4 +6209,195 @@ void GDALTranspose2D(const void *pSrc, GDALDataType eSrcType, void *pDst,
         // clang-format on
 
 #undef CALL_GDALTranspose2D_internal
+}
+
+/************************************************************************/
+/*                     ExtractBitAndConvertTo255()                      */
+/************************************************************************/
+
+#if defined(__GNUC__) || defined(_MSC_VER)
+// Signedness of char implementation dependent, so be explicit.
+// Assumes 2-complement integer types and sign extension of right shifting
+// GCC guarantees such:
+// https://gcc.gnu.org/onlinedocs/gcc/Integers-implementation.html#Integers-implementation
+static inline GByte ExtractBitAndConvertTo255(GByte byVal, int nBit)
+{
+    return static_cast<GByte>(static_cast<signed char>(byVal << (7 - nBit)) >>
+                              7);
+}
+#else
+// Portable way
+static inline GByte ExtractBitAndConvertTo255(GByte byVal, int nBit)
+{
+    return (byVal & (1 << nBit)) ? 255 : 0;
+}
+#endif
+
+/************************************************************************/
+/*                   ExpandEightPackedBitsToByteAt255()                 */
+/************************************************************************/
+
+static inline void ExpandEightPackedBitsToByteAt255(GByte byVal,
+                                                    GByte abyOutput[8])
+{
+    abyOutput[0] = ExtractBitAndConvertTo255(byVal, 7);
+    abyOutput[1] = ExtractBitAndConvertTo255(byVal, 6);
+    abyOutput[2] = ExtractBitAndConvertTo255(byVal, 5);
+    abyOutput[3] = ExtractBitAndConvertTo255(byVal, 4);
+    abyOutput[4] = ExtractBitAndConvertTo255(byVal, 3);
+    abyOutput[5] = ExtractBitAndConvertTo255(byVal, 2);
+    abyOutput[6] = ExtractBitAndConvertTo255(byVal, 1);
+    abyOutput[7] = ExtractBitAndConvertTo255(byVal, 0);
+}
+
+/************************************************************************/
+/*                GDALExpandPackedBitsToByteAt0Or255()                  */
+/************************************************************************/
+
+/** Expand packed-bits (ordered from most-significant bit to least one)
+  into a byte each, where a bit at 0 is expanded to a byte at 0, and a bit
+  at 1 to a byte at 255.
+
+ The function does (in a possibly more optimized way) the following:
+ \code{.cpp}
+ for (size_t i = 0; i < nInputBits; ++i )
+ {
+     pabyOutput[i] = (pabyInput[i / 8] & (1 << (7 - (i % 8)))) ? 255 : 0;
+ }
+ \endcode
+
+ @param pabyInput Input array of (nInputBits + 7) / 8 bytes.
+ @param pabyOutput Output array of nInputBits bytes.
+ @param nInputBits Number of valid bits in pabyInput.
+
+ @since 3.11
+*/
+
+void GDALExpandPackedBitsToByteAt0Or255(const GByte *CPL_RESTRICT pabyInput,
+                                        GByte *CPL_RESTRICT pabyOutput,
+                                        size_t nInputBits)
+{
+    const size_t nInputWholeBytes = nInputBits / 8;
+    size_t iByte = 0;
+
+#ifdef HAVE_SSE2
+    // Mask to isolate each bit
+    const __m128i bit_mask = _mm_set_epi8(1, 2, 4, 8, 16, 32, 64, -128, 1, 2, 4,
+                                          8, 16, 32, 64, -128);
+    const __m128i zero = _mm_setzero_si128();
+    const __m128i all_ones = _mm_set1_epi8(-1);
+#ifdef __SSSE3__
+    const __m128i dispatch_two_bytes =
+        _mm_set_epi8(1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0);
+#endif
+    constexpr size_t SSE_REG_SIZE = sizeof(bit_mask);
+    for (; iByte + SSE_REG_SIZE <= nInputWholeBytes; iByte += SSE_REG_SIZE)
+    {
+        __m128i reg_ori = _mm_loadu_si128(
+            reinterpret_cast<const __m128i *>(pabyInput + iByte));
+
+        constexpr int NUM_PROCESSED_BYTES_PER_REG = 2;
+        for (size_t k = 0; k < SSE_REG_SIZE / NUM_PROCESSED_BYTES_PER_REG; ++k)
+        {
+            // Given reg_ori = (A, B, ... 14 other bytes ...),
+            // expand to (A, A, A, A, A, A, A, A, B, B, B, B, B, B, B, B)
+#ifdef __SSSE3__
+            __m128i reg = _mm_shuffle_epi8(reg_ori, dispatch_two_bytes);
+#else
+            __m128i reg = _mm_unpacklo_epi8(reg_ori, reg_ori);
+            reg = _mm_unpacklo_epi16(reg, reg);
+            reg = _mm_unpacklo_epi32(reg, reg);
+#endif
+
+            // Test if bits of interest are set
+            reg = _mm_and_si128(reg, bit_mask);
+
+            // Now test if those bits are set, by comparing to zero. So the
+            // result will be that bytes where bits are set will be at 0, and
+            // ones where they are cleared will be at 0xFF. So the inverse of
+            // the end result we want!
+            reg = _mm_cmpeq_epi8(reg, zero);
+
+            // Invert the result
+            reg = _mm_andnot_si128(reg, all_ones);
+
+            _mm_storeu_si128(reinterpret_cast<__m128i *>(pabyOutput), reg);
+
+            pabyOutput += SSE_REG_SIZE;
+
+            // Right-shift of 2 bytes
+            reg_ori = _mm_bsrli_si128(reg_ori, NUM_PROCESSED_BYTES_PER_REG);
+        }
+    }
+
+#endif  // HAVE_SSE2
+
+    for (; iByte < nInputWholeBytes; ++iByte)
+    {
+        ExpandEightPackedBitsToByteAt255(pabyInput[iByte], pabyOutput);
+        pabyOutput += 8;
+    }
+    for (int iBit = 0; iBit < static_cast<int>(nInputBits % 8); ++iBit)
+    {
+        *pabyOutput = ExtractBitAndConvertTo255(pabyInput[iByte], 7 - iBit);
+        ++pabyOutput;
+    }
+}
+
+/************************************************************************/
+/*                   ExpandEightPackedBitsToByteAt1()                   */
+/************************************************************************/
+
+static inline void ExpandEightPackedBitsToByteAt1(GByte byVal,
+                                                  GByte abyOutput[8])
+{
+    abyOutput[0] = (byVal >> 7) & 0x1;
+    abyOutput[1] = (byVal >> 6) & 0x1;
+    abyOutput[2] = (byVal >> 5) & 0x1;
+    abyOutput[3] = (byVal >> 4) & 0x1;
+    abyOutput[4] = (byVal >> 3) & 0x1;
+    abyOutput[5] = (byVal >> 2) & 0x1;
+    abyOutput[6] = (byVal >> 1) & 0x1;
+    abyOutput[7] = (byVal >> 0) & 0x1;
+}
+
+/************************************************************************/
+/*                GDALExpandPackedBitsToByteAt0Or1()                    */
+/************************************************************************/
+
+/** Expand packed-bits (ordered from most-significant bit to least one)
+  into a byte each, where a bit at 0 is expanded to a byte at 0, and a bit
+  at 1 to a byte at 1.
+
+ The function does (in a possibly more optimized way) the following:
+ \code{.cpp}
+ for (size_t i = 0; i < nInputBits; ++i )
+ {
+     pabyOutput[i] = (pabyInput[i / 8] & (1 << (7 - (i % 8)))) ? 1 : 0;
+ }
+ \endcode
+
+ @param pabyInput Input array of (nInputBits + 7) / 8 bytes.
+ @param pabyOutput Output array of nInputBits bytes.
+ @param nInputBits Number of valid bits in pabyInput.
+
+ @since 3.11
+*/
+
+void GDALExpandPackedBitsToByteAt0Or1(const GByte *CPL_RESTRICT pabyInput,
+                                      GByte *CPL_RESTRICT pabyOutput,
+                                      size_t nInputBits)
+{
+    const size_t nInputWholeBytes = nInputBits / 8;
+    size_t iByte = 0;
+    for (; iByte < nInputWholeBytes; ++iByte)
+    {
+        ExpandEightPackedBitsToByteAt1(pabyInput[iByte], pabyOutput);
+        pabyOutput += 8;
+    }
+    for (int iBit = 0; iBit < static_cast<int>(nInputBits % 8); ++iBit)
+    {
+        *pabyOutput = (pabyInput[iByte] >> (7 - iBit)) & 0x1;
+        ++pabyOutput;
+    }
 }

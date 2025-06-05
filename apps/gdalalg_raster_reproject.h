@@ -15,6 +15,8 @@
 
 #include "gdalalg_raster_pipeline.h"
 
+#include <limits>
+
 //! @cond Doxygen_Suppress
 
 /************************************************************************/
@@ -30,22 +32,31 @@ class GDALRasterReprojectAlgorithm /* non final */
     static constexpr const char *HELP_URL =
         "/programs/gdal_raster_reproject.html";
 
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
-
     explicit GDALRasterReprojectAlgorithm(bool standaloneStep = false);
 
+    bool CanHandleNextStep(GDALRasterPipelineStepAlgorithm *) const override;
+
   private:
-    bool RunStep(GDALProgressFunc pfnProgress, void *pProgressData) override;
+    bool RunStep(GDALRasterPipelineStepRunContext &ctxt) override;
 
     std::string m_srsCrs{};
     std::string m_dstCrs{};
     std::string m_resampling{};
     std::vector<double> m_resolution{};
     std::vector<double> m_bbox{};
+    std::string m_bboxCrs{};
+    std::vector<int> m_size{};
     bool m_targetAlignedPixels = false;
+    std::vector<std::string> m_srcNoData{};
+    std::vector<std::string> m_dstNoData{};
+    bool m_addAlpha = false;
+    std::vector<std::string> m_warpOptions{};
+    std::vector<std::string> m_transformOptions{};
+    double m_errorThreshold = std::numeric_limits<double>::quiet_NaN();
+    int m_numThreads = 0;
+
+    // Work variables
+    std::string m_numThreadsStr{"ALL_CPUS"};
 };
 
 /************************************************************************/
@@ -60,6 +71,22 @@ class GDALRasterReprojectAlgorithmStandalone final
         : GDALRasterReprojectAlgorithm(/* standaloneStep = */ true)
     {
     }
+
+    ~GDALRasterReprojectAlgorithmStandalone() override;
+};
+
+/************************************************************************/
+/*                     GDALRasterReprojectUtils                         */
+/************************************************************************/
+
+class GDALRasterReprojectUtils final
+{
+  public:
+    static void AddResamplingArg(GDALAlgorithm *alg, std::string &resampling);
+
+    static void AddWarpOptTransformOptErrorThresholdArg(
+        GDALAlgorithm *alg, std::vector<std::string> &warpOptions,
+        std::vector<std::string> &transformOptions, double &errorThreshold);
 };
 
 //! @endcond

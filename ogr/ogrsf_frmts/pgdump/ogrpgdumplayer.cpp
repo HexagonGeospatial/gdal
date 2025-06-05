@@ -32,6 +32,8 @@ static CPLString OGRPGDumpEscapeStringWithUserData(
     return OGRPGDumpEscapeString(pszStrValue, nMaxLength, pszFieldName);
 }
 
+OGRPGDumpGeomFieldDefn::~OGRPGDumpGeomFieldDefn() = default;
+
 /************************************************************************/
 /*                        OGRPGDumpLayer()                              */
 /************************************************************************/
@@ -40,14 +42,15 @@ OGRPGDumpLayer::OGRPGDumpLayer(OGRPGDumpDataSource *poDSIn,
                                const char *pszSchemaNameIn,
                                const char *pszTableName,
                                const char *pszFIDColumnIn, int bWriteAsHexIn,
-                               int bCreateTableIn)
+                               int bCreateTableIn, bool bSkipConflictsIn)
     : m_pszSchemaName(CPLStrdup(pszSchemaNameIn)),
       m_pszSqlTableName(CPLStrdup(CPLString().Printf(
           "%s.%s", OGRPGDumpEscapeColumnName(m_pszSchemaName).c_str(),
           OGRPGDumpEscapeColumnName(pszTableName).c_str()))),
       m_pszFIDColumn(pszFIDColumnIn ? CPLStrdup(pszFIDColumnIn) : nullptr),
       m_poFeatureDefn(new OGRFeatureDefn(pszTableName)), m_poDS(poDSIn),
-      m_bWriteAsHex(CPL_TO_BOOL(bWriteAsHexIn)), m_bCreateTable(bCreateTableIn)
+      m_bWriteAsHex(CPL_TO_BOOL(bWriteAsHexIn)), m_bCreateTable(bCreateTableIn),
+      m_bSkipConflicts(bSkipConflictsIn)
 {
     SetDescription(m_poFeatureDefn->GetName());
     m_poFeatureDefn->SetGeomType(wkbNone);
@@ -330,7 +333,8 @@ OGRErr OGRPGDumpLayer::CreateFeatureViaInsert(OGRFeature *poFeature)
                 char *pszWKT = nullptr;
 
                 OGRPGDumpGeomFieldDefn *poGFldDefn =
-                    (OGRPGDumpGeomFieldDefn *)poFeature->GetGeomFieldDefnRef(i);
+                    cpl::down_cast<OGRPGDumpGeomFieldDefn *>(
+                        poFeature->GetGeomFieldDefnRef(i));
 
                 poGeom->closeRings();
                 poGeom->set3D(poGFldDefn->m_nGeometryTypeFlags &
@@ -435,6 +439,9 @@ OGRErr OGRPGDumpLayer::CreateFeatureViaInsert(OGRFeature *poFeature)
     }
 
     osCommand += ")";
+
+    if (m_bSkipConflicts)
+        osCommand += " ON CONFLICT DO NOTHING";
 
     if (bEmptyInsert)
         osCommand.Printf("INSERT INTO %s DEFAULT VALUES", m_pszSqlTableName);
@@ -1926,7 +1933,7 @@ OGRErr OGRPGDumpLayer::CreateGeomField(const OGRGeomFieldDefn *poGeomFieldIn,
                 m_pszSqlTableName, m_osSpatialIndexType.c_str(),
                 OGRPGDumpEscapeColumnName(poGeomField->GetNameRef()).c_str());
 
-            m_aosSpatialIndexCreationCommands.push_back(osCommand);
+            m_aosSpatialIndexCreationCommands.push_back(std::move(osCommand));
         }
     }
 

@@ -17,9 +17,18 @@
 #include "ogr_p.h"
 #include "ogreditablelayer.h"
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 #include "header_generated.h"
 #include "feature_generated.h"
 #include "packedrtree.h"
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #include <deque>
 #include <limits>
@@ -169,13 +178,8 @@ class OGRFlatGeobufLayer final : public OGRLayer,
     }
 
     virtual GIntBig GetFeatureCount(int bForce) override;
-    virtual OGRErr GetExtent(OGREnvelope *psExtent, int bForce) override;
-
-    virtual OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent,
-                             int bForce) override
-    {
-        return OGRLayer::GetExtent(iGeomField, psExtent, bForce);
-    }
+    virtual OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
+                              bool bForce) override;
 
     void VerifyBuffers(int bFlag)
     {

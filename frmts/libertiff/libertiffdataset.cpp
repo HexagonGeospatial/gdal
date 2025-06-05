@@ -36,6 +36,10 @@
 
 #include "libtiff_codecs.h"
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <emmintrin.h>
+#endif
+
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
 
@@ -58,33 +62,16 @@ struct LIBERTIFFDatasetFileReader final : public LIBERTIFF_NS::FileReader
 
     uint64_t size() const override
     {
+        std::lock_guard oLock(m_oMutex);
         if (m_nFileSize == 0)
         {
-            std::lock_guard oLock(m_oMutex);
-            // cppcheck-suppress identicalInnerCondition
-            if (m_nFileSize == 0)
-            {
-                m_fp->Seek(0, SEEK_END);
-                m_nFileSize = m_fp->Tell();
-            }
+            m_fp->Seek(0, SEEK_END);
+            m_nFileSize = m_fp->Tell();
         }
         return m_nFileSize;
     }
 
-    size_t read(uint64_t offset, size_t count, void *buffer) const override
-    {
-        if (m_bHasPread && m_bPReadAllowed)
-        {
-            return m_fp->PRead(buffer, count, offset);
-        }
-        else
-        {
-            std::lock_guard oLock(m_oMutex);
-            return m_fp->Seek(offset, SEEK_SET) == 0
-                       ? m_fp->Read(buffer, 1, count)
-                       : 0;
-        }
-    }
+    size_t read(uint64_t offset, size_t count, void *buffer) const override;
 
     void setPReadAllowed() const
     {
@@ -93,6 +80,21 @@ struct LIBERTIFFDatasetFileReader final : public LIBERTIFF_NS::FileReader
 
     CPL_DISALLOW_COPY_ASSIGN(LIBERTIFFDatasetFileReader)
 };
+
+size_t LIBERTIFFDatasetFileReader::read(uint64_t offset, size_t count,
+                                        void *buffer) const
+{
+    if (m_bHasPread && m_bPReadAllowed)
+    {
+        return m_fp->PRead(buffer, count, offset);
+    }
+    else
+    {
+        std::lock_guard oLock(m_oMutex);
+        return m_fp->Seek(offset, SEEK_SET) == 0 ? m_fp->Read(buffer, 1, count)
+                                                 : 0;
+    }
+}
 
 /************************************************************************/
 /*                         LIBERTIFFDataset                             */
@@ -332,7 +334,7 @@ class LIBERTIFFBand final : public GDALPamRasterBand
 
     // We could do a smarter implementation by manually managing blocks in
     // the TLS structure, but given we should rarely use that method, the
-    // current approach with a mutex should be good enouh
+    // current approach with a mutex should be good enough
     GDALRasterBlock *GetLockedBlockRef(int nXBlockOff, int nYBlockOff,
                                        int bJustInitialize = FALSE) override
     {
@@ -1148,7 +1150,55 @@ FloatingPointHorizPredictorDecode(std::vector<uint8_t> &tmpBuffer,
     memcpy(tmpBuffer.data(), buffer, tmpBufferSize);
     constexpr uint32_t bytesPerWords = static_cast<uint32_t>(sizeof(T));
     const size_t wordCount = nPixelCount * nComponentsPerPixel;
-    for (size_t iWord = 0; iWord < wordCount; iWord++)
+
+    size_t iWord = 0;
+
+#if defined(__x86_64__) || defined(_M_X64)
+    if constexpr (bytesPerWords == 4)
+    {
+        /* Optimization of general case */
+        for (; iWord + 15 < wordCount; iWord += 16)
+        {
+            /* Interlace 4*16 byte values */
+
+            __m128i xmm0 = _mm_loadu_si128(reinterpret_cast<__m128i const *>(
+                tmpBuffer.data() + iWord + 3 * wordCount));
+            __m128i xmm1 = _mm_loadu_si128(reinterpret_cast<__m128i const *>(
+                tmpBuffer.data() + iWord + 2 * wordCount));
+            __m128i xmm2 = _mm_loadu_si128(reinterpret_cast<__m128i const *>(
+                tmpBuffer.data() + iWord + 1 * wordCount));
+            __m128i xmm3 = _mm_loadu_si128(reinterpret_cast<__m128i const *>(
+                tmpBuffer.data() + iWord + 0 * wordCount));
+            /* (xmm0_0, xmm1_0, xmm0_1, xmm1_1, xmm0_2, xmm1_2, ...) */
+            __m128i tmp0 = _mm_unpacklo_epi8(xmm0, xmm1);
+            /* (xmm0_8, xmm1_8, xmm0_9, xmm1_9, xmm0_10, xmm1_10, ...) */
+            __m128i tmp1 = _mm_unpackhi_epi8(xmm0, xmm1);
+            /* (xmm2_0, xmm3_0, xmm2_1, xmm3_1, xmm2_2, xmm3_2, ...) */
+            __m128i tmp2 = _mm_unpacklo_epi8(xmm2, xmm3);
+            /* (xmm2_8, xmm3_8, xmm2_9, xmm3_9, xmm2_10, xmm3_10, ...) */
+            __m128i tmp3 = _mm_unpackhi_epi8(xmm2, xmm3);
+            /* (xmm0_0, xmm1_0, xmm2_0, xmm3_0, xmm0_1, xmm1_1, xmm2_1, xmm3_1, ...) */
+            __m128i tmp2_0 = _mm_unpacklo_epi16(tmp0, tmp2);
+            __m128i tmp2_1 = _mm_unpackhi_epi16(tmp0, tmp2);
+            __m128i tmp2_2 = _mm_unpacklo_epi16(tmp1, tmp3);
+            __m128i tmp2_3 = _mm_unpackhi_epi16(tmp1, tmp3);
+            _mm_storeu_si128(
+                reinterpret_cast<__m128i *>(buffer + 4 * iWord + 0 * 16),
+                tmp2_0);
+            _mm_storeu_si128(
+                reinterpret_cast<__m128i *>(buffer + 4 * iWord + 1 * 16),
+                tmp2_1);
+            _mm_storeu_si128(
+                reinterpret_cast<__m128i *>(buffer + 4 * iWord + 2 * 16),
+                tmp2_2);
+            _mm_storeu_si128(
+                reinterpret_cast<__m128i *>(buffer + 4 * iWord + 3 * 16),
+                tmp2_3);
+        }
+    }
+#endif
+
+    for (; iWord < wordCount; iWord++)
     {
         for (uint32_t iByte = 0; iByte < bytesPerWords; iByte++)
         {
@@ -1163,28 +1213,6 @@ FloatingPointHorizPredictorDecode(std::vector<uint8_t> &tmpBuffer,
     }
     return true;
 }
-
-/************************************************************************/
-/*                     ExtractBitAndConvertTo255()                      */
-/************************************************************************/
-
-#if defined(__GNUC__) || defined(_MSC_VER)
-// Signedness of char implementation dependent, so be explicit.
-// Assumes 2-complement integer types and sign extension of right shifting
-// GCC guarantees such:
-// https://gcc.gnu.org/onlinedocs/gcc/Integers-implementation.html#Integers-implementation
-static inline GByte ExtractBitAndConvertTo255(GByte byVal, int nBit)
-{
-    return static_cast<GByte>(static_cast<signed char>(byVal << (7 - nBit)) >>
-                              7);
-}
-#else
-// Portable way
-static inline GByte ExtractBitAndConvertTo255(GByte byVal, int nBit)
-{
-    return (byVal & (1 << nBit)) ? 255 : 0;
-}
-#endif
 
 /************************************************************************/
 /*                           ReadBlock()                                */
@@ -1217,7 +1245,7 @@ bool LIBERTIFFDataset::ReadBlock(GByte *pabyBlockData, int nBlockXOff,
             curStrileIdx =
                 nBlockYOff + DIV_ROUND_UP(m_image->height(),
                                           m_image->rowsPerStripSanitized()) *
-                                 iBandTIFFFirst;
+                                 static_cast<uint64_t>(iBandTIFFFirst);
         else
             curStrileIdx = nBlockYOff;
     }
@@ -1246,7 +1274,7 @@ bool LIBERTIFFDataset::ReadBlock(GByte *pabyBlockData, int nBlockXOff,
 
         if constexpr (sizeof(size_t) < sizeof(uint64_t))
         {
-            if (size64 > std::numeric_limits<size_t>::max())
+            if (size64 > std::numeric_limits<size_t>::max() - 1)
             {
                 CPLError(CE_Failure, CPLE_NotSupported, "Too large strile");
                 return false;
@@ -1401,6 +1429,8 @@ bool LIBERTIFFDataset::ReadBlock(GByte *pabyBlockData, int nBlockXOff,
 
                 if (tlsState.m_tiff.tif_decodestrip)
                 {
+                    tlsState.m_tiff.tif_name =
+                        const_cast<char *>(GetDescription());
                     tlsState.m_tiff.tif_dir.td_sampleformat =
                         static_cast<uint16_t>(m_image->sampleFormat());
                     tlsState.m_tiff.tif_dir.td_bitspersample =
@@ -1578,51 +1608,21 @@ bool LIBERTIFFDataset::ReadBlock(GByte *pabyBlockData, int nBlockXOff,
         if (m_image->bitsPerSample() == 1)
         {
             const GByte *CPL_RESTRICT pabySrc = abyDecompressedStrile.data();
-            const GByte val = m_bExpand1To255 ? 255 : 1;
             GByte *CPL_RESTRICT pabyDst = bufferForOneBitExpansion.data();
             for (int iY = 0; iY < nBlockActualYSize; ++iY)
             {
-                int iX = 0;
                 if (m_bExpand1To255)
                 {
-                    for (; iX + 7 < nBlockXSize;
-                         iX += 8, ++pabySrc, pabyDst += 8)
-                    {
-                        const GByte srcByte = *pabySrc;
-                        pabyDst[0] = ExtractBitAndConvertTo255(srcByte, 7);
-                        pabyDst[1] = ExtractBitAndConvertTo255(srcByte, 6);
-                        pabyDst[2] = ExtractBitAndConvertTo255(srcByte, 5);
-                        pabyDst[3] = ExtractBitAndConvertTo255(srcByte, 4);
-                        pabyDst[4] = ExtractBitAndConvertTo255(srcByte, 3);
-                        pabyDst[5] = ExtractBitAndConvertTo255(srcByte, 2);
-                        pabyDst[6] = ExtractBitAndConvertTo255(srcByte, 1);
-                        pabyDst[7] = ExtractBitAndConvertTo255(srcByte, 0);
-                    }
+                    GDALExpandPackedBitsToByteAt0Or255(pabySrc, pabyDst,
+                                                       nBlockXSize);
                 }
                 else
                 {
-                    for (; iX + 7 < nBlockXSize;
-                         iX += 8, ++pabySrc, pabyDst += 8)
-                    {
-                        const int srcByte = *pabySrc;
-                        pabyDst[0] = (srcByte >> 7) & 1;
-                        pabyDst[1] = (srcByte >> 6) & 1;
-                        pabyDst[2] = (srcByte >> 5) & 1;
-                        pabyDst[3] = (srcByte >> 4) & 1;
-                        pabyDst[4] = (srcByte >> 3) & 1;
-                        pabyDst[5] = (srcByte >> 2) & 1;
-                        pabyDst[6] = (srcByte >> 1) & 1;
-                        pabyDst[7] = (srcByte >> 0) & 1;
-                    }
+                    GDALExpandPackedBitsToByteAt0Or1(pabySrc, pabyDst,
+                                                     nBlockXSize);
                 }
-                if (iX < nBlockXSize)
-                {
-                    for (; iX < nBlockXSize; ++iX, ++pabyDst)
-                    {
-                        *pabyDst = (*pabySrc & (0x80 >> (iX % 8))) ? val : 0;
-                    }
-                    ++pabySrc;
-                }
+                pabySrc += (nBlockXSize + 7) / 8;
+                pabyDst += nBlockXSize;
             }
 
             std::swap(abyDecompressedStrile, bufferForOneBitExpansion);
@@ -2171,6 +2171,13 @@ bool LIBERTIFFDataset::Open(std::unique_ptr<const LIBERTIFF_NS::Image> image)
     }
 
     const GDALDataType eDT = ComputeGDALDataType();
+    if (eDT == GDT_Unknown)
+    {
+        CPLDebug("LIBERTIFF",
+                 "BitsPerSample = %u and SampleFormat=%u unhandled",
+                 m_image->bitsPerSample(), m_image->sampleFormat());
+        return false;
+    }
 
     // Deal with Predictor tag
     if (m_image->predictor() == 2)

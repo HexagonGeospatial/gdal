@@ -168,7 +168,7 @@ CPLErr MSGNRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
                                   void *pImage)
 
 {
-    MSGNDataset *poGDS = (MSGNDataset *)poDS;
+    MSGNDataset *poGDS = cpl::down_cast<MSGNDataset *>(poDS);
 
     // invert y position
     const int i_nBlockYOff = poDS->GetRasterYSize() - 1 - nBlockYOff;
@@ -209,7 +209,7 @@ CPLErr MSGNRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
     char *pszRecord = (char *)CPLMalloc(data_length);
     size_t nread = VSIFReadL(pszRecord, 1, data_length, poGDS->fp);
 
-    SUB_VISIRLINE *p = (SUB_VISIRLINE *)pszRecord;
+    SUB_VISIRLINE *p = reinterpret_cast<SUB_VISIRLINE *>(pszRecord);
     to_native(*p);
 
     if (p->lineValidity != 1 || poGDS->m_Shape != WHOLE_DISK)
@@ -451,9 +451,7 @@ GDALDataset *MSGNDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "The MSGN driver does not support update access to existing"
-                 " datasets.\n");
+        ReportUpdateNotSupportedByDriver("MSGN");
         return nullptr;
     }
 

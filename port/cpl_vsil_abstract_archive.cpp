@@ -542,7 +542,7 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
                 {
                     const char lastC = osFileInArchive.back();
                     if (IsEitherSlash(lastC))
-                        osFileInArchive.pop_back();
+                        osFileInArchive.resize(osFileInArchive.size() - 1);
                 }
 
                 return archiveFilename;
@@ -745,44 +745,6 @@ int VSIArchiveFilesystemHandler::Stat(const char *pszFilename,
 
     CPLFree(archiveFilename);
     return ret;
-}
-
-/************************************************************************/
-/*                              Unlink()                                */
-/************************************************************************/
-
-int VSIArchiveFilesystemHandler::Unlink(const char * /* pszFilename */)
-{
-    return -1;
-}
-
-/************************************************************************/
-/*                             Rename()                                 */
-/************************************************************************/
-
-int VSIArchiveFilesystemHandler::Rename(const char * /* oldpath */,
-                                        const char * /* newpath */)
-{
-    return -1;
-}
-
-/************************************************************************/
-/*                             Mkdir()                                  */
-/************************************************************************/
-
-int VSIArchiveFilesystemHandler::Mkdir(const char * /* pszDirname */,
-                                       long /* nMode */)
-{
-    return -1;
-}
-
-/************************************************************************/
-/*                             Rmdir()                                  */
-/************************************************************************/
-
-int VSIArchiveFilesystemHandler::Rmdir(const char * /* pszDirname */)
-{
-    return -1;
 }
 
 /************************************************************************/

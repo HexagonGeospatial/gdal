@@ -149,6 +149,7 @@ def test_tiff_write_3():
 
 def test_tiff_write_4():
 
+    gdaltest.importorskip_gdal_array()
     np = pytest.importorskip("numpy")
 
     options = ["TILED=YES", "BLOCKXSIZE=32", "BLOCKYSIZE=32"]
@@ -7693,8 +7694,7 @@ def test_tiff_write_157():
 
     # Check that we properly deserialize Float16 values
     ds = gdal.Open("/vsimem/tiff_write_157.tif")
-    assert ds.GetRasterBand(1).GetMetadataItem("NBITS", "IMAGE_STRUCTURE") == "16"
-    got = struct.unpack("f" * 14, ds.ReadRaster())
+    got = struct.unpack("e" * 14, ds.ReadRaster())
     expected = [
         0.0,
         -0.0,
@@ -7770,7 +7770,7 @@ def test_tiff_write_157():
     ds = None
 
     ds = gdal.Open("/vsimem/tiff_write_157.tif")
-    got = struct.unpack("f" * 18, ds.ReadRaster())
+    got = struct.unpack("e" * 18, ds.ReadRaster())
     ds = None
     expected = (
         0.0,
@@ -9795,8 +9795,7 @@ def test_tiff_write_jpegxl_float16(tmp_vsimem):
         outfilename, src_ds, options=["COMPRESS=JXL", "JXL_LOSSLESS=YES"]
     )
     ds = gdal.Open(outfilename)
-    assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
-    assert ds.GetRasterBand(1).GetMetadataItem("NBITS", "IMAGE_STRUCTURE") == "16"
+    assert ds.GetRasterBand(1).DataType == gdal.GDT_Float16
     assert ds.GetRasterBand(1).Checksum() == 4672
 
 
@@ -11988,3 +11987,91 @@ def test_tiff_write_warn_ignore_predictor_option(tmp_vsimem):
             out_filename, 1, 1, options=["PREDICTOR=2"]
         )
     assert "PREDICTOR option is ignored" in gdal.GetLastErrorMsg()
+
+
+###############################################################################
+#
+
+
+@gdaltest.enable_exceptions()
+@pytest.mark.parametrize("COPY_SRC_OVERVIEWS", ["YES", "NO"])
+def test_tiff_write_interleave_tile(tmp_vsimem, COPY_SRC_OVERVIEWS):
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    ds = gdal.GetDriverByName("GTiff").CreateCopy(
+        out_filename,
+        gdal.Open("data/rgbsmall.tif"),
+        options=[
+            "@TILE_INTERLEAVE=YES",
+            "TILED=YES",
+            "BLOCKXSIZE=32",
+            "BLOCKYSIZE=32",
+            "COPY_SRC_OVERVIEWS=" + COPY_SRC_OVERVIEWS,
+        ],
+    )
+    assert ds.GetMetadataItem("INTERLEAVE", "IMAGE_STRUCTURE") == "TILE"
+    ds.Close()
+
+    ds = gdal.Open(out_filename)
+    assert ds.GetMetadataItem("INTERLEAVE", "IMAGE_STRUCTURE") == "TILE"
+
+    assert [ds.GetRasterBand(band + 1).Checksum() for band in range(3)] == [
+        21212,
+        21053,
+        21349,
+    ]
+
+    # Check that the tiles are in the expected order in the file
+    last_offset = 0
+    for y in range(2):
+        for x in range(2):
+            for band in range(3):
+                offset = int(
+                    ds.GetRasterBand(band + 1).GetMetadataItem(
+                        f"BLOCK_OFFSET_{x}_{y}", "TIFF"
+                    )
+                )
+                assert offset > last_offset
+                last_offset = offset
+
+
+###############################################################################
+#
+
+
+def test_tiff_write_multi_band_interleaved_predictor_3(tmp_vsimem):
+
+    ref_content = struct.pack("f" * 8, 1.5, -3.5, 4.5, -2.5, 10, -20, 30, -40)
+    with gdal.GetDriverByName("GTiff").Create(
+        tmp_vsimem / "test.tif",
+        4,
+        1,
+        2,
+        gdal.GDT_Float32,
+        options=["INTERLEAVE=PIXEL", "PREDICTOR=3", "COMPRESS=LZW"],
+    ) as ds:
+        ds.WriteRaster(0, 0, 4, 1, ref_content)
+    with gdal.Open(tmp_vsimem / "test.tif") as ds:
+        content = ds.ReadRaster()
+        assert ref_content == content, struct.unpack("f" * 8, content)
+
+
+###############################################################################
+#
+
+
+def test_tiff_write_5_bands_interleaved_predictor_2(tmp_vsimem):
+
+    ref_content = struct.pack("B" * 10, 1, 5, 3, 2, 4, 9, 6, 8, 0, 7)
+    with gdal.GetDriverByName("GTiff").Create(
+        tmp_vsimem / "test.tif",
+        2,
+        1,
+        5,
+        gdal.GDT_Byte,
+        options=["INTERLEAVE=PIXEL", "PREDICTOR=2", "COMPRESS=LZW"],
+    ) as ds:
+        ds.WriteRaster(0, 0, 2, 1, ref_content)
+    with gdal.Open(tmp_vsimem / "test.tif") as ds:
+        content = ds.ReadRaster()
+        assert ref_content == content, struct.unpack("B" * 10, content)

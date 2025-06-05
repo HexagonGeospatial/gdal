@@ -12,16 +12,16 @@
 ###############################################################################
 
 import json
+import os
 
+import gdaltest
 import pytest
 
 from osgeo import gdal
 
 
 def get_pipeline_alg():
-    reg = gdal.GetGlobalAlgorithmRegistry()
-    raster = reg.InstantiateAlg("raster")
-    return raster.InstantiateSubAlgorithm("pipeline")
+    return gdal.GetGlobalAlgorithmRegistry()["raster"]["pipeline"]
 
 
 def test_gdalalg_raster_pipeline_read_and_write(tmp_vsimem):
@@ -68,11 +68,9 @@ def test_gdalalg_raster_pipeline_as_api(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.tif")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("pipeline").Set(
-        f"read ../gcore/data/byte.tif ! write {out_filename}"
-    )
+    pipeline["pipeline"] = f"read ../gcore/data/byte.tif ! write {out_filename}"
     assert pipeline.Run()
-    ds = pipeline.GetArg("output").Get().GetDataset()
+    ds = pipeline["output"].GetDataset()
     assert ds.GetRasterBand(1).Checksum() == 4672
     assert pipeline.Finalize()
     ds = None
@@ -86,8 +84,8 @@ def test_gdalalg_raster_pipeline_input_through_api(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.tif")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("input").Get().SetDataset(gdal.OpenEx("../gcore/data/byte.tif"))
-    pipeline.GetArg("pipeline").Set(f"read ! write {out_filename}")
+    pipeline["input"] = "../gcore/data/byte.tif"
+    pipeline["pipeline"] = f"read ! write {out_filename}"
     assert pipeline.Run()
     assert pipeline.Finalize()
 
@@ -100,8 +98,8 @@ def test_gdalalg_raster_pipeline_input_through_api_run_twice(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.tif")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("input").Get().SetDataset(gdal.OpenEx("../gcore/data/byte.tif"))
-    pipeline.GetArg("pipeline").Set(f"read ! write {out_filename}")
+    pipeline["input"] = "../gcore/data/byte.tif"
+    pipeline["pipeline"] = f"read ! write {out_filename}"
     assert pipeline.Run()
     with pytest.raises(
         Exception, match=r"pipeline: Step nr 0 \(read\) has already an output dataset"
@@ -114,8 +112,8 @@ def test_gdalalg_raster_pipeline_output_through_api(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.tif")
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("output").Get().SetName(out_filename)
-    pipeline.GetArg("pipeline").Set("read ../gcore/data/byte.tif ! write")
+    pipeline["output"] = out_filename
+    pipeline["pipeline"] = "read ../gcore/data/byte.tif ! write"
     assert pipeline.Run()
     assert pipeline.Finalize()
 
@@ -126,7 +124,7 @@ def test_gdalalg_raster_pipeline_output_through_api(tmp_vsimem):
 def test_gdalalg_raster_pipeline_as_api_error():
 
     pipeline = get_pipeline_alg()
-    pipeline.GetArg("pipeline").Set("read")
+    pipeline["pipeline"] = "read"
     with pytest.raises(Exception, match="pipeline: At least 2 steps must be provided"):
         pipeline.Run()
 
@@ -136,6 +134,34 @@ def test_gdalalg_raster_pipeline_usage_as_json():
     pipeline = get_pipeline_alg()
     j = json.loads(pipeline.GetUsageAsJSON())
     assert "pipeline_algorithms" in j
+
+
+def test_gdalalg_raster_pipeline_help_doc():
+
+    import gdaltest
+    import test_cli_utilities
+
+    gdal_path = test_cli_utilities.get_gdal_path()
+    if gdal_path is None:
+        pytest.skip("gdal binary missing")
+
+    out = gdaltest.runexternal(f"{gdal_path} raster pipeline --help-doc=main")
+
+    assert "Usage: gdal raster pipeline [OPTIONS] <PIPELINE>" in out
+    assert (
+        "<PIPELINE> is of the form: read [READ-OPTIONS] ( ! <STEP-NAME> [STEP-OPTIONS] )* ! write [WRITE-OPTIONS]"
+        in out
+    )
+
+    out = gdaltest.runexternal(f"{gdal_path} raster pipeline --help-doc=edit")
+
+    assert "* edit [OPTIONS]" in out
+
+    out, _ = gdaltest.runexternal_out_and_err(
+        f"{gdal_path} raster pipeline --help-doc=unknown"
+    )
+
+    assert "ERROR: unknown pipeline step 'unknown'" in out
 
 
 def test_gdalalg_raster_pipeline_quoted(tmp_vsimem):
@@ -186,6 +212,21 @@ def test_gdalalg_raster_easter_egg(tmp_path):
 
     with gdal.OpenEx(out_filename) as ds:
         assert ds.GetRasterBand(1).Checksum() == 4672
+
+
+def test_gdalalg_raster_easter_egg_failed():
+
+    import gdaltest
+    import test_cli_utilities
+
+    gdal_path = test_cli_utilities.get_gdal_path()
+    if gdal_path is None:
+        pytest.skip("gdal binary missing")
+    _, err = gdaltest.runexternal_out_and_err(
+        f"{gdal_path} raster +gdal=pipeline +step +gdal=read +input=../gcore/data/byte.tif +step +gdal=unknown +step +write +output=/vsimem/out.tif"
+    )
+
+    assert "pipeline: unknown step name: unknown" in err
 
 
 def test_gdalalg_raster_pipeline_usage_as_json_bis():
@@ -292,9 +333,7 @@ def test_gdalalg_raster_pipeline_invalid_step_during_parsing(tmp_vsimem):
     out_filename = str(tmp_vsimem / "out.tif")
 
     pipeline = get_pipeline_alg()
-    with pytest.raises(
-        Exception, match="write: Long name option '--invalid' is unknown"
-    ):
+    with pytest.raises(Exception, match="write: Option '--invalid' is unknown"):
         pipeline.ParseRunAndFinalize(
             ["read", "../gcore/data/byte.tif", "!", "write", "--invalid", out_filename]
         )
@@ -419,7 +458,7 @@ def test_gdalalg_raster_pipeline_reproject_invalid_resolution(tmp_vsimem):
     pipeline = get_pipeline_alg()
     with pytest.raises(
         Exception,
-        match="Target resolution should be strictly positive",
+        match="Value of argument 'resolution' is -1, but should be > 0",
     ):
         pipeline.ParseRunAndFinalize(
             [
@@ -539,3 +578,111 @@ def test_gdalalg_raster_pipeline_reproject_almost_all_args(tmp_vsimem):
             (-117.641, 0.0005, 0.0, 33.9008, 0.0, -0.0004), rel=1e-8
         )
         assert ds.GetRasterBand(1).Checksum() == 8515
+
+
+def test_gdalalg_raster_pipeline_reproject_proj_string(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.tif")
+
+    pipeline = get_pipeline_alg()
+    assert pipeline.ParseRunAndFinalize(
+        [
+            "read",
+            "../gcore/data/byte.tif",
+            "!",
+            "reproject",
+            "--src-crs=EPSG:32611",
+            "--dst-crs",
+            "+proj=laea +lon_0=147 +lat_0=-40 +datum=WGS84",
+            "!",
+            "write",
+            "--overwrite",
+            out_filename,
+        ]
+    )
+
+    with gdal.OpenEx(out_filename) as ds:
+        assert "Lambert Azimuthal Equal Area" in ds.GetSpatialRef().ExportToWkt(
+            ["FORMAT=WKT2"]
+        ), ds.GetSpatialRef().ExportToWkt(["FORMAT=WKT2"])
+
+
+def test_gdalalg_raster_pipeline_too_many_steps_for_vrt_output(tmp_vsimem):
+
+    out_filename = str(tmp_vsimem / "out.vrt")
+
+    pipeline = get_pipeline_alg()
+    with pytest.raises(
+        Exception,
+        match="pipeline: VRT output is not supported when there are more than 3 steps",
+    ):
+        pipeline.ParseRunAndFinalize(
+            [
+                "read",
+                "../gcore/data/byte.tif",
+                "!",
+                "reproject",
+                "!",
+                "reproject",
+                "!",
+                "write",
+                "--overwrite",
+                out_filename,
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "config_options", [{}, {"GDAL_RASTER_PIPELINE_USE_GTIFF_FOR_TEMP_DATASET": "YES"}]
+)
+def test_gdalalg_raster_pipeline_to_gdalg_step_non_natively_streamable(
+    tmp_vsimem, config_options
+):
+
+    src_filename = os.path.join(os.getcwd(), "../gcore/data/byte.tif")
+
+    with gdaltest.error_raised(gdal.CE_Warning):
+        gdal.Run(
+            "raster",
+            "pipeline",
+            pipeline=f"read {src_filename} ! fill-nodata ! write {tmp_vsimem}/out.gdalg.json",
+        )
+
+    if gdal.GetDriverByName("GDALG"):
+        with gdaltest.config_options(config_options):
+            with gdal.Open(tmp_vsimem / "out.gdalg.json") as ds:
+                assert ds.GetRasterBand(1).Checksum() == 4672
+
+        new_options = {"CPL_TMPDIR": "/i_do/not/exist"}
+        new_options.update(config_options)
+        with gdaltest.config_options(new_options):
+            with pytest.raises(Exception):
+                gdal.Open(tmp_vsimem / "out.gdalg.json")
+
+
+def test_gdalalg_raster_pipeline_help():
+
+    import gdaltest
+    import test_cli_utilities
+
+    gdal_path = test_cli_utilities.get_gdal_path()
+    if gdal_path is None:
+        pytest.skip("gdal binary missing")
+
+    out = gdaltest.runexternal(f"{gdal_path} raster pipeline --help")
+    assert out.startswith("Usage: gdal raster pipeline [OPTIONS] <PIPELINE>")
+    assert "* read [OPTIONS] <INPUT>" in out
+    assert "* write [OPTIONS] <OUTPUT>" in out
+
+    out = gdaltest.runexternal(f"{gdal_path} raster pipeline --progress --help")
+    assert out.startswith("Usage: gdal raster pipeline [OPTIONS] <PIPELINE>")
+    assert "* read [OPTIONS] <INPUT>" in out
+    assert "* write [OPTIONS] <OUTPUT>" in out
+
+    out = gdaltest.runexternal(f"{gdal_path} raster pipeline read --help")
+    assert out.startswith("Usage: read [OPTIONS] <INPUT>")
+
+    out = gdaltest.runexternal(
+        f"{gdal_path} raster pipeline read foo.tif ! select --help"
+    )
+    assert out.startswith("Usage: select [OPTIONS] <BAND>")

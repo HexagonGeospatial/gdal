@@ -2666,7 +2666,7 @@ def test_ogr_csv_string_quoting_always(tmp_vsimem):
 
 def test_ogr_csv_string_quoting_if_ambiguous(tmp_vsimem):
 
-    src_ds = gdal.GetDriverByName("Memory").Create("", 0, 0, 0, gdal.GDT_Unknown)
+    src_ds = gdal.GetDriverByName("MEM").Create("", 0, 0, 0, gdal.GDT_Unknown)
     lyr = src_ds.CreateLayer("layer")
     lyr.CreateField(ogr.FieldDefn("foo"))
     lyr.CreateField(ogr.FieldDefn("bar"))
@@ -2701,7 +2701,7 @@ def test_ogr_csv_string_quoting_if_ambiguous(tmp_vsimem):
 
 def test_ogr_csv_string_quoting_if_needed(tmp_vsimem):
 
-    src_ds = gdal.GetDriverByName("Memory").Create("", 0, 0, 0, gdal.GDT_Unknown)
+    src_ds = gdal.GetDriverByName("MEM").Create("", 0, 0, 0, gdal.GDT_Unknown)
     lyr = src_ds.CreateLayer("layer")
     lyr.CreateField(ogr.FieldDefn("foo"))
     lyr.CreateField(ogr.FieldDefn("bar"))
@@ -2798,6 +2798,26 @@ def test_ogr_csv_double_quotes_in_middle_of_field():
     assert f["id"] == "1"
     assert f["coord"] == """50°46'06.6"N 116°42'04.4"""
     assert f["str"] == "foo"
+
+
+###############################################################################
+# Test bugfix for https://github.com/OSGeo/gdal/issues/11660
+
+
+def test_ogr_csv_double_quotes_in_middle_of_field_bis():
+
+    ds = ogr.Open("data/csv/double_quotes_in_middle_of_field_bis.csv")
+    lyr = ds.GetLayer(0)
+
+    f = lyr.GetNextFeature()
+    assert f["first"] == "1"
+    assert f["second"] == """two"with quote"""
+    assert f["third"] == "3"
+
+    f = lyr.GetNextFeature()
+    assert f["first"] == "10"
+    assert f["second"] == """twenty"with quote"""
+    assert f["third"] == "30"
 
 
 ###############################################################################
@@ -3460,6 +3480,91 @@ def test_ogr_schema_override_wkt(tmp_vsimem):
         assert f["WKT"] == "POINT (1 2)"
         assert f["foo"] == "bar"
         assert f.GetGeometryRef().ExportToWkt() == "POINT (1 2)"
+
+
+###############################################################################
+# Test reading CSV with unbalanced double-quotes
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_csv_unbalanced_double_quotes():
+
+    with ogr.Open("data/csv/unbalanced_double_quotes.csv") as ds:
+        lyr = ds.GetLayer(0)
+        with pytest.raises(
+            Exception,
+            match="CSV file has unbalanced number of double-quotes. Corrupted data will likely be returned",
+        ):
+            lyr.GetNextFeature()
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_csv_64_bit_integer(tmp_vsimem):
+
+    filename = tmp_vsimem / "test.csv"
+    gdal.FileFromMemBuffer(filename, "field\n9223372036854775807\n")
+    gdal.FileFromMemBuffer(str(filename) + "t", "Integer64\n")
+    with ogr.Open(filename) as ds:
+        lyr = ds.GetLayer(0)
+        f = lyr.GetNextFeature()
+        assert f["field"] == 9223372036854775807
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_csv_64_bit_integer_invalid_value(tmp_vsimem):
+
+    filename = tmp_vsimem / "test.csv"
+    gdal.FileFromMemBuffer(filename, "field\n9223372036854775807.5\n")
+    gdal.FileFromMemBuffer(str(filename) + "t", "Integer64\n")
+    with ogr.Open(filename) as ds:
+        lyr = ds.GetLayer(0)
+        with gdal.quiet_errors():
+            f = lyr.GetNextFeature()
+            assert (
+                gdal.GetLastErrorMsg()
+                == "Invalid value type found in record 1 for field field. This warning will no longer be emitted"
+            )
+        assert f["field"] is None
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_csv_32_bit_integer_invalid_value(tmp_vsimem):
+
+    filename = tmp_vsimem / "test.csv"
+    gdal.FileFromMemBuffer(filename, "field\n9223372036854775807\n")
+    gdal.FileFromMemBuffer(str(filename) + "t", "Integer\n")
+    with ogr.Open(filename) as ds:
+        lyr = ds.GetLayer(0)
+        with gdal.quiet_errors():
+            f = lyr.GetNextFeature()
+            assert (
+                gdal.GetLastErrorMsg()
+                == "Field test.field: integer overflow occurred when trying to set 9223372036854775807 as 32 bit integer."
+            )
+        assert f["field"] == 2147483647
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_csv_do_not_write_header(tmp_vsimem):
+
+    filename = tmp_vsimem / "test.csv"
+    gdal.VectorTranslate(filename, "data/poly.shp", layerCreationOptions=["HEADER=NO"])
+    with ogr.Open(filename) as ds:
+        lyr = ds.GetLayer(0)
+        assert lyr.GetLayerDefn().GetFieldDefn(0).GetName() == "field_1"
+        assert lyr.GetFeatureCount() == 10
 
 
 ###############################################################################

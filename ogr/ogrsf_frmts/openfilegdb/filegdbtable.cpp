@@ -61,6 +61,10 @@ constexpr GUInt32 EXT_SHAPE_SEGMENT_ELLIPSE = 5;
 namespace OpenFileGDB
 {
 
+FileGDBGeomField::~FileGDBGeomField() = default;
+
+FileGDBRasterField::~FileGDBRasterField() = default;
+
 /************************************************************************/
 /*                           SanitizeScale()                            */
 /************************************************************************/
@@ -870,14 +874,15 @@ bool FileGDBTable::Open(const char *pszFilename, bool bUpdate,
 
     m_nHeaderBufferMaxSize = GetInt32(abyHeader + 8, 0);
 
-    CPLString osTableXName;
+    std::string osTableXName;
     if (m_bUpdate || (m_nValidRecordCount > 0 &&
                       !CPLTestBool(CPLGetConfigOption(
                           "OPENFILEGDB_IGNORE_GDBTABLX", "false"))))
     {
-        osTableXName = CPLFormFilename(CPLGetPath(pszFilename),
-                                       CPLGetBasename(pszFilename), "gdbtablx");
-        m_fpTableX = VSIFOpenL(osTableXName, m_bUpdate ? "r+b" : "rb");
+        osTableXName = CPLFormFilenameSafe(
+            CPLGetPathSafe(pszFilename).c_str(),
+            CPLGetBasenameSafe(pszFilename).c_str(), "gdbtablx");
+        m_fpTableX = VSIFOpenL(osTableXName.c_str(), m_bUpdate ? "r+b" : "rb");
         if (m_fpTableX == nullptr)
         {
             if (m_bUpdate)
@@ -1039,7 +1044,7 @@ bool FileGDBTable::Open(const char *pszFilename, bool bUpdate,
         pabyIter++;
         nRemaining--;
         returnErrorIf(nCarCount > nRemaining / 2);
-        const std::string osName(ReadUTF16String(pabyIter, nCarCount));
+        std::string osName(ReadUTF16String(pabyIter, nCarCount));
         pabyIter += 2 * nCarCount;
         nRemaining -= 2 * nCarCount;
 
@@ -1048,7 +1053,7 @@ bool FileGDBTable::Open(const char *pszFilename, bool bUpdate,
         pabyIter++;
         nRemaining--;
         returnErrorIf(nCarCount > nRemaining / 2);
-        const std::string osAlias(ReadUTF16String(pabyIter, nCarCount));
+        std::string osAlias(ReadUTF16String(pabyIter, nCarCount));
         pabyIter += 2 * nCarCount;
         nRemaining -= 2 * nCarCount;
 
@@ -1194,8 +1199,8 @@ bool FileGDBTable::Open(const char *pszFilename, bool bUpdate,
             }
 
             auto poField = std::make_unique<FileGDBField>(this);
-            poField->m_osName = osName;
-            poField->m_osAlias = osAlias;
+            poField->m_osName = std::move(osName);
+            poField->m_osAlias = std::move(osAlias);
             poField->m_eType = eType;
             poField->m_bNullable = (flags & FileGDBField::MASK_NULLABLE) != 0;
             poField->m_bRequired = (flags & FileGDBField::MASK_REQUIRED) != 0;
@@ -1220,8 +1225,8 @@ bool FileGDBTable::Open(const char *pszFilename, bool bUpdate,
                 poField = poRasterField;
             }
 
-            poField->m_osName = osName;
-            poField->m_osAlias = osAlias;
+            poField->m_osName = std::move(osName);
+            poField->m_osAlias = std::move(osAlias);
             poField->m_eType = eType;
             if (eType == FGFT_GEOMETRY)
                 m_iGeomField = static_cast<int>(m_apoFields.size());
@@ -2478,14 +2483,15 @@ int FileGDBTable::GetIndexCount()
 
     m_bHasReadGDBIndexes = TRUE;
 
-    const char *pszIndexesName =
-        CPLFormFilename(CPLGetPath(m_osFilename.c_str()),
-                        CPLGetBasename(m_osFilename.c_str()), "gdbindexes");
-    VSILFILE *fpIndexes = VSIFOpenL(pszIndexesName, "rb");
+    const std::string osIndexesName = CPLFormFilenameSafe(
+        CPLGetPathSafe(m_osFilename.c_str()).c_str(),
+        CPLGetBasenameSafe(m_osFilename.c_str()).c_str(), "gdbindexes");
+    VSILFILE *fpIndexes = VSIFOpenL(osIndexesName.c_str(), "rb");
     VSIStatBufL sStat;
     if (fpIndexes == nullptr)
     {
-        if (VSIStatExL(pszIndexesName, &sStat, VSI_STAT_EXISTS_FLAG) == 0)
+        if (VSIStatExL(osIndexesName.c_str(), &sStat, VSI_STAT_EXISTS_FLAG) ==
+            0)
             returnError();
         else
             return 0;
@@ -2520,8 +2526,8 @@ int FileGDBTable::GetIndexCount()
         const int iBlockKeyFieldIdx = GetFieldIdx("block_key");
         if (iBlockKeyFieldIdx >= 0)
         {
-            std::string osAtxFilename =
-                CPLResetExtension(m_osFilename.c_str(), "blk_key_index.atx");
+            const std::string osAtxFilename = CPLResetExtensionSafe(
+                m_osFilename.c_str(), "blk_key_index.atx");
             if (VSIStatExL(osAtxFilename.c_str(), &sStat,
                            VSI_STAT_EXISTS_FLAG) == 0)
             {
@@ -2554,8 +2560,7 @@ int FileGDBTable::GetIndexCount()
         returnErrorAndCleanupIf(static_cast<size_t>(pabyEnd - pabyCur) <
                                     2 * nIdxNameCharCount,
                                 VSIFree(pabyIdx));
-        const std::string osIndexName(
-            ReadUTF16String(pabyCur, nIdxNameCharCount));
+        std::string osIndexName(ReadUTF16String(pabyCur, nIdxNameCharCount));
         pabyCur += 2 * nIdxNameCharCount;
 
         // 4 "magic fields"
@@ -2574,7 +2579,7 @@ int FileGDBTable::GetIndexCount()
             // Cf files a00000029.gdbindexes, a000000ea.gdbindexes, a000000ed.gdbindexes,
             // a000000f8.gdbindexes, a000000fb.gdbindexes, a00000103.gdbindexes
             // from https://github.com/OSGeo/gdal/issues/11295#issuecomment-2491158506
-            CPLDebug("OpenFileGDB", "Reading %s", pszIndexesName);
+            CPLDebug("OpenFileGDB", "Reading %s", osIndexesName.c_str());
             CPLDebug(
                 "OpenFileGDB",
                 "Strange (deleted?) index descriptor at index %u of name %s", i,
@@ -2624,7 +2629,7 @@ int FileGDBTable::GetIndexCount()
         pabyCur += sizeof(GUInt16);
 
         auto poIndex = std::make_unique<FileGDBIndex>();
-        poIndex->m_osIndexName = osIndexName;
+        poIndex->m_osIndexName = std::move(osIndexName);
         poIndex->m_osExpression = osExpression;
 
         if (m_iObjectIdField < 0 ||
@@ -2669,12 +2674,12 @@ bool FileGDBTable::HasSpatialIndex()
 {
     if (m_nHasSpatialIndex < 0)
     {
-        const char *pszSpxName =
-            CPLFormFilename(CPLGetPath(m_osFilename.c_str()),
-                            CPLGetBasename(m_osFilename.c_str()), "spx");
+        const std::string osSpxName = CPLFormFilenameSafe(
+            CPLGetPathSafe(m_osFilename.c_str()).c_str(),
+            CPLGetBasenameSafe(m_osFilename.c_str()).c_str(), "spx");
         VSIStatBufL sStat;
         m_nHasSpatialIndex =
-            (VSIStatExL(pszSpxName, &sStat, VSI_STAT_EXISTS_FLAG) == 0);
+            (VSIStatExL(osSpxName.c_str(), &sStat, VSI_STAT_EXISTS_FLAG) == 0);
     }
     return m_nHasSpatialIndex != FALSE;
 }
@@ -3201,6 +3206,8 @@ void FileGDBGeomField::SetMOriginScaleTolerance(double dfMOrigin,
     m_dfMTolerance = dfMTolerance;
 }
 
+FileGDBOGRGeometryConverter::~FileGDBOGRGeometryConverter() = default;
+
 /************************************************************************/
 /*                      FileGDBOGRGeometryConverterImpl                 */
 /************************************************************************/
@@ -3331,28 +3338,32 @@ bool FileGDBOGRGeometryConverterImpl::ReadPartDefs(
 class FileGDBOGRLineString : public OGRLineString
 {
   public:
-    FileGDBOGRLineString()
-    {
-    }
+    FileGDBOGRLineString() = default;
+
+    ~FileGDBOGRLineString() override;
 
     OGRRawPoint *GetPoints() const
     {
         return paoPoints;
     }
 };
+
+FileGDBOGRLineString::~FileGDBOGRLineString() = default;
 
 class FileGDBOGRLinearRing : public OGRLinearRing
 {
   public:
-    FileGDBOGRLinearRing()
-    {
-    }
+    FileGDBOGRLinearRing() = default;
+
+    ~FileGDBOGRLinearRing() override;
 
     OGRRawPoint *GetPoints() const
     {
         return paoPoints;
     }
 };
+
+FileGDBOGRLinearRing::~FileGDBOGRLinearRing() = default;
 
 class XYLineStringSetter
 {
@@ -3648,7 +3659,7 @@ OGRGeometry *FileGDBOGRGeometryConverterImpl::CreateCurveGeometry(
     {
         returnError();
     }
-    const int nMaxSize = static_cast<int>(nMaxSize64);
+    const int nMaxSize = static_cast<int>(nMaxSize64 & INT_MAX);
     // coverity[overflow_sink]
     GByte *pabyExtShapeBuffer =
         static_cast<GByte *>(VSI_MALLOC_VERBOSE(nMaxSize));

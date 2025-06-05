@@ -180,6 +180,11 @@ template <> inline double byteSwap(double v)
 
 namespace LIBERTIFF_NS
 {
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 /** Interface to read from a file. */
 class FileReader
 {
@@ -194,6 +199,10 @@ class FileReader
      */
     virtual size_t read(uint64_t offset, size_t count, void *buffer) const = 0;
 };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 }  // namespace LIBERTIFF_NS
 
 namespace LIBERTIFF_NS
@@ -1084,18 +1093,26 @@ class Image
     {
         if (m_isTiled && m_tileWidth > 0 && m_tileHeight > 0)
         {
-            const auto lTilesPerRow = tilesPerRow();
-            const auto lTilesPerCol = tilesPerCol();
+            const uint32_t lTilesPerRow = tilesPerRow();
+            const uint32_t lTilesPerCol = tilesPerCol();
             if (xtile >= lTilesPerRow || ytile >= lTilesPerCol)
             {
                 ok = false;
                 return 0;
             }
-            auto idx = uint64_t(ytile) * lTilesPerRow + xtile;
+            uint64_t idx = uint64_t(ytile) * lTilesPerRow + xtile;
             if (bandIdx &&
                 m_planarConfiguration == PlanarConfiguration::Separate)
             {
-                idx += uint64_t(bandIdx) * lTilesPerCol * lTilesPerRow;
+                const uint64_t lTotalTiles =
+                    uint64_t(lTilesPerCol) * lTilesPerRow;
+                if (lTotalTiles >
+                    std::numeric_limits<uint64_t>::max() / bandIdx)
+                {
+                    ok = false;
+                    return 0;
+                }
+                idx += bandIdx * lTotalTiles;
             }
             return idx;
         }
@@ -1157,8 +1174,8 @@ class Image
             {
                 if LIBERTIFF_CONSTEXPR (sizeof(tag.count) > sizeof(size_t))
                 {
-                    // coverity[result_independent_of_operands]
-                    if (tag.count > std::numeric_limits<size_t>::max())
+                    // "- 1" not strictly necessary, but pleases Coverity Scan
+                    if (tag.count > std::numeric_limits<size_t>::max() - 1)
                     {
                         ok = false;
                         return std::string();
@@ -1217,6 +1234,12 @@ class Image
         uint64_t offset = imageOffset;
         if LIBERTIFF_CONSTEXPR (isBigTIFF)
         {
+            // To prevent unsigned integer overflows in later additions. The
+            // theoretical max should be much closer to UINT64_MAX, but half of
+            // it is already more than needed in practice :-)
+            if (offset >= std::numeric_limits<uint64_t>::max() / 2)
+                return nullptr;
+
             const auto tagCount64Bit = rc->read<uint64_t>(offset, ok);
             // Artificially limit to the same number of entries as ClassicTIFF
             if (tagCount64Bit > std::numeric_limits<uint16_t>::max())
@@ -1232,7 +1255,7 @@ class Image
         if (!ok)
             return nullptr;
         image->m_tags.reserve(tagCount);
-        // coverity[tainted_data]
+        assert(tagCount <= 65535);
         for (int i = 0; i < tagCount; ++i)
         {
             TagEntry entry;
@@ -1525,6 +1548,14 @@ class Image
         {
             // Out-of-line values. We read a file offset
             entry.value_offset = m_rc->read<DataOrOffsetType>(offset, ok);
+            if (entry.value_offset == 0)
+            {
+                // value_offset = 0 for a out-of-line tag is obviously
+                // wrong and would cause later confusion in readTagAsVector<>,
+                // so better reject the file.
+                ok = false;
+                return;
+            }
             if (dataTypeSize >
                 std::numeric_limits<uint64_t>::max() / entry.count)
             {
@@ -1557,6 +1588,7 @@ class Image
         else if (dataTypeSize == sizeof(uint16_t))
         {
             // Read up to 2 (classic) or 4 (BigTIFF) inline 16-bit values
+            assert(entry.count <= 4);
             for (uint32_t idx = 0; idx < entry.count; ++idx)
             {
                 entry.uint16Values[idx] =

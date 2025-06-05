@@ -160,6 +160,10 @@ The following entity types are supported:
    label. Block content for MULTILEADERS is treated as for INSERT.
    Spline leaders are tessellated into line segments.
 
+-  WIPEOUT: a light support of WIPEOUT entities can parse the outline
+   geometry of WIPEOUT entities and translate it into a POLYGON feature.
+   The feature is 2D support only - Z coordinates are ignored.
+
 -  3DSOLID, REGION, BODY, SURFACE: See below.
 
 A reasonable attempt is made to preserve color, line width (lineweight),
@@ -384,11 +388,9 @@ following style string parameters are understood:
      - color (c)
    * - LABEL
      - Point
-     - | GDAL >= 2.3.0: text (t); font name (f); font size (s), treated as cap
-       | height; bold (bo); italic (it); text color (c); x and y offsets (dx,
-       | dy); angle (a); anchor point (p); stretch (w)
-       | GDAL <= 2.2.x: text (t); font size (s), treated as cap height; text
-       | color (c); angle (a); anchor point (p)
+     - text (t); font name (f); font size (s), treated as cap
+       height; bold (bo); italic (it); text color (c); x and y offsets (dx,
+       dy); angle (a); anchor point (p); stretch (w)
 
 |about-dataset-creation-options|
 The driver supports the following dataset creation options:
@@ -507,8 +509,7 @@ likely to be wrong - potentially very wrong.
 See also
 --------
 
-`List of known
-issues <https://github.com/OSGeo/gdal/blob/master/ogr/ogrsf_frmts/dxf/KNOWN_ISSUES.md>`__
+List of known issues :source_file:`ogr/ogrsf_frmts/dxf/KNOWN_ISSUES.md`
 
 `AutoCAD 2000 DXF
 Reference <http://www.autodesk.com/techpubs/autocad/acad2000/dxf/>`__

@@ -13,15 +13,7 @@ gdaladdo
 Synopsis
 --------
 
-.. code-block::
-
-    gdaladdo [--help] [--help-general]
-             [-r {nearest|average|rms|gauss|bilinear|cubic|cubicspline|lanczos|average_mp|average_magphase|mode}]
-             [-ro] [-clean] [-q] [-oo <NAME>=<VALUE>]... [-minsize <val>]
-             [--partial-refresh-from-source-timestamp]
-             [--partial-refresh-from-projwin <ulx> <uly> <lrx> <lry>]
-             [--partial-refresh-from-source-extent <filename1>[,<filenameN>]...]
-             <filename> [<levels>]...
+.. program-output:: gdaladdo --help-doc
 
 Description
 -----------
@@ -350,8 +342,8 @@ Examples
 
    .. code-block:: bash
 
-       gdalwarp -overwrite tile1.tif tile2.tif mosaic.tif                      # create mosaic
-       gdaladdo -r cubic mosaic.tif                                            # initial overview generation
-       touch tile1.tif                                                         # simulate update of one of the source tiles
-       gdalwarp tile1.tif mosaic.tif                                           # update mosaic
-       gdaladdo --partial-refresh-from-source-extent tile1.tif -r cubic my.vrt # refresh overviews
+       gdalwarp -overwrite tile1.tif tile2.tif mosaic.tif                          # create mosaic
+       gdaladdo -r cubic mosaic.tif                                                # initial overview generation
+       touch tile1.tif                                                             # simulate update of one of the source tiles
+       gdalwarp tile1.tif mosaic.tif                                               # update mosaic
+       gdaladdo --partial-refresh-from-source-extent tile1.tif -r cubic mosaic.tif # refresh overviews

@@ -1797,9 +1797,9 @@ const char *TABCustomPoint::GetSymbolStyleString(double dfAngle) const
 
     int nAngle = static_cast<int>(dfAngle);
     const char *pszStyle;
-    const char *pszExt = CPLGetExtension(GetSymbolNameRef());
+    const std::string osExt = CPLGetExtensionSafe(GetSymbolNameRef());
     char szLowerExt[8] = "";
-    const char *pszPtr = pszExt;
+    const char *pszPtr = osExt.c_str();
     int i;
 
     for (i = 0; i < 7 && *pszPtr != '\0' && *pszPtr != ' '; i++, pszPtr++)
@@ -8398,6 +8398,12 @@ ITABFeaturePen::ITABFeaturePen()
 }
 
 /**********************************************************************
+ *                   ITABFeaturePen::~ITABFeaturePen()
+ **********************************************************************/
+
+ITABFeaturePen::~ITABFeaturePen() = default;
+
+/**********************************************************************
  *                   ITABFeaturePen::GetPenWidthPixel()
  *                   ITABFeaturePen::SetPenWidthPixel()
  *                   ITABFeaturePen::GetPenWidthPoint()
@@ -8839,6 +8845,12 @@ ITABFeatureBrush::ITABFeatureBrush()
 }
 
 /**********************************************************************
+ *                   ITABFeatureBrush::~ITABFeatureBrush()
+ **********************************************************************/
+
+ITABFeatureBrush::~ITABFeatureBrush() = default;
+
+/**********************************************************************
  *                   ITABFeatureBrush::GetBrushStyleString()
  *
  *  Return a Brush() string. All representations info for the Brush are here.
@@ -9056,6 +9068,12 @@ ITABFeatureFont::ITABFeatureFont()
     : m_nFontDefIndex(-1), m_sFontDef(MITABcsDefaultFont)
 {
 }
+
+/**********************************************************************
+ *                   ITABFeatureFont::~ITABFeatureFont()
+ **********************************************************************/
+
+ITABFeatureFont::~ITABFeatureFont() = default;
 
 /**********************************************************************
  *                   ITABFeatureFont::SetFontName()

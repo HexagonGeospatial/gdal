@@ -113,7 +113,7 @@ DTEDRasterBand::DTEDRasterBand(DTEDDataset *poDSIn, int nBandIn)
 CPLErr DTEDRasterBand::IReadBlock(int nBlockXOff, CPL_UNUSED int nBlockYOff,
                                   void *pImage)
 {
-    DTEDDataset *poDTED_DS = (DTEDDataset *)poDS;
+    DTEDDataset *poDTED_DS = cpl::down_cast<DTEDDataset *>(poDS);
     int nYSize = poDTED_DS->psDTED->nYSize;
     GInt16 *panData;
 
@@ -123,7 +123,7 @@ CPLErr DTEDRasterBand::IReadBlock(int nBlockXOff, CPL_UNUSED int nBlockYOff,
     if (nBlockXSize != 1)
     {
         const int cbs = 32;  // optimize for 64 byte cache line size
-        const int bsy = (nBlockYSize + cbs - 1) / cbs * cbs;
+        const int bsy = DIV_ROUND_UP(nBlockYSize, cbs) * cbs;
         panData = (GInt16 *)pImage;
         GInt16 *panBuffer = (GInt16 *)CPLMalloc(sizeof(GInt16) * cbs * bsy);
         for (int i = 0; i < nBlockXSize; i += cbs)
@@ -181,7 +181,7 @@ CPLErr DTEDRasterBand::IReadBlock(int nBlockXOff, CPL_UNUSED int nBlockYOff,
 CPLErr DTEDRasterBand::IWriteBlock(int nBlockXOff, CPL_UNUSED int nBlockYOff,
                                    void *pImage)
 {
-    DTEDDataset *poDTED_DS = (DTEDDataset *)poDS;
+    DTEDDataset *poDTED_DS = cpl::down_cast<DTEDDataset *>(poDS);
     GInt16 *panData;
 
     (void)nBlockXOff;
@@ -470,9 +470,9 @@ GDALDataset *DTEDDataset::Open(GDALOpenInfo *poOpenInfo)
         int bTryAux = TRUE;
         if (poOpenInfo->GetSiblingFiles() != nullptr &&
             CSLFindString(poOpenInfo->GetSiblingFiles(),
-                          CPLResetExtension(
-                              CPLGetFilename(poOpenInfo->pszFilename), "aux")) <
-                0 &&
+                          CPLResetExtensionSafe(
+                              CPLGetFilename(poOpenInfo->pszFilename), "aux")
+                              .c_str()) < 0 &&
             CSLFindString(
                 poOpenInfo->GetSiblingFiles(),
                 CPLSPrintf("%s.aux", CPLGetFilename(poOpenInfo->pszFilename))) <

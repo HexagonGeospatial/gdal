@@ -27,12 +27,7 @@ class GDALVectorConvertAlgorithm final : public GDALAlgorithm
     static constexpr const char *NAME = "convert";
     static constexpr const char *DESCRIPTION = "Convert a vector dataset.";
     static constexpr const char *HELP_URL =
-        "/programs/gdal_vecotr_convert.html";
-
-    static std::vector<std::string> GetAliases()
-    {
-        return {};
-    }
+        "/programs/gdal_vector_convert.html";
 
     GDALVectorConvertAlgorithm();
 
