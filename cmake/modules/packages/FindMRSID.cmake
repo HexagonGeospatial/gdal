@@ -55,7 +55,7 @@ find_package_handle_standard_args(MRSID FOUND_VAR MRSID_FOUND
 
 # Copy the results to the output variables.
 if(MRSID_FOUND)
-  set(MRSID_LIBRARIES ${MRSID_LIBRARY}})
+  set(MRSID_LIBRARIES ${MRSID_LIBRARY})
   set(MRSID_INCLUDE_DIRS ${MRSID_INCLUDE_DIR})
   if(NOT TARGET MRSID::MRSID)
     add_library(MRSID::MRSID UNKNOWN IMPORTED)
