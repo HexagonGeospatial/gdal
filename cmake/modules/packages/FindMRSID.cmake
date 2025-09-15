@@ -63,15 +63,19 @@ if(MRSID_FOUND)
             # Windows: keep existing logic
             add_library(MRSID::MRSID UNKNOWN IMPORTED)
             set_target_properties(MRSID::MRSID PROPERTIES
-                INTERFACE_INCLUDE_DIRECTORIES "${MRSID_INCLUDE_DIR}"
-                IMPORTED_LOCATION "${MRSID_LIBRARY}")
+                INTERFACE_INCLUDE_DIRECTORIES "${MRSID_INCLUDE_DIR}")
+			set_target_properties(MRSID::MRSID PROPERTIES
+				IMPORTED_LOCATION_DEBUG "${MRSID_LIBRARY}"
+				IMPORTED_LOCATION_RELEASE "${MRSID_LIBRARY}"
+				IMPORTED_LOCATION_RELWITHDEBINFO "${MRSID_LIBRARY}"
+				IMPORTED_LOCATION_MINSIZEREL "${MRSID_LIBRARY}")				
         else()
 			# Linux/macOS: split full path into -L + -l to avoid baking absolute paths
 			get_filename_component(MRSID_LIB_DIR "${MRSID_LIBRARY}" DIRECTORY)
 			get_filename_component(MRSID_LIB_FILE "${MRSID_LIBRARY}" NAME_WE)
 			string(REGEX REPLACE "^lib" "" MRSID_LIB_NAME "${MRSID_LIB_FILE}")
 
-			add_library(MRSID::MRSID INTERFACE IMPORTED)
+			add_library(MRSID::MRSID UNKNOWN IMPORTED)
 			set_target_properties(MRSID::MRSID PROPERTIES
 				INTERFACE_INCLUDE_DIRECTORIES "${MRSID_INCLUDE_DIR}"
 				INTERFACE_LINK_LIBRARIES "${MRSID_LIB_NAME}"
