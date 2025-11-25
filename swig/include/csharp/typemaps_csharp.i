@@ -619,4 +619,5 @@ OPTIONAL_POD(int, int);
 /******************************************************************************
  * ExecuteSQL typemaps                                                *
  *****************************************************************************/
-%apply ( const char *utf8_path ) { const char* statement };
+%apply (const char *STRING) { const char *statement };
+
