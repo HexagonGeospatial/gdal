@@ -619,12 +619,6 @@ OPTIONAL_POD(int, int);
 /******************************************************************************
  * ExecuteSQL typemaps                                                *
  *****************************************************************************/
-%typemap(csin) const char *statement {
-    $1 = (char*)SWIG_csharp_string_to_utf8($input);
-}
-
-%typemap(csin) const char *dialect {
-    $1 = (char*)SWIG_csharp_string_to_utf8($input);
-}
+%apply (const char *STRING) { const char *statement };
 
 
