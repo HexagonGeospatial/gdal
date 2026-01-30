@@ -124,6 +124,19 @@ if (BUILD_APPS)
     if (WIN32)
         target_sources(${UTILCMD} PRIVATE longpathaware.manifest)
     endif()
+	
+    if (WIN32 AND MSVC)
+        set(_app_rc ${CMAKE_CURRENT_BINARY_DIR}/${UTILCMD}_version.rc)
+
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/cmake/app_version.rc.in
+            ${_app_rc}
+            @ONLY
+        )
+
+        target_sources(${UTILCMD} PRIVATE ${_app_rc})
+    endif()
+	
     # Add that include directory before all others so the gdal_version.h from it is included and not
     # gcore/gdal_version.h
     target_include_directories(${UTILCMD} PRIVATE $<TARGET_PROPERTY:gcore,BINARY_DIR>/gdal_version_full)
@@ -175,6 +188,17 @@ if (BUILD_APPS)
     if (WIN32)
         target_sources(${UTILCMD} PRIVATE longpathaware.manifest)
     endif()
+    if (WIN32 AND MSVC)
+        set(_app_rc ${CMAKE_CURRENT_BINARY_DIR}/${UTILCMD}_version.rc)
+
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/cmake/app_version.rc.in
+            ${_app_rc}
+            @ONLY
+        )
+
+        target_sources(${UTILCMD} PRIVATE ${_app_rc})
+    endif()	
     # Add that include directory before all others so the gdal_version.h from it is included and not
     # gcore/gdal_version.h
     target_include_directories(${UTILCMD} PRIVATE $<TARGET_PROPERTY:gcore,BINARY_DIR>/gdal_version_full)

@@ -4,6 +4,13 @@
         <TargetFramework>${CSHARP_APPLICATION_VERSION}</TargetFramework>
         <RuntimeIdentifier>${CSHARP_RID}</RuntimeIdentifier>
         <CheckEolTargetFramework>false</CheckEolTargetFramework>
+        <!-- Versioning & metadata -->
+        <AssemblyVersion>${GDAL_VERSION_MAJOR}.${GDAL_VERSION_MINOR}.${GDAL_VERSION_REV}</AssemblyVersion>
+        <FileVersion>${GDAL_VERSION_MAJOR}.${GDAL_VERSION_MINOR}.${GDAL_VERSION_REV}</FileVersion>
+        <Company>Hexagon</Company>
+        <Product>GDAL C# Application</Product>
+        <Description>GDAL C# Application</Description>
+        <Copyright>(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates</Copyright>
         <AssemblyVersion>${GDAL_VERSION_MAJOR}.${GDAL_VERSION_MINOR}.${GDAL_VERSION_REV}</AssemblyVersion>
         <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     </PropertyGroup>

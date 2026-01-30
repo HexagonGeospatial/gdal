@@ -9,8 +9,9 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PackageId>${_PACKAGE_NAME}</PackageId>
         <Authors>GDAL Contributors</Authors>
-        <Company>GDAL Project</Company>
-        <Copyright>Copyright GDAL Contributors</Copyright>
+        <Company>Hexagon</Company>
+        <Product>GDAL C# Library</Product>        
+        <Copyright>(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates</Copyright>
     </PropertyGroup>
     <ItemGroup>
         <None Include="$<TARGET_FILE:${_CSHARP_WRAP_DLL}>" Pack="true" PackagePath="runtimes\${CSHARP_RID}\native" />

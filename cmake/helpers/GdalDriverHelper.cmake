@@ -260,6 +260,23 @@ function(add_gdal_driver)
     if (_DRIVER_PLUGIN_BUILD)
         # target become *.so *.dll or *.dylib
         add_library(${_DRIVER_TARGET} MODULE ${_DRIVER_SOURCES})
+		
+		  # ================================
+		  # Windows VERSIONINFO for plugins
+		  # ================================
+		  if (WIN32 AND MSVC)
+			set(_plugin_rc ${CMAKE_CURRENT_BINARY_DIR}/${ARG_NAME}_version.rc)
+
+			configure_file(
+			  ${CMAKE_SOURCE_DIR}/cmake/plugin_version.rc.in
+			  ${_plugin_rc}
+			  @ONLY
+			)
+
+			target_sources(${_DRIVER_TARGET} PRIVATE ${_plugin_rc})
+		  endif()
+
+		
         set_target_properties(${_DRIVER_TARGET}
                               PROPERTIES
                               PREFIX ""

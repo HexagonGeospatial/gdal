@@ -1,6 +1,18 @@
 <Project>
   <PropertyGroup>
+    <!-- Output directories (already there) -->
     <BaseIntermediateOutputPath>obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
     <BaseOutputPath>bin\$(MSBuildProjectName)\</BaseOutputPath>
+
+    <!-- Assembly metadata for Explorer -->
+    <Company>Hexagon</Company>
+    <Product>GDAL</Product>
+    <Description>GDAL C# Bindings</Description>
+    <Copyright>(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates</Copyright>
+
+    <!-- Versioning -->
+    <AssemblyVersion>3.9.3.0</AssemblyVersion>
+    <FileVersion>3.9.3.0</FileVersion>
+    <InformationalVersion>3.9.3</InformationalVersion>
   </PropertyGroup>
 </Project>

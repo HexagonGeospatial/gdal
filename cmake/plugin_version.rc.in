@@ -1,0 +1,29 @@
+#include <windows.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @GDAL_VERSION_MAJOR@,@GDAL_VERSION_MINOR@,@GDAL_VERSION_REV@,0
+ PRODUCTVERSION @GDAL_VERSION_MAJOR@,@GDAL_VERSION_MINOR@,@GDAL_VERSION_REV@,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS 0x40004L
+ FILETYPE VFT_DLL
+ FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Hexagon"
+      VALUE "LegalCopyright", "(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates"
+      VALUE "ProductName", "GDAL Plugin"
+      VALUE "FileDescription", "@PLUGIN_NAME@"
+      VALUE "FileVersion", "@GDAL_VERSION@"
+      VALUE "ProductVersion", "@GDAL_VERSION@"
+      VALUE "OriginalFilename", "@PLUGIN_NAME@.dll"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END
