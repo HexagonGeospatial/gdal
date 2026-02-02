@@ -258,6 +258,7 @@ function(add_gdal_driver)
 
     # target configuration
     if (_DRIVER_PLUGIN_BUILD)
+        set(PLUGIN_NAME ${ARG_NAME})
         # target become *.so *.dll or *.dylib
         add_library(${_DRIVER_TARGET} MODULE ${_DRIVER_SOURCES})
 		
