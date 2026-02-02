@@ -126,6 +126,7 @@ if (BUILD_APPS)
     endif()
 	
     if (WIN32 AND MSVC)
+        set(APP_NAME ${UTILCMD})
         set(_app_rc ${CMAKE_CURRENT_BINARY_DIR}/${UTILCMD}_version.rc)
 
         configure_file(
@@ -189,6 +190,7 @@ if (BUILD_APPS)
         target_sources(${UTILCMD} PRIVATE longpathaware.manifest)
     endif()
     if (WIN32 AND MSVC)
+        set(APP_NAME ${UTILCMD})
         set(_app_rc ${CMAKE_CURRENT_BINARY_DIR}/${UTILCMD}_version.rc)
 
         configure_file(
