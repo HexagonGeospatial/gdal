@@ -40,7 +40,7 @@ using System.Security;
 [assembly: AssemblyTitle("gdal")]
 [assembly: AssemblyDescription("GDAL C# Library")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Hexagon")]
+[assembly: AssemblyCompany("Hexagon AB and/or its subsidiaries and affiliates")]
 [assembly: AssemblyProduct("GDAL")]
 [assembly: AssemblyCopyright("(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates")]
 [assembly: AssemblyTrademark("")]

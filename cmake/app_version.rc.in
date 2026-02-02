@@ -13,7 +13,7 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "CompanyName", "Hexagon"
+      VALUE "CompanyName", "Hexagon AB and/or its subsidiaries and affiliates"
       VALUE "ProductName", "GDAL Application"
       VALUE "FileDescription", "@APP_NAME@"
       VALUE "FileVersion", "@GDAL_VERSION@"

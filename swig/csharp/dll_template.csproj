@@ -9,7 +9,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <PackageId>${_PACKAGE_NAME}</PackageId>
         <Authors>GDAL Contributors</Authors>
-        <Company>Hexagon</Company>
+        <Company>Hexagon AB and/or its subsidiaries and affiliates</Company>
         <Product>GDAL C# Library</Product>        
         <Copyright>(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates</Copyright>
     </PropertyGroup>

@@ -5,7 +5,7 @@
     <BaseOutputPath>bin\$(MSBuildProjectName)\</BaseOutputPath>
 
     <!-- Assembly metadata for Explorer -->
-    <Company>Hexagon</Company>
+    <Company>Hexagon AB and/or its subsidiaries and affiliates</Company>
     <Product>GDAL</Product>
     <Description>GDAL C# Bindings</Description>
     <Copyright>(c) 1999-2027 Hexagon AB and/or its subsidiaries and affiliates</Copyright>
