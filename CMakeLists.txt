@@ -259,13 +259,6 @@ message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
 message(STATUS "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
 
 
-configure_file(
-    ${CMAKE_SOURCE_DIR}/swig/csharp/GDALVersion.props.in
-    ${CMAKE_BINARY_DIR}/swig/csharp/GDALVersion.props
-    @ONLY
-)
-message(STATUS "Generated GDALVersion.props at: ${CMAKE_BINARY_DIR}/swig/csharp/GDALVersion.props")
-
 #
 include(${CMAKE_CURRENT_SOURCE_DIR}/gdal.cmake)
 

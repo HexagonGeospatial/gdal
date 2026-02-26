@@ -272,9 +272,6 @@ function(add_gdal_driver)
 			endif()
 
 			message(STATUS "Effective Plugins GDAL_VERSION_BUILD = ${GDAL_VERSION_BUILD}")
-			message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
-			message(STATUS "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
-
 
 		  if (WIN32 AND MSVC)
 			set(_plugin_rc ${CMAKE_CURRENT_BINARY_DIR}/${ARG_NAME}_version.rc)
