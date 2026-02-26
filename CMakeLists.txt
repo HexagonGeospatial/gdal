@@ -244,6 +244,28 @@ if (BUILD_PYTHON_BINDINGS)
     endif()
 endif()
 
+# ---- Global GDAL build number handling ----
+
+if(NOT "$ENV{GDAL_VERSION_BUILD}" STREQUAL "")
+    set(GDAL_VERSION_BUILD "$ENV{GDAL_VERSION_BUILD}" CACHE STRING "GDAL build number" FORCE)
+else()
+    if(NOT DEFINED GDAL_VERSION_BUILD)
+        set(GDAL_VERSION_BUILD 0 CACHE STRING "GDAL build number" FORCE)
+    endif()
+endif()
+
+message(STATUS "GLOBAL GDAL_VERSION_BUILD = ${GDAL_VERSION_BUILD}")
+message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+message(STATUS "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/swig/csharp/GDALVersion.props.in
+    ${CMAKE_BINARY_DIR}/swig/csharp/GDALVersion.props
+    @ONLY
+)
+message(STATUS "Generated GDALVersion.props at: ${CMAKE_BINARY_DIR}/swig/csharp/GDALVersion.props")
+
 #
 include(${CMAKE_CURRENT_SOURCE_DIR}/gdal.cmake)
 

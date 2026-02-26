@@ -6,6 +6,18 @@ string(CONCAT
        "/* This is a generated file from gdal_version.h.in. DO NOT MODIFY !!!! */\n"
        "${GDAL_VERSION_H_CONTENTS}")
 
+if(NOT "$ENV{GDAL_VERSION_BUILD}" STREQUAL "")
+    set(GDAL_VERSION_BUILD "$ENV{GDAL_VERSION_BUILD}")
+elseif(NOT DEFINED GDAL_VERSION_BUILD)
+    set(GDAL_VERSION_BUILD 0 CACHE STRING "GDAL build number" FORCE)
+endif()
+message(STATUS "Effective GDAL_VERSION_BUILD = ${GDAL_VERSION_BUILD}")
+# --- Inject the build number into the template ---
+string(REGEX REPLACE
+    "(#[ \t]*define[ \t]+GDAL_VERSION_BUILD[ \t]+)[0-9]+"
+    "\\1${GDAL_VERSION_BUILD}"
+    GDAL_VERSION_H_CONTENTS
+    "${GDAL_VERSION_H_CONTENTS}")
 if (GDAL_SHA1SUM)
     # Used for GDAL docker builds
     string(REPLACE "dev" "dev-${GDAL_SHA1SUM}"

@@ -125,6 +125,17 @@ if (BUILD_APPS)
         target_sources(${UTILCMD} PRIVATE longpathaware.manifest)
     endif()
 	
+	if(NOT "$ENV{GDAL_VERSION_BUILD}" STREQUAL "")
+		set(GDAL_VERSION_BUILD "$ENV{GDAL_VERSION_BUILD}")
+	elseif(NOT DEFINED GDAL_VERSION_BUILD)
+		set(GDAL_VERSION_BUILD 0 CACHE STRING "GDAL build number" FORCE)
+	endif()
+
+	message(STATUS "Effective APP2 GDAL_VERSION_BUILD = ${GDAL_VERSION_BUILD}")
+	message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+	message(STATUS "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+
+
     if (WIN32 AND MSVC)
         set(APP_NAME ${UTILCMD})
         set(_app_rc ${CMAKE_CURRENT_BINARY_DIR}/${UTILCMD}_version.rc)
@@ -189,6 +200,17 @@ if (BUILD_APPS)
     if (WIN32)
         target_sources(${UTILCMD} PRIVATE longpathaware.manifest)
     endif()
+	if(NOT "$ENV{GDAL_VERSION_BUILD}" STREQUAL "")
+		set(GDAL_VERSION_BUILD "$ENV{GDAL_VERSION_BUILD}")
+	elseif(NOT DEFINED GDAL_VERSION_BUILD)
+		set(GDAL_VERSION_BUILD 0 CACHE STRING "GDAL build number" FORCE)
+	endif()
+
+	message(STATUS "Effective APPS1 GDAL_VERSION_BUILD = ${GDAL_VERSION_BUILD}")
+	message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+	message(STATUS "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+
+
     if (WIN32 AND MSVC)
         set(APP_NAME ${UTILCMD})
         set(_app_rc ${CMAKE_CURRENT_BINARY_DIR}/${UTILCMD}_version.rc)

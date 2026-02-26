@@ -265,6 +265,17 @@ function(add_gdal_driver)
 		  # ================================
 		  # Windows VERSIONINFO for plugins
 		  # ================================
+			if(NOT "$ENV{GDAL_VERSION_BUILD}" STREQUAL "")
+				set(GDAL_VERSION_BUILD "$ENV{GDAL_VERSION_BUILD}")
+			elseif(NOT DEFINED GDAL_VERSION_BUILD)
+				set(GDAL_VERSION_BUILD 0 CACHE STRING "GDAL build number" FORCE)
+			endif()
+
+			message(STATUS "Effective Plugins GDAL_VERSION_BUILD = ${GDAL_VERSION_BUILD}")
+			message(STATUS "CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}")
+			message(STATUS "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+
+
 		  if (WIN32 AND MSVC)
 			set(_plugin_rc ${CMAKE_CURRENT_BINARY_DIR}/${ARG_NAME}_version.rc)
 
