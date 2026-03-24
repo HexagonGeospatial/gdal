@@ -605,13 +605,17 @@ bool JPEGXLDataset::Open(GDALOpenInfo *poOpenInfo)
 
             // Check if the color profile is the default one we set on creation.
             // If so, do not expose it as ICC color profile
-            if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsEncodedProfile(
-                                       m_decoder.get(),
 #ifdef HAVE_JxlDecoderDefaultPixelFormat
-                                       &format,
-#endif
+            if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsEncodedProfile(
+                                       m_decoder.get(), &format,
                                        JXL_COLOR_PROFILE_TARGET_DATA,
                                        &color_encoding))
+#else
+            if (JXL_DEC_SUCCESS ==
+                JxlDecoderGetColorAsEncodedProfile(
+                    m_decoder.get(), nullptr,  // deprecated in v0.8.5
+                    JXL_COLOR_PROFILE_TARGET_DATA, &color_encoding))
+#endif
             {
                 JxlColorEncoding default_color_encoding;
                 JxlColorEncodingSetToSRGB(&default_color_encoding,
@@ -653,22 +657,30 @@ bool JPEGXLDataset::Open(GDALOpenInfo *poOpenInfo)
             if (!bIsDefaultColorEncoding)
             {
                 size_t icc_size = 0;
-                if (JXL_DEC_SUCCESS ==
-                    JxlDecoderGetICCProfileSize(m_decoder.get(),
 #ifdef HAVE_JxlDecoderDefaultPixelFormat
-                                                &format,
-#endif
+                if (JXL_DEC_SUCCESS ==
+                    JxlDecoderGetICCProfileSize(m_decoder.get(), &format,
                                                 JXL_COLOR_PROFILE_TARGET_DATA,
                                                 &icc_size))
+#else
+                if (JXL_DEC_SUCCESS ==
+                    JxlDecoderGetICCProfileSize(m_decoder.get(), nullptr,
+                                                JXL_COLOR_PROFILE_TARGET_DATA,
+                                                &icc_size))
+#endif
                 {
                     std::vector<GByte> icc(icc_size);
-                    if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsICCProfile(
-                                               m_decoder.get(),
 #ifdef HAVE_JxlDecoderDefaultPixelFormat
-                                               &format,
-#endif
+                    if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsICCProfile(
+                                               m_decoder.get(), &format,
                                                JXL_COLOR_PROFILE_TARGET_DATA,
                                                icc.data(), icc_size))
+#else
+                    if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsICCProfile(
+                                               m_decoder.get(), nullptr,
+                                               JXL_COLOR_PROFILE_TARGET_DATA,
+                                               icc.data(), icc_size))
+#endif
                     {
                         // Escape the profile.
                         char *pszBase64Profile = CPLBase64Encode(

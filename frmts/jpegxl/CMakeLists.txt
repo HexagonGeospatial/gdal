@@ -66,9 +66,28 @@ if(NOT TARGET gdal_JPEGXL)
 endif()
 
 gdal_standard_includes(gdal_JPEGXL)
-gdal_target_link_libraries(gdal_JPEGXL PRIVATE JXL::JXL)
 
-if (GDAL_USE_JXL_THREADS)
-  gdal_target_link_libraries(gdal_JPEGXL PRIVATE JXL_THREADS::JXL_THREADS)
+# --------------------------
+# Automatically link all JXL libraries
+# --------------------------
+# Set JXL_ROOT in your CMake or pass via -DJXL_ROOT=...
+if(DEFINED JXL_ROOT)
+    # Collect all .lib files in lib folder
+    file(GLOB JXL_LIBS "${JXL_ROOT}/lib/*.lib")
+    if(JXL_LIBS)
+        foreach(LIB_FILE IN LISTS JXL_LIBS)
+            message(STATUS "Linking JXL library: ${LIB_FILE}")
+            gdal_target_link_libraries(gdal_JPEGXL PRIVATE "${LIB_FILE}")
+            # Detect thread library automatically
+            if(LIB_FILE MATCHES "threads")
   declare_def(-DHAVE_JXL_THREADS)
 endif ()
+        endforeach()
+    else()
+        message(WARNING "No .lib files found under ${JXL_ROOT}/lib")
+    endif()
+    # Include JXL headers
+    target_include_directories(gdal_JPEGXL PRIVATE "${JXL_ROOT}/include")
+else()
+    message(WARNING "JXL_ROOT not defined! Please set -DJXL_ROOT=path_to_jxl")
+endif()
