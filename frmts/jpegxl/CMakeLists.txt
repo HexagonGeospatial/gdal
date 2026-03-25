@@ -68,26 +68,54 @@ endif()
 gdal_standard_includes(gdal_JPEGXL)
 
 # --------------------------
-# Automatically link all JXL libraries
+# JPEG-XL integration for GDAL
 # --------------------------
-# Set JXL_ROOT in your CMake or pass via -DJXL_ROOT=...
-if(DEFINED JXL_ROOT)
-    # Collect all .lib files in lib folder
-    file(GLOB JXL_LIBS "${JXL_ROOT}/lib/*.lib")
-    if(JXL_LIBS)
-        foreach(LIB_FILE IN LISTS JXL_LIBS)
-            message(STATUS "Linking JXL library: ${LIB_FILE}")
-            gdal_target_link_libraries(gdal_JPEGXL PRIVATE "${LIB_FILE}")
-            # Detect thread library automatically
-            if(LIB_FILE MATCHES "threads")
-  declare_def(-DHAVE_JXL_THREADS)
-endif ()
-        endforeach()
-    else()
-        message(WARNING "No .lib files found under ${JXL_ROOT}/lib")
-    endif()
+
+# Expect JXL_ROOT to be set: either via -DJXL_ROOT=... or in environment
+if(NOT DEFINED JXL_ROOT)
+    message(WARNING "JXL_ROOT not defined! Please set -DJXL_ROOT=path_to_jxl")
+else()
+    message(STATUS "Using JXL_ROOT = ${JXL_ROOT}")
+
     # Include JXL headers
     target_include_directories(gdal_JPEGXL PRIVATE "${JXL_ROOT}/include")
-else()
-    message(WARNING "JXL_ROOT not defined! Please set -DJXL_ROOT=path_to_jxl")
+
+    # Define JXL_THREADS for both Windows and Linux
+    add_definitions(-DHAVE_JXL_THREADS)
+
+    # --------------------------
+    # Link JXL static libraries
+    # --------------------------
+    if(WIN32)
+        # On Windows, link all .lib files in JXL lib folder
+        file(GLOB JXL_LIBS "${JXL_ROOT}/lib/*.lib")
+        if(NOT JXL_LIBS)
+            message(WARNING "No JXL .lib files found under ${JXL_ROOT}/lib")
+        else()
+            foreach(LIB_FILE IN LISTS JXL_LIBS)
+                message(STATUS "Linking JXL library (Windows): ${LIB_FILE}")
+                gdal_target_link_libraries(gdal_JPEGXL PRIVATE "${LIB_FILE}")
+            endforeach()
+        endif()
+    else()
+        # On Linux: explicitly list static libs in correct order
+        set(JXL_LIBS
+            "${JXL_ROOT}/lib/libjxl.a"
+            "${JXL_ROOT}/lib/libjxl_dec.a"
+            "${JXL_ROOT}/lib/libjxl_threads.a"
+            "${JXL_ROOT}/lib/libbrotlienc-static.a"
+            "${JXL_ROOT}/lib/libbrotlidec-static.a"
+            "${JXL_ROOT}/lib/libbrotlicommon-static.a"
+            "${JXL_ROOT}/lib/libhwy.a"
+        )
+
+        foreach(LIB_FILE IN LISTS JXL_LIBS)
+            if(EXISTS "${LIB_FILE}")
+                message(STATUS "Linking JXL library (Linux): ${LIB_FILE}")
+                gdal_target_link_libraries(gdal_JPEGXL PRIVATE "${LIB_FILE}")
+            else()
+                message(WARNING "Expected JXL library not found: ${LIB_FILE}")
+            endif()
+        endforeach()
+    endif()
 endif()
