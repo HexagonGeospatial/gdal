@@ -611,10 +611,10 @@ bool JPEGXLDataset::Open(GDALOpenInfo *poOpenInfo)
                                        JXL_COLOR_PROFILE_TARGET_DATA,
                                        &color_encoding))
 #else
-            if (JXL_DEC_SUCCESS ==
-                JxlDecoderGetColorAsEncodedProfile(
-                    m_decoder.get(), nullptr,  // deprecated in v0.8.5
-                    JXL_COLOR_PROFILE_TARGET_DATA, &color_encoding))
+            if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsEncodedProfile(
+                                       m_decoder.get(),
+                                       JXL_COLOR_PROFILE_TARGET_DATA,
+                                       &color_encoding))
 #endif
             {
                 JxlColorEncoding default_color_encoding;
@@ -664,7 +664,7 @@ bool JPEGXLDataset::Open(GDALOpenInfo *poOpenInfo)
                                                 &icc_size))
 #else
                 if (JXL_DEC_SUCCESS ==
-                    JxlDecoderGetICCProfileSize(m_decoder.get(), nullptr,
+                    JxlDecoderGetICCProfileSize(m_decoder.get(),
                                                 JXL_COLOR_PROFILE_TARGET_DATA,
                                                 &icc_size))
 #endif
@@ -677,7 +677,7 @@ bool JPEGXLDataset::Open(GDALOpenInfo *poOpenInfo)
                                                icc.data(), icc_size))
 #else
                     if (JXL_DEC_SUCCESS == JxlDecoderGetColorAsICCProfile(
-                                               m_decoder.get(), nullptr,
+                                               m_decoder.get(),
                                                JXL_COLOR_PROFILE_TARGET_DATA,
                                                icc.data(), icc_size))
 #endif
@@ -2307,7 +2307,8 @@ GDALDataset *JPEGXLDataset::CreateCopy(const char *pszFilename,
     JxlEncoderFrameSettings *opts =
         JxlEncoderFrameSettingsCreate(encoder.get(), nullptr);
 #else
-    JxlEncoderOptions *opts = JxlEncoderOptionsCreate(encoder.get(), nullptr);
+    JxlEncoderFrameSettings *opts =
+        JxlEncoderFrameSettingsCreate(encoder.get(), nullptr);
 #endif
     if (opts == nullptr)
     {
@@ -2337,7 +2338,7 @@ GDALDataset *JPEGXLDataset::CreateCopy(const char *pszFilename,
 #ifdef HAVE_JxlEncoderSetFrameLossless
         JxlEncoderSetFrameLossless(opts, TRUE);
 #else
-        JxlEncoderOptionsSetLossless(opts, TRUE);
+        JxlEncoderSetFrameLossless(opts, TRUE);
 #endif
         basic_info.uses_original_profile = JXL_TRUE;
     }
@@ -2346,7 +2347,7 @@ GDALDataset *JPEGXLDataset::CreateCopy(const char *pszFilename,
 #ifdef HAVE_JxlEncoderSetFrameDistance
         if (JxlEncoderSetFrameDistance(opts, fDistance) != JXL_ENC_SUCCESS)
 #else
-        if (JxlEncoderOptionsSetDistance(opts, fDistance) != JXL_ENC_SUCCESS)
+        if (JxlEncoderSetFrameDistance(opts, fDistance) != JXL_ENC_SUCCESS)
 #endif
         {
             CPLError(CE_Failure, CPLE_AppDefined,
@@ -2360,7 +2361,8 @@ GDALDataset *JPEGXLDataset::CreateCopy(const char *pszFilename,
     if (JxlEncoderFrameSettingsSetOption(opts, JXL_ENC_FRAME_SETTING_EFFORT,
                                          nEffort) != JXL_ENC_SUCCESS)
 #else
-    if (JxlEncoderOptionsSetEffort(opts, nEffort) != JXL_ENC_SUCCESS)
+    if (JxlEncoderFrameSettingsSetOption(opts, JXL_ENC_FRAME_SETTING_EFFORT,
+                                         nEffort) != JXL_ENC_SUCCESS)
 #endif
     {
         CPLError(CE_Failure, CPLE_AppDefined,
