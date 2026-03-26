@@ -101,11 +101,11 @@ else()
         # On Linux: explicitly list static libs in correct order
         set(JXL_LIBS
             "${JXL_ROOT}/lib/libjxl.a"
-            "${JXL_ROOT}/lib/libjxl_dec.a"
+            "${JXL_ROOT}/lib/libjxl_cms.a"
             "${JXL_ROOT}/lib/libjxl_threads.a"
-            "${JXL_ROOT}/lib/libbrotlienc-static.a"
-            "${JXL_ROOT}/lib/libbrotlidec-static.a"
-            "${JXL_ROOT}/lib/libbrotlicommon-static.a"
+            "${JXL_ROOT}/lib/libbrotlienc.a"
+            "${JXL_ROOT}/lib/libbrotlidec.a"
+            "${JXL_ROOT}/lib/libbrotlicommon.a"
             "${JXL_ROOT}/lib/libhwy.a"
         )
 
